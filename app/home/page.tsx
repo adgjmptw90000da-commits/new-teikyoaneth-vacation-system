@@ -115,13 +115,8 @@ export default function HomePage() {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">
-                {user.name}さん
-                {user.is_admin && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">
-                    管理者
-                  </span>
-                )}
+              <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded">
+                {user.is_admin ? "管理者" : "一般"}
               </span>
               <button
                 onClick={handleLogout}
