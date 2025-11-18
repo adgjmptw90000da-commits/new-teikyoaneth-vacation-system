@@ -114,7 +114,7 @@ export default function ApprovalsPage() {
       // 承認（ステータスを確定に変更）
       const { error } = await supabase
         .from("application")
-        .update({ status: "confirmed" })
+        .update({ status: "confirmed" } as any)
         .eq("id", app.id);
 
       if (error) {
@@ -143,7 +143,7 @@ export default function ApprovalsPage() {
       // 却下（ステータスをキャンセルに変更）
       const { error } = await supabase
         .from("application")
-        .update({ status: "cancelled" })
+        .update({ status: "cancelled" } as any)
         .eq("id", app.id);
 
       if (error) {
