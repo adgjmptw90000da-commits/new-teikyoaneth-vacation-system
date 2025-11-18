@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -16,8 +16,6 @@ import {
   isCurrentlyInLotteryPeriodForDate,
 } from "@/lib/application";
 import type { Database } from "@/lib/database.types";
-
-export const dynamic = 'force-dynamic';
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
   user: { name: string };
@@ -34,25 +32,29 @@ interface DayData {
   applications: Application[];
 }
 
-export default function AdminCalendarPage() {
+function AdminCalendarPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
 
   // URLパラメータから年月を取得、なければ現在の年月を使用
   const today = new Date();
-  const [currentYear, setCurrentYear] = useState(
-    searchParams.get('year') ? parseInt(searchParams.get('year')!) : today.getFullYear()
-  );
-  const [currentMonth, setCurrentMonth] = useState(
-    searchParams.get('month') ? parseInt(searchParams.get('month')!) : today.getMonth() + 1
-  );
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [daysData, setDaysData] = useState<DayData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [processing, setProcessing] = useState(false);
   const [capacities, setCapacities] = useState<Record<string, string>>({});
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
+
+  // URLパラメータから年月を取得
+  useEffect(() => {
+    const yearParam = searchParams.get('year');
+    const monthParam = searchParams.get('month');
+    if (yearParam) setCurrentYear(parseInt(yearParam));
+    if (monthParam) setCurrentMonth(parseInt(monthParam));
+  }, [searchParams]);
 
   useEffect(() => {
     const user = getUser();
@@ -741,5 +743,17 @@ export default function AdminCalendarPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function AdminCalendarPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <p>読み込み中...</p>
+      </div>
+    }>
+      <AdminCalendarPageContent />
+    </Suspense>
   );
 }
