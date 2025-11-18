@@ -388,7 +388,7 @@ export default function NewApplicationPage() {
                   value={vacationDate}
                   onChange={(e) => setVacationDate(e.target.value)}
                   required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
 
@@ -401,7 +401,7 @@ export default function NewApplicationPage() {
                   onChange={(e) =>
                     setPeriod(e.target.value as "full_day" | "am" | "pm")
                   }
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="full_day">全日</option>
                   <option value="am">AM</option>
@@ -416,7 +416,7 @@ export default function NewApplicationPage() {
                 <select
                   value={level}
                   onChange={(e) => setLevel(Number(e.target.value) as 1 | 2 | 3)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value={1}>レベル1（必ず休みたい）</option>
                   <option value={2}>レベル2（可能な限り休みたい）</option>
@@ -432,7 +432,7 @@ export default function NewApplicationPage() {
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   rows={3}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="個人のメモとして使用できます"
                 />
               </div>

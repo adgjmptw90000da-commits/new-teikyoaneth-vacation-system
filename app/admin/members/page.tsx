@@ -344,7 +344,7 @@ export default function MembersPage() {
                             onBlur={() => handleRetentionRateBlur(user)}
                             onKeyDown={(e) => handleRetentionRateKeyDown(e, user)}
                             disabled={processing}
-                            className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                            className="w-16 px-2 py-1 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                           />
                           <span className="text-gray-600">%</span>
                         </div>

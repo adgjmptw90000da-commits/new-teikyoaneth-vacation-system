@@ -693,7 +693,7 @@ function AdminCalendarPageContent() {
                         min="0"
                         value={capacities[day.date] ?? ""}
                         onChange={(e) => handleMaxPeopleChange(day.date, e.target.value)}
-                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm min-h-[44px]"
+                        className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-gray-900 placeholder:text-gray-400 min-h-[44px]"
                         placeholder="未設定"
                       />
                     </div>
