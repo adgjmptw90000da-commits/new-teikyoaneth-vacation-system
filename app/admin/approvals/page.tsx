@@ -58,7 +58,7 @@ export default function ApprovalsPage() {
       // 各申請の日付に対してマンパワーと確定数を取得
       const appsWithCapacity: ApplicationWithCapacity[] = [];
 
-      for (const app of appsData || []) {
+      for (const app of (appsData as any[]) || []) {
         // カレンダー管理情報を取得
         const { data: calendarData } = await supabase
           .from("calendar_management")
