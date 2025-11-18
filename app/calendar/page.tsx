@@ -236,7 +236,7 @@ export default function CalendarPage() {
             <div className="flex justify-between items-center mb-4 sm:mb-6 gap-2">
               <button
                 onClick={() => changeMonth(-1)}
-                className="px-3 py-2 sm:px-4 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 text-xs sm:text-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+                className="px-3 py-2 sm:px-4 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 text-base sm:text-sm text-gray-900 font-medium min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 <span className="hidden sm:inline">← 前月</span>
                 <span className="sm:hidden">←</span>
@@ -244,7 +244,7 @@ export default function CalendarPage() {
               <h2 className="text-lg sm:text-xl md:text-2xl font-bold whitespace-nowrap">{currentYear}年{currentMonth}月</h2>
               <button
                 onClick={() => changeMonth(1)}
-                className="px-3 py-2 sm:px-4 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 text-xs sm:text-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+                className="px-3 py-2 sm:px-4 sm:py-2 bg-gray-200 rounded hover:bg-gray-300 text-base sm:text-sm text-gray-900 font-medium min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 <span className="hidden sm:inline">次月 →</span>
                 <span className="sm:hidden">→</span>
@@ -267,10 +267,10 @@ export default function CalendarPage() {
                       setCurrentYear(tabYear);
                       setCurrentMonth(tabMonth);
                     }}
-                    className={`px-3 py-2 sm:px-4 sm:py-2 rounded whitespace-nowrap text-xs sm:text-sm min-h-[44px] flex items-center justify-center ${
+                    className={`px-3 py-2 sm:px-4 sm:py-2 rounded whitespace-nowrap text-sm sm:text-sm min-h-[44px] flex items-center justify-center font-medium ${
                       isActive
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 hover:bg-gray-300'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-900'
                     }`}
                   >
                     <span className="hidden sm:inline">{tabYear}年{tabMonth}月</span>
@@ -282,27 +282,35 @@ export default function CalendarPage() {
 
             {/* 凡例 */}
             <div className="mb-4 p-3 sm:p-4 bg-gray-50 rounded text-sm">
-              <p className="font-semibold mb-2 sm:mb-3 text-xs sm:text-sm">凡例</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <div className="w-12 sm:w-16 h-6 bg-red-300 rounded flex items-center justify-center text-xs shrink-0">確定以外</div>
-                  <div className="w-12 sm:w-16 h-6 bg-red-600 text-white rounded flex items-center justify-center text-xs shrink-0">確定</div>
-                  <span className="text-xs">レベル1</span>
+              <p className="font-semibold mb-2 sm:mb-3 text-sm">凡例</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-14 sm:w-16 h-7 bg-red-300 rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0 px-1">確定以外</div>
+                    <div className="w-10 sm:w-12 h-7 bg-red-600 text-white rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0">確定</div>
+                  </div>
+                  <span className="text-sm font-medium">レベル1</span>
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <div className="w-12 sm:w-16 h-6 bg-blue-300 rounded flex items-center justify-center text-xs shrink-0">確定以外</div>
-                  <div className="w-12 sm:w-16 h-6 bg-blue-600 text-white rounded flex items-center justify-center text-xs shrink-0">確定</div>
-                  <span className="text-xs">レベル2</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-14 sm:w-16 h-7 bg-blue-300 rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0 px-1">確定以外</div>
+                    <div className="w-10 sm:w-12 h-7 bg-blue-600 text-white rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0">確定</div>
+                  </div>
+                  <span className="text-sm font-medium">レベル2</span>
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <div className="w-12 sm:w-16 h-6 bg-green-300 rounded flex items-center justify-center text-xs shrink-0">確定以外</div>
-                  <div className="w-12 sm:w-16 h-6 bg-green-600 text-white rounded flex items-center justify-center text-xs shrink-0">確定</div>
-                  <span className="text-xs">レベル3(期間内)</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-14 sm:w-16 h-7 bg-green-300 rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0 px-1">確定以外</div>
+                    <div className="w-10 sm:w-12 h-7 bg-green-600 text-white rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0">確定</div>
+                  </div>
+                  <span className="text-sm font-medium">レベル3(期間内)</span>
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <div className="w-12 sm:w-16 h-6 bg-gray-300 rounded flex items-center justify-center text-xs shrink-0">確定以外</div>
-                  <div className="w-12 sm:w-16 h-6 bg-gray-600 text-white rounded flex items-center justify-center text-xs shrink-0">確定</div>
-                  <span className="text-xs">レベル3(期間外)</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-14 sm:w-16 h-7 bg-gray-300 rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0 px-1">確定以外</div>
+                    <div className="w-10 sm:w-12 h-7 bg-gray-600 text-white rounded flex items-center justify-center text-[10px] sm:text-xs shrink-0">確定</div>
+                  </div>
+                  <span className="text-sm font-medium">レベル3(期間外)</span>
                 </div>
               </div>
             </div>
