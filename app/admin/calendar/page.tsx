@@ -17,6 +17,8 @@ import {
 } from "@/lib/application";
 import type { Database } from "@/lib/database.types";
 
+export const dynamic = 'force-dynamic';
+
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
   user: { name: string };
 };
