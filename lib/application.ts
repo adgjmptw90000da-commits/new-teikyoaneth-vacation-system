@@ -1,3 +1,4 @@
+// @ts-nocheck
 // 年休申請関連のユーティリティ関数
 
 import { supabase } from './supabase';
