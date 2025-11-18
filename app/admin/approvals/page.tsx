@@ -75,7 +75,7 @@ export default function ApprovalsPage() {
 
         appsWithCapacity.push({
           ...(app as Application),
-          max_people: calendarData?.max_people || 0,
+          max_people: (calendarData as any)?.max_people || 0,
           confirmed_count: confirmedCount || 0,
         });
       }
