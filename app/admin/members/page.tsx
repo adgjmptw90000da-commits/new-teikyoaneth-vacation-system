@@ -310,7 +310,7 @@ export default function MembersPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(user.created_at).toLocaleString("ja-JP")}
+                        {new Date(user.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-2">

@@ -251,7 +251,7 @@ export default function ApprovalsPage() {
                     {applications.map((app) => (
                       <tr key={app.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(app.applied_at).toLocaleString("ja-JP")}
+                          {new Date(app.applied_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                           {app.user.name}

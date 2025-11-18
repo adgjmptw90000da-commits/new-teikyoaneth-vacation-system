@@ -321,7 +321,8 @@ export default function ApplicationsPage() {
                                   year: 'numeric',
                                   month: 'long',
                                   day: 'numeric',
-                                  weekday: 'short'
+                                  weekday: 'short',
+                                  timeZone: 'Asia/Tokyo'
                                 })}
                                 <span className="ml-2 text-sm font-normal text-gray-600">
                                   ({getPeriodLabel(app.period)})
@@ -360,7 +361,7 @@ export default function ApplicationsPage() {
                               <span>優先順位: {app.priority}</span>
                             )}
                             <span className="text-xs text-gray-400">
-                              申請日時: {new Date(app.applied_at).toLocaleString("ja-JP")}
+                              申請日時: {new Date(app.applied_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
                             </span>
                           </div>
 
