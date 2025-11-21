@@ -176,7 +176,7 @@ export default function ProfileSettingsPage() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <Icons.Home />
-                ホームに戻る
+                ホーム
               </button>
             </div>
           </div>
@@ -220,7 +220,7 @@ export default function ProfileSettingsPage() {
                     id="name"
                     type="text"
                     required
-                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
@@ -259,7 +259,7 @@ export default function ProfileSettingsPage() {
                     id="currentPassword"
                     type="password"
                     required
-                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                   />
@@ -275,7 +275,7 @@ export default function ProfileSettingsPage() {
                     id="newPassword"
                     type="password"
                     required
-                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     placeholder="半角英数6文字以上"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -292,7 +292,7 @@ export default function ProfileSettingsPage() {
                     id="newPasswordConfirmation"
                     type="password"
                     required
-                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     value={newPasswordConfirmation}
                     onChange={(e) => setNewPasswordConfirmation(e.target.value)}
                   />

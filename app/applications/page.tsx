@@ -301,7 +301,7 @@ export default function ApplicationsPage() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <Icons.Home />
-                ホームに戻る
+                ホーム
               </button>
             </div>
           </div>
@@ -344,7 +344,7 @@ export default function ApplicationsPage() {
                         key={app.id}
                         className={`relative overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md ${getBackgroundColor(app.status)}`}
                       >
-                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${getBorderColor(app.level).replace('border-l-', 'bg-')}`}></div>
+                        <div className={`absolute left-0 top-0 bottom-0 w-2 ${getBorderColor(app.level).replace('border-l-', 'bg-')}`}></div>
 
                         <div className="p-5 pl-6">
                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">

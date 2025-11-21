@@ -320,7 +320,7 @@ export default function NewApplicationPage() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <Icons.Home />
-                ホームに戻る
+                ホーム
               </button>
             </div>
           </div>
@@ -381,7 +381,7 @@ export default function NewApplicationPage() {
                       value={vacationDate}
                       onChange={(e) => setVacationDate(e.target.value)}
                       required
-                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     />
                   </div>
 
@@ -394,7 +394,7 @@ export default function NewApplicationPage() {
                       onChange={(e) =>
                         setPeriod(e.target.value as "full_day" | "am" | "pm")
                       }
-                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     >
                       <option value="full_day">全日</option>
                       <option value="am">AM</option>
@@ -409,7 +409,7 @@ export default function NewApplicationPage() {
                     <select
                       value={level}
                       onChange={(e) => setLevel(Number(e.target.value) as 1 | 2 | 3)}
-                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4 text-gray-900"
                     >
                       <option value={1}>レベル1（必ず休みたい）</option>
                       <option value={2}>レベル2（可能な限り休みたい）</option>
@@ -425,7 +425,7 @@ export default function NewApplicationPage() {
                       value={remarks}
                       onChange={(e) => setRemarks(e.target.value)}
                       rows={3}
-                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-4 py-3"
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-4 py-3 text-gray-900"
                       placeholder="個人のメモとして使用できます"
                     />
                   </div>

@@ -571,7 +571,7 @@ function AdminCalendarPageContent() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 <Icons.Home />
-                ホームに戻る
+                ホーム
               </button>
             </div>
           </div>

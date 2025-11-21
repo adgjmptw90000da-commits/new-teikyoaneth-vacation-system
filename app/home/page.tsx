@@ -188,8 +188,8 @@ export default function HomePage() {
         {/* Welcome Section */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-8 shadow-lg text-white">
           <div className="relative z-10">
-            <h2 className="text-3xl font-bold mb-2">
-              ようこそ、{user.name}さん
+            <h2 className="text-xl sm:text-2xl font-bold mb-2">
+              {user.name}さん
             </h2>
             <p className="text-blue-100 max-w-xl">
               職員ID: {user.staff_id}
