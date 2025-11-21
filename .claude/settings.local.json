@@ -10,7 +10,12 @@
       "Bash(supabase db diff:*)",
       "Bash(npm run dev:*)",
       "Bash(supabase db reset:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git remote remove:*)"
     ],
     "deny": [],
     "ask": []

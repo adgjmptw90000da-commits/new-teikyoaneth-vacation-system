@@ -20,6 +20,26 @@ import {
   calculateAnnualLeavePoints,
   checkAnnualLeavePointsAvailable,
 } from "@/lib/application";
+import { PointsStatus } from "@/components/PointsStatus";
+
+// Icons
+const Icons = {
+  Home: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+  ),
+  FileText: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="16" x2="8" y1="13" y2="13" /><line x1="16" x2="8" y1="17" y2="17" /><line x1="10" x2="8" y1="9" y2="9" /></svg>
+  ),
+  Calendar: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></svg>
+  ),
+  Info: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="16" y2="12" /><line x1="12" x2="12.01" y1="8" y2="8" /></svg>
+  ),
+  Shield: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+  ),
+};
 
 export default function NewApplicationPage() {
   const router = useRouter();
@@ -46,6 +66,8 @@ export default function NewApplicationPage() {
     level1ConfirmedCount: number;
     level2ApplicationCount: number;
     level2ConfirmedCount: number;
+    level3ApplicationCount: number;
+    level3ConfirmedCount: number;
     totalPoints: number;
     maxPoints: number;
     remainingPoints: number;
@@ -97,6 +119,8 @@ export default function NewApplicationPage() {
         level1ConfirmedCount: pointsData.level1ConfirmedCount,
         level2ApplicationCount: pointsData.level2ApplicationCount,
         level2ConfirmedCount: pointsData.level2ConfirmedCount,
+        level3ApplicationCount: pointsData.level3ApplicationCount,
+        level3ConfirmedCount: pointsData.level3ConfirmedCount,
         totalPoints: pointsData.totalPoints,
         maxPoints: availabilityData.maxPoints,
         remainingPoints: availabilityData.remainingPoints,
@@ -278,20 +302,24 @@ export default function NewApplicationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-1.5 rounded-lg text-white">
+                <Icons.FileText />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 年休申請
               </h1>
             </div>
             <div className="flex items-center">
               <button
                 onClick={() => router.push("/home")}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
+                <Icons.Home />
                 ホームに戻る
               </button>
             </div>
@@ -299,161 +327,128 @@ export default function NewApplicationPage() {
         </div>
       </nav>
 
-      <main className="max-w-2xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="bg-white shadow rounded-lg p-6">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* 抽選期間情報バナー */}
-              {lotteryPeriodInfo && (
-                <div
-                  className={`${
-                    lotteryPeriodInfo.isWithinPeriod
-                      ? "bg-blue-50 border-blue-200 text-blue-800"
-                      : "bg-gray-50 border-gray-200 text-gray-700"
-                  } border px-4 py-3 rounded`}
-                >
-                  {lotteryPeriodInfo.isWithinPeriod ? (
-                    <p className="text-sm">
-                      現在は<span className="font-semibold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間です（{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}）
-                    </p>
-                  ) : (
-                    <p className="text-sm">
-                      現在は抽選参加可能期間外です（<span className="font-semibold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間は{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}です）
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* 年休得点情報 */}
-              <div className="bg-white border border-gray-300 rounded-lg p-4" style={{ minHeight: '180px' }}>
-                {pointsInfo ? (
-                  <>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">年休得点状況</h3>
-
-                    {/* 申請数・確定数テーブル（行列入れ替え版） */}
-                    <div className="mb-3 overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700 border"></th>
-                            <th className="px-3 py-2 text-center font-medium text-gray-700 border bg-red-50">レベル1</th>
-                            <th className="px-3 py-2 text-center font-medium text-gray-700 border bg-blue-50">レベル2</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="bg-white">
-                            <td className="px-3 py-2 border text-gray-900 font-medium">申請数</td>
-                            <td className="px-3 py-2 border text-center text-gray-900 bg-red-50">{pointsInfo.level1ApplicationCount.toFixed(1)}</td>
-                            <td className="px-3 py-2 border text-center text-gray-900 bg-blue-50">{pointsInfo.level2ApplicationCount.toFixed(1)}</td>
-                          </tr>
-                          <tr className="bg-white">
-                            <td className="px-3 py-2 border text-gray-900 font-medium">確定数</td>
-                            <td className="px-3 py-2 border text-center text-gray-900 bg-red-50">{pointsInfo.level1ConfirmedCount.toFixed(1)}</td>
-                            <td className="px-3 py-2 border text-center text-gray-900 bg-blue-50">{pointsInfo.level2ConfirmedCount.toFixed(1)}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* 得点情報 */}
-                    <div className="text-sm">
-                      <p className="text-gray-700">
-                        <span className="font-medium">利用可能上限:</span> {pointsInfo.maxPoints.toFixed(1)}点
-                        <span className="font-medium ml-3">残り:</span>
-                        <span className={pointsInfo.remainingPoints < 0 ? "text-red-600 font-semibold" : "text-blue-600 font-semibold"}>
-                          {" "}{pointsInfo.remainingPoints.toFixed(1)}点
-                        </span>
-                      </p>
-                    </div>
-                  </>
+      <main className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          {/* 抽選期間情報バナー */}
+          {lotteryPeriodInfo && (
+            <div
+              className={`${lotteryPeriodInfo.isWithinPeriod
+                ? "bg-blue-50 border-blue-200 text-blue-800"
+                : "bg-gray-50 border-gray-200 text-gray-700"
+                } border px-4 py-3 rounded-xl flex items-start gap-3 shadow-sm`}
+            >
+              <div className="mt-0.5 shrink-0">
+                <Icons.Info />
+              </div>
+              <div>
+                {lotteryPeriodInfo.isWithinPeriod ? (
+                  <p className="text-sm font-medium">
+                    現在は<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間です（{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}）
+                  </p>
                 ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-gray-400 text-sm">読み込み中...</p>
-                  </div>
+                  <p className="text-sm font-medium">
+                    現在は抽選参加可能期間外です（<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間は{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}です）
+                  </p>
                 )}
               </div>
+            </div>
+          )}
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                  {error}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">申請フォーム</h2>
+              <p className="text-sm text-gray-500 mt-1">必要な情報を入力して申請してください</p>
+            </div>
+
+            <div className="p-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* 年休得点情報 */}
+                <PointsStatus pointsInfo={pointsInfo} className="mb-6" />
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">
+                    {error}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-1 md:col-span-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">
+                      年休取得希望日 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={vacationDate}
+                      onChange={(e) => setVacationDate(e.target.value)}
+                      required
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">
+                      期間 <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={period}
+                      onChange={(e) =>
+                        setPeriod(e.target.value as "full_day" | "am" | "pm")
+                      }
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    >
+                      <option value="full_day">全日</option>
+                      <option value="am">AM</option>
+                      <option value="pm">PM</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">
+                      レベル <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={level}
+                      onChange={(e) => setLevel(Number(e.target.value) as 1 | 2 | 3)}
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm py-2.5 px-4"
+                    >
+                      <option value={1}>レベル1（必ず休みたい）</option>
+                      <option value={2}>レベル2（可能な限り休みたい）</option>
+                      <option value={3}>レベル3（マンパワーに余裕があれば休みたい）</option>
+                    </select>
+                  </div>
+
+                  <div className="col-span-1 md:col-span-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">
+                      備考
+                    </label>
+                    <textarea
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      rows={3}
+                      className="block w-full bg-gray-50 border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm px-4 py-3"
+                      placeholder="個人のメモとして使用できます"
+                    />
+                  </div>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  年休取得希望日 *
-                </label>
-                <input
-                  type="date"
-                  value={vacationDate}
-                  onChange={(e) => setVacationDate(e.target.value)}
-                  required
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  期間 *
-                </label>
-                <select
-                  value={period}
-                  onChange={(e) =>
-                    setPeriod(e.target.value as "full_day" | "am" | "pm")
-                  }
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="full_day">全日</option>
-                  <option value="am">AM</option>
-                  <option value="pm">PM</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  レベル *
-                </label>
-                <select
-                  value={level}
-                  onChange={(e) => setLevel(Number(e.target.value) as 1 | 2 | 3)}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value={1}>レベル1（必ず休みたい）</option>
-                  <option value={2}>レベル2（可能な限り休みたい）</option>
-                  <option value={3}>レベル3（マンパワーに余裕があれば休みたい）</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  備考
-                </label>
-                <textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  rows={3}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="個人のメモとして使用できます"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => router.push("/applications")}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                >
-                  {loading ? "申請中..." : "申請する"}
-                </button>
-              </div>
-            </form>
+                <div className="pt-4 flex justify-end space-x-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/applications")}
+                    className="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-2 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all"
+                  >
+                    {loading ? "申請中..." : "申請する"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </main>

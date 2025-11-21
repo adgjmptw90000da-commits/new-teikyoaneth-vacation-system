@@ -841,7 +841,7 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
  * 指定年度の年休得点を計算
  * @param staffId 職員ID
  * @param fiscalYear 年度（例: 2025 = 2025/4/1〜2026/3/31）
- * @returns レベル1・2の申請数、確定数、消費得点
+ * @returns レベル1・2・3の申請数、確定数、消費得点
  */
 export const calculateAnnualLeavePoints = async (
   staffId: string,
@@ -851,6 +851,8 @@ export const calculateAnnualLeavePoints = async (
   level1ConfirmedCount: number;
   level2ApplicationCount: number;
   level2ConfirmedCount: number;
+  level3ApplicationCount: number;
+  level3ConfirmedCount: number;
   totalPoints: number;
 } | null> => {
   try {
@@ -870,14 +872,14 @@ export const calculateAnnualLeavePoints = async (
     const fiscalYearStart = `${fiscalYear}-04-01`;
     const fiscalYearEnd = `${fiscalYear + 1}-03-31`;
 
-    // 対象期間の申請を取得（cancelled, withdrawn, pending_approval を除外）
+    // 対象期間の申請を取得（cancelled, withdrawn を除外）
     const { data: applications, error: appError } = await supabase
       .from('application')
       .select('level, period, status')
       .eq('staff_id', staffId)
       .gte('vacation_date', fiscalYearStart)
       .lte('vacation_date', fiscalYearEnd)
-      .in('status', ['before_lottery', 'after_lottery', 'confirmed']);
+      .in('status', ['before_lottery', 'after_lottery', 'confirmed', 'pending_approval']);
 
     if (appError) {
       console.error('Failed to fetch applications:', appError);
@@ -889,6 +891,8 @@ export const calculateAnnualLeavePoints = async (
     let level1ConfirmedCount = 0;
     let level2ApplicationCount = 0;
     let level2ConfirmedCount = 0;
+    let level3ApplicationCount = 0;
+    let level3ConfirmedCount = 0;
 
     (applications || []).forEach(app => {
       // 全日 = 1カウント、AM/PM = 0.5カウント
@@ -906,10 +910,16 @@ export const calculateAnnualLeavePoints = async (
         } else {
           level2ApplicationCount += count;
         }
+      } else if (app.level === 3) {
+        if (app.status === 'confirmed') {
+          level3ConfirmedCount += count;
+        } else {
+          level3ApplicationCount += count;
+        }
       }
     });
 
-    // 消費得点を計算
+    // 消費得点を計算（レベル3は得点に含まれない）
     const totalPoints =
       (level1ApplicationCount + level1ConfirmedCount) * setting.level1_points +
       (level2ApplicationCount + level2ConfirmedCount) * setting.level2_points;
@@ -919,6 +929,8 @@ export const calculateAnnualLeavePoints = async (
       level1ConfirmedCount,
       level2ApplicationCount,
       level2ConfirmedCount,
+      level3ApplicationCount,
+      level3ConfirmedCount,
       totalPoints,
     };
   } catch (error) {

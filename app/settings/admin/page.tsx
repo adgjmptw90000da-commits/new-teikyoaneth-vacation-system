@@ -7,6 +7,28 @@ import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { validateOrganizationCode } from "@/lib/validation";
 
+// Icons
+const Icons = {
+  Home: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+  ),
+  Settings: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+  ),
+  Building: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2" /><line x1="9" y1="22" x2="9" y2="22.01" /><line x1="15" y1="22" x2="15" y2="22.01" /><line x1="12" y1="22" x2="12" y2="22.01" /><line x1="12" y1="2" x2="12" y2="4" /><line x1="4" y1="10" x2="20" y2="10" /><line x1="4" y1="14" x2="20" y2="14" /><line x1="4" y1="18" x2="20" y2="18" /></svg>
+  ),
+  Calendar: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+  ),
+  Eye: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+  ),
+  Award: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7" /><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" /></svg>
+  ),
+};
+
 export default function AdminSettingsPage() {
   const router = useRouter();
   const [organizationCode, setOrganizationCode] = useState("");
@@ -136,81 +158,99 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
+            <div className="flex items-center gap-2">
+              <div className="bg-gray-700 p-1.5 rounded-lg text-white">
+                <Icons.Settings />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 管理者設定
               </h1>
             </div>
             <div className="flex items-center">
               <button
                 onClick={() => router.push("/home")}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
-                ホームへ
+                <Icons.Home />
+                ホームに戻る
               </button>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-3xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+      <main className="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="space-y-6">
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-red-600 text-sm">{error}</p>
+            <div className="p-4 bg-red-50 border border-red-200 rounded-xl animate-in fade-in slide-in-from-top-2">
+              <p className="text-red-600 text-sm font-bold">{error}</p>
             </div>
           )}
 
           {success && (
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-green-600 text-sm">{success}</p>
+            <div className="p-4 bg-green-50 border border-green-200 rounded-xl animate-in fade-in slide-in-from-top-2">
+              <p className="text-green-600 text-sm font-bold">{success}</p>
             </div>
           )}
 
-          <div className="bg-white shadow-md rounded-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              組織コードの変更
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              新規登録時に使用する組織コードを変更できます。
-            </p>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label
-                  htmlFor="organizationCode"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  組織コード
-                </label>
-                <input
-                  id="organizationCode"
-                  type="text"
-                  required
-                  className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  value={organizationCode}
-                  onChange={(e) => setOrganizationCode(e.target.value)}
-                />
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <form onSubmit={handleSubmit} className="divide-y divide-gray-100">
+              {/* 組織コード */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-blue-600">
+                    <Icons.Building />
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-900">
+                    組織コードの変更
+                  </h2>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
+                  新規登録時に使用する組織コードを変更できます。
+                </p>
+                <div>
+                  <label
+                    htmlFor="organizationCode"
+                    className="block text-sm font-bold text-gray-700 mb-2"
+                  >
+                    組織コード
+                  </label>
+                  <input
+                    id="organizationCode"
+                    type="text"
+                    required
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    value={organizationCode}
+                    onChange={(e) => setOrganizationCode(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="border-t pt-6">
-                <h3 className="text-md font-semibold text-gray-900 mb-4">
-                  抽選参加可能期間の設定
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
+              {/* 抽選参加可能期間 */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-blue-600">
+                    <Icons.Calendar />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    抽選参加可能期間の設定
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
                   レベル1・2の年休申請ができる期間を設定します。
                   <br />
                   例: 3ヶ月前の1日〜15日 → 6月の年休は3月1日〜15日に申請可能
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <label
                       htmlFor="lotteryPeriodMonths"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       何ヶ月前
                     </label>
@@ -219,17 +259,17 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="1"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodMonths}
                       onChange={(e) => setLotteryPeriodMonths(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">例: 3</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">例: 3</p>
                   </div>
 
                   <div>
                     <label
                       htmlFor="lotteryPeriodStartDay"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       開始日
                     </label>
@@ -239,17 +279,17 @@ export default function AdminSettingsPage() {
                       min="1"
                       max="31"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodStartDay}
                       onChange={(e) => setLotteryPeriodStartDay(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">例: 1日</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">例: 1日</p>
                   </div>
 
                   <div>
                     <label
                       htmlFor="lotteryPeriodEndDay"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       終了日
                     </label>
@@ -259,59 +299,69 @@ export default function AdminSettingsPage() {
                       min="1"
                       max="31"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodEndDay}
                       onChange={(e) => setLotteryPeriodEndDay(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">例: 15日</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">例: 15日</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t pt-6">
-                <h3 className="text-md font-semibold text-gray-900 mb-4">
-                  カレンダー表示設定
-                </h3>
-                <div className="flex items-center justify-between">
+              {/* カレンダー表示設定 */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-blue-600">
+                    <Icons.Eye />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    カレンダー表示設定
+                  </h3>
+                </div>
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-bold text-gray-700">
                       抽選参加期間内の申請を表示
                     </label>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 mt-1 font-medium">
                       オフにすると、年休カレンダー・管理カレンダーで抽選参加期間内の申請が非表示になり、申請一覧では抽選参加期間内の申請の優先順位が非表示になります
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowLotteryPeriodApplications(!showLotteryPeriodApplications)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                      showLotteryPeriodApplications ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${showLotteryPeriodApplications ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
                   >
                     <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        showLotteryPeriodApplications ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${showLotteryPeriodApplications ? 'translate-x-5' : 'translate-x-0'
+                        }`}
                     />
                   </button>
                 </div>
               </div>
 
-              <div className="border-t pt-6">
-                <h3 className="text-md font-semibold text-gray-900 mb-4">
-                  年休得点制限設定
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
+              {/* 年休得点制限設定 */}
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="text-blue-600">
+                    <Icons.Award />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    年休得点制限設定
+                  </h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-6">
                   レベル1・2の申請回数を制限するための得点システムを設定します。
                   <br />
                   年度は4月開始です（例: 2025年度 = 2025年4月1日〜2026年3月31日）
                 </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label
                       htmlFor="maxAnnualLeavePoints"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       最大年休得点
                     </label>
@@ -320,17 +370,17 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="1"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={maxAnnualLeavePoints}
                       onChange={(e) => setMaxAnnualLeavePoints(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">デフォルト: 20点</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 20点</p>
                   </div>
 
                   <div>
                     <label
                       htmlFor="currentFiscalYear"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       現在の年度
                     </label>
@@ -339,17 +389,17 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="2000"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={currentFiscalYear}
                       onChange={(e) => setCurrentFiscalYear(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">例: 2025（2025年4月〜2026年3月）</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">例: 2025（2025年4月〜2026年3月）</p>
                   </div>
 
                   <div>
                     <label
                       htmlFor="level1Points"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       レベル1消費得点
                     </label>
@@ -359,17 +409,17 @@ export default function AdminSettingsPage() {
                       min="0"
                       step="0.5"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={level1Points}
                       onChange={(e) => setLevel1Points(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">デフォルト: 2点</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 2点</p>
                   </div>
 
                   <div>
                     <label
                       htmlFor="level2Points"
-                      className="block text-sm font-medium text-gray-700"
+                      className="block text-sm font-bold text-gray-700 mb-2"
                     >
                       レベル2消費得点
                     </label>
@@ -379,22 +429,24 @@ export default function AdminSettingsPage() {
                       min="0"
                       step="0.5"
                       required
-                      className="mt-1 appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={level2Points}
                       onChange={(e) => setLevel2Points(Number(e.target.value))}
                     />
-                    <p className="mt-1 text-xs text-gray-500">デフォルト: 1点</p>
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 1点</p>
                   </div>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
-              >
-                {loading ? "更新中..." : "設定を更新"}
-              </button>
+              <div className="p-6 bg-gray-50">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 shadow-md hover:shadow-lg transition-all"
+                >
+                  {loading ? "更新中..." : "設定を更新"}
+                </button>
+              </div>
             </form>
           </div>
         </div>

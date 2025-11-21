@@ -10,6 +10,25 @@ import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"];
 
+// Icons
+const Icons = {
+  Home: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+  ),
+  List: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6" /><line x1="8" x2="21" y1="12" y2="12" /><line x1="8" x2="21" y1="18" y2="18" /><line x1="3" x2="3.01" y1="6" y2="6" /><line x1="3" x2="3.01" y1="12" y2="12" /><line x1="3" x2="3.01" y1="18" y2="18" /></svg>
+  ),
+  Plus: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+  ),
+  Calendar: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></svg>
+  ),
+  Clock: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+  ),
+};
+
 export default function ApplicationsPage() {
   const router = useRouter();
   const [applications, setApplications] = useState<Application[]>([]);
@@ -227,7 +246,7 @@ export default function ApplicationsPage() {
       case "cancelled":
         return "bg-gray-100 opacity-60";
       default:
-        return "bg-gray-50";
+        return "bg-white";
     }
   };
 
@@ -247,33 +266,41 @@ export default function ApplicationsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>読み込み中...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-pulse flex flex-col items-center">
+          <div className="h-8 w-8 bg-blue-200 rounded-full mb-4"></div>
+          <p className="text-gray-400 font-medium">読み込み中...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
+            <div className="flex items-center gap-2">
+              <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
+                <Icons.List />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 年休申請一覧
               </h1>
             </div>
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => router.push("/applications/new")}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all"
               >
+                <Icons.Plus />
                 新規申請
               </button>
               <button
                 onClick={() => router.push("/home")}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
               >
+                <Icons.Home />
                 ホームに戻る
               </button>
             </div>
@@ -281,99 +308,110 @@ export default function ApplicationsPage() {
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0 space-y-6">
+      <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="space-y-8">
           {applications.length === 0 ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">📅</div>
-                <p className="text-gray-500 text-lg mb-4">申請がありません</p>
-                <button
-                  onClick={() => router.push("/applications/new")}
-                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all"
-                >
-                  新規申請する
-                </button>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
+              <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-400">
+                <Icons.Calendar />
               </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">申請がありません</h3>
+              <p className="text-gray-500 mb-6">新しい年休申請を作成してください</p>
+              <button
+                onClick={() => router.push("/applications/new")}
+                className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <Icons.Plus />
+                <span className="ml-2">新規申請する</span>
+              </button>
             </div>
           ) : (
             <>
               {Array.from(groupByMonth(applications)).map(([yearMonth, monthApps]) => (
                 <div key={yearMonth} className="space-y-4">
                   {/* 月ヘッダー */}
-                  <h2 className="text-2xl font-bold text-gray-900 px-2">
-                    {yearMonth}
-                  </h2>
+                  <div className="flex items-center gap-2 px-2">
+                    <div className="h-6 w-1 bg-blue-600 rounded-full"></div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      {yearMonth}
+                    </h2>
+                  </div>
 
-                  {/* 申請カード */}
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                    <div className="space-y-3">
-                      {monthApps.map((app) => (
-                        <div
-                          key={app.id}
-                          className={`${getBackgroundColor(app.status)} ${getBorderColor(app.level)} border-l-4 rounded-lg p-4 transition-all hover:shadow-md`}
-                        >
-                          {/* ヘッダー: 日付とバッジ */}
-                          <div className="flex justify-between items-start mb-2">
+                  {/* 申請カードリスト */}
+                  <div className="grid gap-4">
+                    {monthApps.map((app) => (
+                      <div
+                        key={app.id}
+                        className={`relative overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md ${getBackgroundColor(app.status)}`}
+                      >
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${getBorderColor(app.level).replace('border-l-', 'bg-')}`}></div>
+
+                        <div className="p-5 pl-6">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                             <div className="flex-1">
-                              <p className="text-lg font-semibold text-gray-900 mb-2">
-                                {new Date(app.vacation_date).toLocaleDateString('ja-JP', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                  weekday: 'short',
-                                  timeZone: 'Asia/Tokyo'
-                                })}
-                                <span className="ml-2 text-sm font-normal text-gray-600">
-                                  ({getPeriodLabel(app.period)})
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="text-lg font-bold text-gray-900">
+                                  {new Date(app.vacation_date).toLocaleDateString('ja-JP', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric',
+                                    weekday: 'short',
+                                    timeZone: 'Asia/Tokyo'
+                                  })}
+                                </h3>
+                                <span className="px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-medium border border-gray-200">
+                                  {getPeriodLabel(app.period)}
                                 </span>
-                              </p>
+                              </div>
 
                               {/* バッジ */}
-                              <div className="flex flex-wrap gap-1.5">
-                                <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getLevelBadgeColor(app.level)}`}>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLevelBadgeColor(app.level)}`}>
                                   レベル{app.level}
                                 </span>
 
-                                <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(app.status)}`}>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
                                   {getStatusLabel(app.status)}
                                 </span>
                               </div>
+
+                              {/* 詳細情報 */}
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                                {app.status !== "cancelled" && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
+                                  <span className="font-medium text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
+                                    優先順位: {app.priority}
+                                  </span>
+                                )}
+                                <span className="flex items-center gap-1">
+                                  <Icons.Clock />
+                                  申請日時: {new Date(app.applied_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                                </span>
+                              </div>
+
+                              {/* 備考 */}
+                              {app.remarks && (
+                                <div className="mt-3 text-sm text-gray-600 bg-white/50 p-2 rounded border border-gray-100">
+                                  <span className="font-medium text-gray-900">備考:</span> {app.remarks}
+                                </div>
+                              )}
                             </div>
 
                             {/* キャンセルボタン */}
-                            <div className="ml-4">
+                            <div className="shrink-0">
                               {canCancel(app) && (
                                 <button
                                   onClick={() => handleCancel(app)}
                                   disabled={cancelingId === app.id}
-                                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50 transition-colors"
+                                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors disabled:opacity-50"
                                 >
                                   {cancelingId === app.id ? "キャンセル中..." : "キャンセル"}
                                 </button>
                               )}
                             </div>
                           </div>
-
-                          {/* 詳細情報 */}
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
-                            {app.status !== "cancelled" && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
-                              <span>優先順位: {app.priority}</span>
-                            )}
-                            <span className="text-xs text-gray-400">
-                              申請日時: {new Date(app.applied_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
-                            </span>
-                          </div>
-
-                          {/* 備考 */}
-                          {app.remarks && (
-                            <div className="mt-2 text-sm text-gray-700">
-                              <span className="font-medium">備考:</span> {app.remarks}
-                            </div>
-                          )}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
