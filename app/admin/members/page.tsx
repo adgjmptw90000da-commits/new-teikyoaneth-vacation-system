@@ -5,9 +5,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { checkAnnualLeavePointsAvailable } from "@/lib/application";
 import type { Database } from "@/lib/database.types";
 
 type User = Database["public"]["Tables"]["user"]["Row"];
+
+type UserWithPoints = User & {
+  remainingPoints: number | null;
+};
 
 // Icons
 const Icons = {
@@ -26,15 +31,26 @@ const Icons = {
   User: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
   ),
+  ArrowUp: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+  ),
+  ArrowDown: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+  ),
+  ArrowUpDown: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
+  ),
 };
 
 export default function MembersPage() {
   const router = useRouter();
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithPoints[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ staff_id: string } | null>(null);
   const [editingRetentionRates, setEditingRetentionRates] = useState<{ [key: string]: number }>({});
+  const [sortColumn, setSortColumn] = useState<'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     const user = getUser();
@@ -64,9 +80,35 @@ export default function MembersPage() {
       if (error) {
         console.error("Error fetching users:", error);
         alert("ユーザー一覧の取得に失敗しました");
-      } else {
-        setUsers(data || []);
+        setLoading(false);
+        return;
       }
+
+      // 現在の年度を取得
+      const { data: settingData } = await supabase
+        .from("setting")
+        .select("current_fiscal_year")
+        .eq("id", 1)
+        .single();
+
+      if (!settingData) {
+        setUsers((data || []).map(user => ({ ...user, remainingPoints: null })));
+        setLoading(false);
+        return;
+      }
+
+      // 各ユーザーの残り得点を取得
+      const usersWithPoints: UserWithPoints[] = await Promise.all(
+        (data || []).map(async (user) => {
+          const pointsData = await checkAnnualLeavePointsAvailable(user.staff_id, 1, "full_day");
+          return {
+            ...user,
+            remainingPoints: pointsData?.remainingPoints ?? null
+          };
+        })
+      );
+
+      setUsers(usersWithPoints);
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -245,9 +287,65 @@ export default function MembersPage() {
     return currentUser ? user.staff_id === currentUser.staff_id : false;
   };
 
-  const cannotModify = (user: User): boolean => {
+  const cannotModify = (user: UserWithPoints): boolean => {
     // 自分自身または最後の管理者は変更不可
     return isCurrentUser(user) || (user.is_admin && getAdminCount() === 1);
+  };
+
+  const handleSort = (column: 'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints') => {
+    if (sortColumn === column) {
+      // 同じ列をクリックした場合は方向を反転
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // 新しい列をクリックした場合は昇順に設定
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortedUsers = (): UserWithPoints[] => {
+    if (!sortColumn) return users;
+
+    return [...users].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortColumn) {
+        case 'staff_id':
+          aValue = a.staff_id;
+          bValue = b.staff_id;
+          break;
+        case 'name':
+          aValue = a.name;
+          bValue = b.name;
+          break;
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime();
+          bValue = new Date(b.created_at).getTime();
+          break;
+        case 'point_retention_rate':
+          aValue = a.point_retention_rate ?? 100;
+          bValue = b.point_retention_rate ?? 100;
+          break;
+        case 'remainingPoints':
+          aValue = a.remainingPoints ?? -1;
+          bValue = b.remainingPoints ?? -1;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const getSortIcon = (column: 'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints') => {
+    if (sortColumn !== column) {
+      return <Icons.ArrowUpDown />;
+    }
+    return sortDirection === 'asc' ? <Icons.ArrowUp /> : <Icons.ArrowDown />;
   };
 
   if (loading) {
@@ -303,19 +401,52 @@ export default function MembersPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    職員ID
+                    <button
+                      onClick={() => handleSort('staff_id')}
+                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                    >
+                      職員ID
+                      {getSortIcon('staff_id')}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    氏名
+                    <button
+                      onClick={() => handleSort('name')}
+                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                    >
+                      氏名
+                      {getSortIcon('name')}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    登録日時
+                    <button
+                      onClick={() => handleSort('created_at')}
+                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                    >
+                      登録日時
+                      {getSortIcon('created_at')}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     管理者権限
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    得点保持率
+                    <button
+                      onClick={() => handleSort('point_retention_rate')}
+                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                    >
+                      得点保持率
+                      {getSortIcon('point_retention_rate')}
+                    </button>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <button
+                      onClick={() => handleSort('remainingPoints')}
+                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                    >
+                      残り得点
+                      {getSortIcon('remainingPoints')}
+                    </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     アクション
@@ -323,7 +454,7 @@ export default function MembersPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
+                {getSortedUsers().map((user) => (
                   <tr key={user.staff_id} className={`hover:bg-gray-50 transition-colors ${isCurrentUser(user) ? "bg-blue-50/50" : ""}`}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {user.staff_id}
@@ -385,6 +516,21 @@ export default function MembersPage() {
                         />
                         <span className="text-gray-600 font-medium">%</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {user.remainingPoints !== null ? (
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${
+                          user.remainingPoints > 10
+                            ? "bg-green-100 text-green-800"
+                            : user.remainingPoints > 5
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
+                        }`}>
+                          {user.remainingPoints.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
