@@ -235,6 +235,20 @@ export default function ApplicationsPage() {
     }
   };
 
+  // レベルごとの背景色（左ボーダー用）
+  const getBorderBackgroundColor = (level: number): string => {
+    switch (level) {
+      case 1:
+        return "bg-red-500";
+      case 2:
+        return "bg-blue-500";
+      case 3:
+        return "bg-green-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
   // ステータスごとの背景色
   const getBackgroundColor = (status: string): string => {
     switch (status) {
@@ -344,7 +358,7 @@ export default function ApplicationsPage() {
                         key={app.id}
                         className={`relative overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md ${getBackgroundColor(app.status)}`}
                       >
-                        <div className={`absolute left-0 top-0 bottom-0 w-2 ${getBorderColor(app.level).replace('border-l-', 'bg-')}`}></div>
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 ${getBorderBackgroundColor(app.level)}`}></div>
 
                         <div className="p-5 pl-6">
                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
