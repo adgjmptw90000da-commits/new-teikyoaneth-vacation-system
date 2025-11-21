@@ -122,18 +122,24 @@ export default function HomePage() {
 
     fetchPointsInfo();
 
-    // 管理者の場合、承認待ち申請数を取得
+    // 管理者の場合、承認待ち申請数を取得（レベル3承認待ち + キャンセル承認待ち）
     const fetchPendingApprovals = async () => {
       if (!currentUser.is_admin) return;
 
-      const { count, error } = await supabase
+      // レベル3承認待ち
+      const { count: level3Count, error: level3Error } = await supabase
         .from("application")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending_approval");
 
-      if (!error && count !== null) {
-        setPendingApprovalsCount(count);
-      }
+      // キャンセル承認待ち
+      const { count: cancellationCount, error: cancellationError } = await supabase
+        .from("cancellation_request")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+
+      const totalCount = (level3Count || 0) + (cancellationCount || 0);
+      setPendingApprovalsCount(totalCount);
     };
 
     fetchPendingApprovals();
