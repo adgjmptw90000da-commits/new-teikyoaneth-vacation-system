@@ -5,7 +5,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { recalculatePriorities, isCurrentlyInLotteryPeriodForDate } from "@/lib/application";
+import { isCurrentlyInLotteryPeriodForDate } from "@/lib/application";
+import { requestCancellation } from "@/lib/cancellation";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"];
@@ -99,52 +100,79 @@ export default function ApplicationsPage() {
   };
 
   const canCancel = (app: Application): boolean => {
-    // キャンセル可能条件:
-    // - 抽選参加期間内のレベル1・2申請（動的判定）
-    // - 確定・取り下げ・承認待ち前のレベル3申請（期間内・期間外問わず）
+    // キャンセル不可条件:
+    // - 確定済み
+    // - キャンセル済み（すべての種類）
+    // - 取り下げ済み
+    // - 承認待ち（レベル3の承認待ち）
+    // - キャンセル承認待ち
+    // - 今日を含む過去日の申請
 
-    if (app.status === "confirmed" || app.status === "withdrawn" || app.status === "pending_approval") {
+    const nonCancellableStatuses = [
+      "confirmed",
+      "cancelled",
+      "cancelled_before_lottery",
+      "cancelled_after_lottery",
+      "withdrawn",
+      "pending_approval",
+      "pending_cancellation"
+    ];
+
+    if (nonCancellableStatuses.includes(app.status)) {
       return false;
     }
 
-    if (app.level === 3) {
-      return true; // レベル3は確定・取り下げ・承認待ち前ならキャンセル可能
-    }
+    // 今日を含む過去日はキャンセル不可
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const vacationDate = new Date(app.vacation_date);
+    vacationDate.setHours(0, 0, 0, 0);
 
-    // レベル1・2は現在が抽選参加期間内の場合のみキャンセル可能（動的判定）
-    return lotteryPeriodStatusMap.get(app.id) ?? false;
+    return vacationDate > today;
   };
 
   const handleCancel = async (app: Application) => {
-    if (!window.confirm("この申請をキャンセルしますか？")) {
+    // 期間判定
+    const isInPeriod = lotteryPeriodStatusMap.get(app.id) ?? false;
+
+    // 確認メッセージの作成
+    let confirmMessage = "";
+    if (isInPeriod) {
+      confirmMessage = "この申請をキャンセルしますか？\n（期間内のため、即座にキャンセルされ得点が回復します）";
+    } else if (app.status === "before_lottery") {
+      confirmMessage = "この申請をキャンセルしますか？\n（期間外のため、管理者の承認が必要です。承認後に得点が回復します）";
+    } else if (app.status === "after_lottery") {
+      confirmMessage = "この申請をキャンセルしますか？\n（抽選後のため、即座にキャンセルされますが得点は回復しません）";
+    } else {
+      confirmMessage = "この申請をキャンセルしますか？";
+    }
+
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setCancelingId(app.id);
 
     try {
-      // ステータスをキャンセルに、優先順位をNULLに
-      const { error: updateError } = await supabase
-        .from("application")
-        .update({
-          status: "cancelled",
-          priority: null,
-        })
-        .eq("id", app.id);
+      const result = await requestCancellation(app.id);
 
-      if (updateError) {
-        alert("キャンセルに失敗しました");
-        console.error("Error canceling:", updateError);
+      if (!result.success) {
+        alert(result.error || "キャンセルに失敗しました");
         setCancelingId(null);
         return;
       }
 
-      // 同一希望日の優先順位を再計算
-      await recalculatePriorities(app.vacation_date);
-
       // 一覧を再取得
       await fetchApplications();
-      alert("申請をキャンセルしました");
+
+      // 成功メッセージ
+      if (result.requiresApproval) {
+        alert("キャンセル申請を送信しました。管理者の承認をお待ちください。");
+      } else if (result.pointsWillRecover) {
+        alert("申請をキャンセルしました。得点が回復されます。");
+      } else {
+        alert("申請をキャンセルしました。");
+      }
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -167,6 +195,12 @@ export default function ApplicationsPage() {
         return "キャンセル";
       case "pending_approval":
         return "承認待ち";
+      case "pending_cancellation":
+        return "キャンセル承認待ち";
+      case "cancelled_before_lottery":
+        return "キャンセル済み";
+      case "cancelled_after_lottery":
+        return "キャンセル済み（得点消費）";
       default:
         return status;
     }
@@ -179,13 +213,19 @@ export default function ApplicationsPage() {
       case "after_lottery":
         return "bg-orange-100 text-orange-800";
       case "confirmed":
-        return "bg-green-100 text-green-800";
+        return "bg-[#D6E2CC] text-green-900";
       case "withdrawn":
         return "bg-yellow-100 text-yellow-800";
       case "cancelled":
-        return "bg-red-100 text-red-800";
+        return "bg-[#F8CCCC] text-red-900";
       case "pending_approval":
         return "bg-yellow-100 text-yellow-800";
+      case "pending_cancellation":
+        return "bg-purple-100 text-purple-800";
+      case "cancelled_before_lottery":
+        return "bg-[#F8CCCC] text-red-900";
+      case "cancelled_after_lottery":
+        return "bg-[#F8CCCC] text-red-900";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -258,7 +298,11 @@ export default function ApplicationsPage() {
         return "bg-blue-50";
       case "withdrawn":
       case "cancelled":
+      case "cancelled_before_lottery":
+      case "cancelled_after_lottery":
         return "bg-gray-100 opacity-60";
+      case "pending_cancellation":
+        return "bg-purple-50";
       default:
         return "bg-white";
     }
@@ -268,11 +312,11 @@ export default function ApplicationsPage() {
   const getLevelBadgeColor = (level: number): string => {
     switch (level) {
       case 1:
-        return "bg-red-100 text-red-800";
+        return "bg-[#F8CCCC] text-red-900";
       case 2:
         return "bg-blue-100 text-blue-800";
       case 3:
-        return "bg-green-100 text-green-800";
+        return "bg-[#D6E2CC] text-green-900";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -391,7 +435,7 @@ export default function ApplicationsPage() {
 
                               {/* 詳細情報 */}
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-                                {app.status !== "cancelled" && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
+                                {!["cancelled", "cancelled_before_lottery", "cancelled_after_lottery"].includes(app.status) && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
                                   <span className="font-medium text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
                                     優先順位: {app.priority}
                                   </span>
@@ -416,7 +460,7 @@ export default function ApplicationsPage() {
                                 <button
                                   onClick={() => handleCancel(app)}
                                   disabled={cancelingId === app.id}
-                                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors disabled:opacity-50"
+                                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-[#F8CCCC] border border-red-200 rounded-lg transition-colors disabled:opacity-50"
                                 >
                                   {cancelingId === app.id ? "キャンセル中..." : "キャンセル"}
                                 </button>

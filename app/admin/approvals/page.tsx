@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { approveCancellation, rejectCancellation } from "@/lib/cancellation";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
@@ -15,6 +16,10 @@ interface ApplicationWithCapacity extends Application {
   max_people: number;
   confirmed_count: number;
 }
+
+type CancellationRequest = Database["public"]["Tables"]["cancellation_request"]["Row"] & {
+  application: Application;
+};
 
 // Icons
 const Icons = {
@@ -38,6 +43,7 @@ const Icons = {
 export default function ApprovalsPage() {
   const router = useRouter();
   const [applications, setApplications] = useState<ApplicationWithCapacity[]>([]);
+  const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -60,7 +66,7 @@ export default function ApprovalsPage() {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      // 承認待ち申請を取得
+      // レベル3承認待ち申請を取得
       const { data: appsData, error } = await supabase
         .from("application")
         .select("*, user:staff_id(name)")
@@ -101,6 +107,19 @@ export default function ApprovalsPage() {
       }
 
       setApplications(appsWithCapacity);
+
+      // キャンセル承認待ちリクエストを取得
+      const { data: cancellationsData, error: cancellationsError } = await supabase
+        .from("cancellation_request")
+        .select("*, application:application_id(*, user:staff_id(name))")
+        .eq("status", "pending")
+        .order("requested_at", { ascending: true });
+
+      if (cancellationsError) {
+        console.error("Error fetching cancellation requests:", cancellationsError);
+      } else {
+        setCancellationRequests((cancellationsData as any[]) || []);
+      }
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -160,10 +179,10 @@ export default function ApprovalsPage() {
     setProcessing(true);
 
     try {
-      // 却下（ステータスをキャンセルに変更）
+      // 却下（ステータスをbefore_lotteryに戻す）
       const { error } = await supabase
         .from("application")
-        .update({ status: "cancelled" } as any)
+        .update({ status: "before_lottery" } as any)
         .eq("id", app.id);
 
       if (error) {
@@ -171,6 +190,71 @@ export default function ApprovalsPage() {
         console.error("Error:", error);
       } else {
         alert("申請を却下しました");
+        await fetchApplications();
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleApproveCancellation = async (request: CancellationRequest) => {
+    if (!window.confirm(`${request.application.user.name}さんのキャンセル申請を承認しますか？\n得点が回復されます。`)) {
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const user = getUser();
+      if (!user) {
+        alert("ユーザー情報の取得に失敗しました");
+        setProcessing(false);
+        return;
+      }
+
+      const result = await approveCancellation(request.id, user.staff_id);
+
+      if (!result.success) {
+        alert(result.error || "承認に失敗しました");
+      } else {
+        alert("キャンセル申請を承認しました");
+        await fetchApplications();
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRejectCancellation = async (request: CancellationRequest) => {
+    const comment = prompt(`${request.application.user.name}さんのキャンセル申請を却下しますか？\n却下理由を入力してください（任意）：`);
+
+    if (comment === null) {
+      // キャンセルボタンが押された場合
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const user = getUser();
+      if (!user) {
+        alert("ユーザー情報の取得に失敗しました");
+        setProcessing(false);
+        return;
+      }
+
+      const result = await rejectCancellation(request.id, user.staff_id, comment || undefined);
+
+      if (!result.success) {
+        alert(result.error || "却下に失敗しました");
+      } else {
+        alert("キャンセル申請を却下しました");
         await fetchApplications();
       }
     } catch (err) {
@@ -230,26 +314,139 @@ export default function ApprovalsPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <div className="flex items-start gap-3">
-              <div className="text-blue-500 mt-0.5">
-                <Icons.AlertCircle />
-              </div>
-              <p className="text-sm font-medium text-gray-600">
-                確定処理後にマンパワーに余裕がある日に申請されたレベル3の申請を承認または却下できます。
-              </p>
+        <div className="space-y-8">
+          {/* キャンセル承認セクション */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-1 bg-purple-600 rounded-full"></div>
+              <h2 className="text-2xl font-bold text-gray-900">キャンセル承認待ち</h2>
             </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-start gap-3">
+                <div className="text-purple-500 mt-0.5">
+                  <Icons.AlertCircle />
+                </div>
+                <p className="text-sm font-medium text-gray-600">
+                  期間外に申請されたキャンセル要求を承認または却下できます。承認すると得点が回復されます。
+                </p>
+              </div>
+            </div>
+
+            {cancellationRequests.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div className="mx-auto h-12 w-12 text-gray-300 mb-4">
+                  <Icons.CheckCircle />
+                </div>
+                <p className="text-gray-500 font-medium">キャンセル承認待ちはありません</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-purple-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          申請日時
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          申請者
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          希望日
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          期間
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          レベル
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          キャンセル申請日時
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          アクション
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {cancellationRequests.map((request) => (
+                        <tr key={request.id} className="hover:bg-purple-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(request.application.applied_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                            {request.application.user.name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {request.application.vacation_date}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              {getPeriodLabel(request.application.period)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              Lv.{request.application.level}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(request.requested_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                            <button
+                              onClick={() => handleApproveCancellation(request)}
+                              disabled={processing}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Icons.Check />
+                              承認
+                            </button>
+                            <button
+                              onClick={() => handleRejectCancellation(request)}
+                              disabled={processing}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Icons.X />
+                              却下
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
-          {applications.length === 0 ? (
-            <div className="text-center py-16 bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="mx-auto h-12 w-12 text-gray-300 mb-4">
-                <Icons.CheckCircle />
-              </div>
-              <p className="text-gray-500 font-medium">承認待ちの申請はありません</p>
+          {/* レベル3承認セクション */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-1 bg-blue-600 rounded-full"></div>
+              <h2 className="text-2xl font-bold text-gray-900">レベル3承認待ち</h2>
             </div>
-          ) : (
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-start gap-3">
+                <div className="text-blue-500 mt-0.5">
+                  <Icons.AlertCircle />
+                </div>
+                <p className="text-sm font-medium text-gray-600">
+                  確定処理後にマンパワーに余裕がある日に申請されたレベル3の申請を承認または却下できます。
+                </p>
+              </div>
+            </div>
+
+            {applications.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div className="mx-auto h-12 w-12 text-gray-300 mb-4">
+                  <Icons.CheckCircle />
+                </div>
+                <p className="text-gray-500 font-medium">承認待ちの申請はありません</p>
+              </div>
+            ) : (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -306,8 +503,8 @@ export default function ApprovalsPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${app.confirmed_count < app.max_people
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                                ? "bg-[#D6E2CC] text-green-900"
+                                : "bg-[#F8CCCC] text-red-900"
                               }`}
                           >
                             {app.confirmed_count} / {app.max_people}
@@ -340,7 +537,8 @@ export default function ApprovalsPage() {
                 </table>
               </div>
             </div>
-          )}
+            )}
+          </div>
         </div>
       </main>
     </div>

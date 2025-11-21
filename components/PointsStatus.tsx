@@ -1,12 +1,18 @@
 import React from "react";
 
 type PointsInfo = {
-    level1ApplicationCount: number;
+    level1PendingCount: number;
     level1ConfirmedCount: number;
-    level2ApplicationCount: number;
+    level1CancelledAfterLotteryCount: number;
+    level1Points: number;
+    level2PendingCount: number;
     level2ConfirmedCount: number;
-    level3ApplicationCount: number;
+    level2CancelledAfterLotteryCount: number;
+    level2Points: number;
+    level3PendingCount: number;
     level3ConfirmedCount: number;
+    level3CancelledAfterLotteryCount: number;
+    level3Points: number;
     totalPoints: number;
     maxPoints: number;
     remainingPoints: number;
@@ -52,7 +58,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                     <div className="text-xs sm:text-sm text-gray-500">
                         上限:{" "}
                         <span className="font-semibold text-gray-900">
-                            {pointsInfo.maxPoints.toFixed(1)}点
+                            {pointsInfo.maxPoints.toFixed(2)}点
                         </span>
                     </div>
                 ) : (
@@ -73,7 +79,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                         : "text-blue-600"
                                         }`}
                                 >
-                                    {pointsInfo.remainingPoints.toFixed(1)}
+                                    {pointsInfo.remainingPoints.toFixed(2)}
                                 </span>
                                 <span className="text-xs text-gray-500">点</span>
                             </div>
@@ -88,15 +94,27 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">申請中</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level1ConfirmedCount.toFixed(1)}
+                                            {pointsInfo.level1PendingCount.toFixed(2)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">申請</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level1ApplicationCount.toFixed(1)}
+                                            {pointsInfo.level1ConfirmedCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
+                                            {pointsInfo.level1CancelledAfterLotteryCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1 mt-1 border-t border-red-200">
+                                        <span className="text-[10px] sm:text-xs text-red-700 font-semibold">消費得点</span>
+                                        <span className="text-sm sm:text-base font-bold text-red-700 text-center min-w-[2rem]">
+                                            {pointsInfo.level1Points.toFixed(2)}
                                         </span>
                                     </div>
                                 </div>
@@ -109,15 +127,27 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">申請中</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level2ConfirmedCount.toFixed(1)}
+                                            {pointsInfo.level2PendingCount.toFixed(2)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">申請</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level2ApplicationCount.toFixed(1)}
+                                            {pointsInfo.level2ConfirmedCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
+                                            {pointsInfo.level2CancelledAfterLotteryCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1 mt-1 border-t border-blue-200">
+                                        <span className="text-[10px] sm:text-xs text-blue-700 font-semibold">消費得点</span>
+                                        <span className="text-sm sm:text-base font-bold text-blue-700 text-center min-w-[2rem]">
+                                            {pointsInfo.level2Points.toFixed(2)}
                                         </span>
                                     </div>
                                 </div>
@@ -130,15 +160,27 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">申請中</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level3ConfirmedCount.toFixed(1)}
+                                            {pointsInfo.level3PendingCount.toFixed(2)}
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">申請</span>
+                                        <span className="text-[10px] sm:text-xs text-gray-600">確定</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
-                                            {pointsInfo.level3ApplicationCount.toFixed(1)}
+                                            {pointsInfo.level3ConfirmedCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
+                                            {pointsInfo.level3CancelledAfterLotteryCount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-1 mt-1 border-t border-green-200">
+                                        <span className="text-[10px] sm:text-xs text-green-700 font-semibold">消費得点</span>
+                                        <span className="text-sm sm:text-base font-bold text-green-700 text-center min-w-[2rem]">
+                                            {pointsInfo.level3Points.toFixed(2)}
                                         </span>
                                     </div>
                                 </div>
@@ -150,9 +192,9 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                     <div className="space-y-4 animate-pulse">
                         <div className="h-12 bg-gray-100 rounded-lg"></div>
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                            <div className="bg-gray-100 rounded-lg h-20 sm:h-24"></div>
-                            <div className="bg-gray-100 rounded-lg h-20 sm:h-24"></div>
-                            <div className="bg-gray-100 rounded-lg h-20 sm:h-24"></div>
+                            <div className="bg-gray-100 rounded-lg h-32 sm:h-36"></div>
+                            <div className="bg-gray-100 rounded-lg h-32 sm:h-36"></div>
+                            <div className="bg-gray-100 rounded-lg h-32 sm:h-36"></div>
                         </div>
                     </div>
                 )}

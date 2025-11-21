@@ -102,12 +102,18 @@ export default function HomePage() {
       if (!availabilityData) return;
 
       setPointsInfo({
-        level1ApplicationCount: pointsData.level1ApplicationCount,
+        level1PendingCount: pointsData.level1PendingCount,
         level1ConfirmedCount: pointsData.level1ConfirmedCount,
-        level2ApplicationCount: pointsData.level2ApplicationCount,
+        level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
+        level1Points: pointsData.level1Points,
+        level2PendingCount: pointsData.level2PendingCount,
         level2ConfirmedCount: pointsData.level2ConfirmedCount,
-        level3ApplicationCount: pointsData.level3ApplicationCount,
+        level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
+        level2Points: pointsData.level2Points,
+        level3PendingCount: pointsData.level3PendingCount,
         level3ConfirmedCount: pointsData.level3ConfirmedCount,
+        level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
+        level3Points: pointsData.level3Points,
         totalPoints: pointsData.totalPoints,
         maxPoints: availabilityData.maxPoints,
         remainingPoints: availabilityData.remainingPoints,
@@ -356,7 +362,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/data-cleanup")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-red-300 transition-all group"
               >
-                <div className="bg-red-50 p-3 rounded-lg text-red-600 mr-4 group-hover:bg-red-100 transition-colors">
+                <div className="bg-red-50 p-3 rounded-lg text-red-600 mr-4 group-hover:bg-[#F8CCCC] transition-colors">
                   <Icons.Trash />
                 </div>
                 <div className="text-left">

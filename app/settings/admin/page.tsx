@@ -39,6 +39,7 @@ export default function AdminSettingsPage() {
   const [maxAnnualLeavePoints, setMaxAnnualLeavePoints] = useState(20);
   const [level1Points, setLevel1Points] = useState(2);
   const [level2Points, setLevel2Points] = useState(1);
+  const [level3Points, setLevel3Points] = useState(0.1);
   const [currentFiscalYear, setCurrentFiscalYear] = useState(new Date().getFullYear());
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -74,6 +75,7 @@ export default function AdminSettingsPage() {
         setMaxAnnualLeavePoints(data.max_annual_leave_points ?? 20);
         setLevel1Points(data.level1_points ?? 2);
         setLevel2Points(data.level2_points ?? 1);
+        setLevel3Points(data.level3_points ?? 0.1);
         setCurrentFiscalYear(data.current_fiscal_year ?? new Date().getFullYear());
       }
     };
@@ -119,6 +121,10 @@ export default function AdminSettingsPage() {
       setError("レベル2消費得点は0以上で入力してください");
       return;
     }
+    if (level3Points < 0) {
+      setError("レベル3消費得点は0以上で入力してください");
+      return;
+    }
     if (currentFiscalYear < 2000) {
       setError("年度は2000以上で入力してください");
       return;
@@ -138,6 +144,7 @@ export default function AdminSettingsPage() {
           max_annual_leave_points: maxAnnualLeavePoints,
           level1_points: level1Points,
           level2_points: level2Points,
+          level3_points: level3Points,
           current_fiscal_year: currentFiscalYear,
         })
         .eq("id", 1);
@@ -434,6 +441,26 @@ export default function AdminSettingsPage() {
                       onChange={(e) => setLevel2Points(Number(e.target.value))}
                     />
                     <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 1点</p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="level3Points"
+                      className="block text-sm font-bold text-gray-700 mb-2"
+                    >
+                      レベル3消費得点
+                    </label>
+                    <input
+                      id="level3Points"
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      required
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      value={level3Points}
+                      onChange={(e) => setLevel3Points(Number(e.target.value))}
+                    />
+                    <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 0.1点（0に設定すると得点に関係なく申請可能）</p>
                   </div>
                 </div>
               </div>

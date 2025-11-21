@@ -92,7 +92,7 @@ export const checkDuplicateApplication = async (
       .select('*')
       .eq('staff_id', staffId)
       .eq('vacation_date', vacationDate)
-      .neq('status', 'cancelled')
+      .not('status', 'in', '(cancelled,cancelled_before_lottery,cancelled_after_lottery)')
       .single();
 
     if (error && error.code !== 'PGRST116') {
@@ -119,7 +119,7 @@ export const calculateInitialPriority = async (
       .from('application')
       .select('*', { count: 'exact', head: true })
       .eq('vacation_date', vacationDate)
-      .neq('status', 'cancelled');
+      .not('status', 'in', '(cancelled,cancelled_before_lottery,cancelled_after_lottery)');
 
     if (error) {
       console.error('Error calculating priority:', error);
@@ -146,7 +146,7 @@ export const recalculatePriorities = async (
       .from('application')
       .select('*')
       .eq('vacation_date', vacationDate)
-      .neq('status', 'cancelled')
+      .not('status', 'in', '(cancelled,cancelled_before_lottery,cancelled_after_lottery)')
       .order('applied_at', { ascending: true });
 
     if (error || !applications) {
@@ -622,7 +622,7 @@ export const cancelConfirmation = async (
       .from('application')
       .select('*')
       .eq('vacation_date', application.vacation_date)
-      .neq('status', 'cancelled');
+      .not('status', 'in', '(cancelled,cancelled_before_lottery,cancelled_after_lottery)');
 
     const hasConfirmed = allApps?.some((a) => a.status === 'confirmed');
 
@@ -841,25 +841,31 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
  * 指定年度の年休得点を計算
  * @param staffId 職員ID
  * @param fiscalYear 年度（例: 2025 = 2025/4/1〜2026/3/31）
- * @returns レベル1・2・3の申請数、確定数、消費得点
+ * @returns レベル1・2・3の申請中、確定、抽選後キャンセル数、各レベルの消費得点
  */
 export const calculateAnnualLeavePoints = async (
   staffId: string,
   fiscalYear: number
 ): Promise<{
-  level1ApplicationCount: number;
+  level1PendingCount: number;
   level1ConfirmedCount: number;
-  level2ApplicationCount: number;
+  level1CancelledAfterLotteryCount: number;
+  level1Points: number;
+  level2PendingCount: number;
   level2ConfirmedCount: number;
-  level3ApplicationCount: number;
+  level2CancelledAfterLotteryCount: number;
+  level2Points: number;
+  level3PendingCount: number;
   level3ConfirmedCount: number;
+  level3CancelledAfterLotteryCount: number;
+  level3Points: number;
   totalPoints: number;
 } | null> => {
   try {
     // 設定を取得
     const { data: setting, error: settingError } = await supabase
       .from('setting')
-      .select('level1_points, level2_points')
+      .select('level1_points, level2_points, level3_points')
       .eq('id', 1)
       .single();
 
@@ -872,14 +878,16 @@ export const calculateAnnualLeavePoints = async (
     const fiscalYearStart = `${fiscalYear}-04-01`;
     const fiscalYearEnd = `${fiscalYear + 1}-03-31`;
 
-    // 対象期間の申請を取得（cancelled, withdrawn を除外）
+    // 対象期間の申請を取得
+    // 除外: cancelled, withdrawn, cancelled_before_lottery (得点回復済み)
+    // 含める: before_lottery, after_lottery, confirmed, pending_approval, pending_cancellation, cancelled_after_lottery
     const { data: applications, error: appError } = await supabase
       .from('application')
       .select('level, period, status')
       .eq('staff_id', staffId)
       .gte('vacation_date', fiscalYearStart)
       .lte('vacation_date', fiscalYearEnd)
-      .in('status', ['before_lottery', 'after_lottery', 'confirmed', 'pending_approval']);
+      .in('status', ['before_lottery', 'after_lottery', 'confirmed', 'pending_approval', 'pending_cancellation', 'cancelled_after_lottery']);
 
     if (appError) {
       console.error('Failed to fetch applications:', appError);
@@ -887,12 +895,15 @@ export const calculateAnnualLeavePoints = async (
     }
 
     // カウントを計算
-    let level1ApplicationCount = 0;
+    let level1PendingCount = 0;
     let level1ConfirmedCount = 0;
-    let level2ApplicationCount = 0;
+    let level1CancelledAfterLotteryCount = 0;
+    let level2PendingCount = 0;
     let level2ConfirmedCount = 0;
-    let level3ApplicationCount = 0;
+    let level2CancelledAfterLotteryCount = 0;
+    let level3PendingCount = 0;
     let level3ConfirmedCount = 0;
+    let level3CancelledAfterLotteryCount = 0;
 
     (applications || []).forEach(app => {
       // 全日 = 1カウント、AM/PM = 0.5カウント
@@ -901,36 +912,51 @@ export const calculateAnnualLeavePoints = async (
       if (app.level === 1) {
         if (app.status === 'confirmed') {
           level1ConfirmedCount += count;
+        } else if (app.status === 'cancelled_after_lottery') {
+          level1CancelledAfterLotteryCount += count;
         } else {
-          level1ApplicationCount += count;
+          level1PendingCount += count;
         }
       } else if (app.level === 2) {
         if (app.status === 'confirmed') {
           level2ConfirmedCount += count;
+        } else if (app.status === 'cancelled_after_lottery') {
+          level2CancelledAfterLotteryCount += count;
         } else {
-          level2ApplicationCount += count;
+          level2PendingCount += count;
         }
       } else if (app.level === 3) {
         if (app.status === 'confirmed') {
           level3ConfirmedCount += count;
+        } else if (app.status === 'cancelled_after_lottery') {
+          level3CancelledAfterLotteryCount += count;
         } else {
-          level3ApplicationCount += count;
+          level3PendingCount += count;
         }
       }
     });
 
-    // 消費得点を計算（レベル3は得点に含まれない）
-    const totalPoints =
-      (level1ApplicationCount + level1ConfirmedCount) * setting.level1_points +
-      (level2ApplicationCount + level2ConfirmedCount) * setting.level2_points;
+    // 各レベルの消費得点を計算
+    const level1Points = (level1PendingCount + level1ConfirmedCount + level1CancelledAfterLotteryCount) * setting.level1_points;
+    const level2Points = (level2PendingCount + level2ConfirmedCount + level2CancelledAfterLotteryCount) * setting.level2_points;
+    const level3Points = (level3PendingCount + level3ConfirmedCount + level3CancelledAfterLotteryCount) * setting.level3_points;
+
+    // 合計消費得点を計算
+    const totalPoints = level1Points + level2Points + level3Points;
 
     return {
-      level1ApplicationCount,
+      level1PendingCount,
       level1ConfirmedCount,
-      level2ApplicationCount,
+      level1CancelledAfterLotteryCount,
+      level1Points,
+      level2PendingCount,
       level2ConfirmedCount,
-      level3ApplicationCount,
+      level2CancelledAfterLotteryCount,
+      level2Points,
+      level3PendingCount,
       level3ConfirmedCount,
+      level3CancelledAfterLotteryCount,
+      level3Points,
       totalPoints,
     };
   } catch (error) {
@@ -942,13 +968,13 @@ export const calculateAnnualLeavePoints = async (
 /**
  * 新規申請が可能かチェック
  * @param staffId 職員ID
- * @param level 申請レベル（1 or 2）
+ * @param level 申請レベル（1, 2, 3）
  * @param period 期間（full_day, am, pm）
  * @returns 利用可能上限、消費得点、残り得点、申請可否
  */
 export const checkAnnualLeavePointsAvailable = async (
   staffId: string,
-  level: 1 | 2,
+  level: 1 | 2 | 3,
   period: 'full_day' | 'am' | 'pm'
 ): Promise<{
   maxPoints: number;
@@ -960,7 +986,7 @@ export const checkAnnualLeavePointsAvailable = async (
     // 設定とスタッフ情報を取得
     const { data: setting, error: settingError } = await supabase
       .from('setting')
-      .select('max_annual_leave_points, level1_points, level2_points, current_fiscal_year')
+      .select('max_annual_leave_points, level1_points, level2_points, level3_points, current_fiscal_year')
       .eq('id', 1)
       .single();
 
@@ -999,7 +1025,8 @@ export const checkAnnualLeavePointsAvailable = async (
 
     // 新規申請の消費得点を計算
     const newApplicationPoints =
-      (period === 'full_day' ? 1 : 0.5) * (level === 1 ? setting.level1_points : setting.level2_points);
+      (period === 'full_day' ? 1 : 0.5) *
+      (level === 1 ? setting.level1_points : level === 2 ? setting.level2_points : setting.level3_points);
 
     // 申請後の合計が上限を超えないかチェック
     const remainingPoints = maxPoints - usedPoints;

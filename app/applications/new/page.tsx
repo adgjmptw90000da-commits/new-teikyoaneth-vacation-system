@@ -115,12 +115,18 @@ export default function NewApplicationPage() {
       if (!availabilityData) return;
 
       setPointsInfo({
-        level1ApplicationCount: pointsData.level1ApplicationCount,
+        level1PendingCount: pointsData.level1PendingCount,
         level1ConfirmedCount: pointsData.level1ConfirmedCount,
-        level2ApplicationCount: pointsData.level2ApplicationCount,
+        level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
+        level1Points: pointsData.level1Points,
+        level2PendingCount: pointsData.level2PendingCount,
         level2ConfirmedCount: pointsData.level2ConfirmedCount,
-        level3ApplicationCount: pointsData.level3ApplicationCount,
+        level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
+        level2Points: pointsData.level2Points,
+        level3PendingCount: pointsData.level3PendingCount,
         level3ConfirmedCount: pointsData.level3ConfirmedCount,
+        level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
+        level3Points: pointsData.level3Points,
         totalPoints: pointsData.totalPoints,
         maxPoints: availabilityData.maxPoints,
         remainingPoints: availabilityData.remainingPoints,
@@ -196,19 +202,17 @@ export default function NewApplicationPage() {
         return;
       }
 
-      // レベル1・2は年休得点チェック
-      if (level === 1 || level === 2) {
-        const pointsCheck = await checkAnnualLeavePointsAvailable(
-          user.staff_id,
-          level,
-          period
-        );
+      // 年休得点チェック（全レベル共通）
+      const pointsCheck = await checkAnnualLeavePointsAvailable(
+        user.staff_id,
+        level,
+        period
+      );
 
-        if (!pointsCheck || !pointsCheck.canApply) {
-          setError("年休得点が不足しているため申請できません");
-          setLoading(false);
-          return;
-        }
+      if (!pointsCheck || !pointsCheck.canApply) {
+        setError(`年休得点が不足しているため申請できません。残り${pointsCheck?.remainingPoints.toFixed(1) || 0}点です。`);
+        setLoading(false);
+        return;
       }
 
       // レベル3は抽選参加期間以降のみ申請可能

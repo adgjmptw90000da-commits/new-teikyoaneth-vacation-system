@@ -15,6 +15,7 @@ import {
   recalculatePriorities,
   isCurrentlyInLotteryPeriodForDate,
 } from "@/lib/application";
+import { exchangePriorityAndLevel } from "@/lib/priority-exchange";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
@@ -52,6 +53,9 @@ const Icons = {
   X: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
   ),
+  RefreshCw: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+  ),
 };
 
 function AdminCalendarPageContent() {
@@ -69,6 +73,8 @@ function AdminCalendarPageContent() {
   const [capacities, setCapacities] = useState<Record<string, string>>({});
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
+  const [selectedApplications, setSelectedApplications] = useState<number[]>([]);
+  const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
 
   // URLパラメータから年月を取得
   useEffect(() => {
@@ -136,7 +142,7 @@ function AdminCalendarPageContent() {
         .select("*, user:staff_id(name)")
         .gte("vacation_date", startDate)
         .lte("vacation_date", endDate)
-        .neq("status", "cancelled")
+        .not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)")
         .order("vacation_date", { ascending: true })
         .order("priority", { ascending: true });
 
@@ -434,6 +440,78 @@ function AdminCalendarPageContent() {
     }
   };
 
+  const handleApplicationSelect = (appId: number, vacationDate: string) => {
+    setSelectedApplications(prev => {
+      if (prev.includes(appId)) {
+        // 選択解除
+        return prev.filter(id => id !== appId);
+      } else {
+        // 選択追加（同じ日付の申請のみ選択可能）
+        const currentSelected = prev.length > 0 ? daysData
+          .flatMap(day => day.applications)
+          .find(app => app.id === prev[0]) : null;
+
+        if (currentSelected && currentSelected.vacation_date !== vacationDate) {
+          alert("異なる日付の申請は同時に選択できません");
+          return prev;
+        }
+
+        if (prev.length >= 2) {
+          alert("交換は2つの申請のみ選択可能です");
+          return prev;
+        }
+
+        return [...prev, appId];
+      }
+    });
+  };
+
+  const handleExchange = () => {
+    if (selectedApplications.length !== 2) {
+      alert("交換する2つの申請を選択してください");
+      return;
+    }
+    setExchangeDialogOpen(true);
+  };
+
+  const handleExchangeConfirm = async () => {
+    if (selectedApplications.length !== 2) return;
+
+    const scrollY = window.scrollY;
+    setProcessing(true);
+    setExchangeDialogOpen(false);
+
+    try {
+      const user = getUser();
+      if (!user) {
+        alert("ユーザー情報の取得に失敗しました");
+        return;
+      }
+
+      const result = await exchangePriorityAndLevel(
+        selectedApplications[0],
+        selectedApplications[1],
+        user.staff_id
+      );
+
+      if (result.success) {
+        alert("優先順位とレベルを交換しました");
+        setSelectedApplications([]);
+        await fetchData();
+        requestAnimationFrame(() => {
+          window.scrollTo(0, scrollY);
+        });
+      } else {
+        alert(result.error || "交換に失敗しました");
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const changeMonth = (offset: number) => {
     const newDate = new Date(currentYear, currentMonth - 1 + offset, 1);
     const newYear = newDate.getFullYear();
@@ -510,11 +588,11 @@ function AdminCalendarPageContent() {
   const getApplicationBackgroundColor = (app: Application): string => {
     // レベルに応じた背景色
     if (app.level === 1) {
-      return app.status === "confirmed" ? "bg-red-600 text-white shadow-sm" : "bg-red-100 text-red-800 border border-red-200";
+      return app.status === "confirmed" ? "bg-red-600 text-white shadow-sm" : "bg-[#F8CCCC] text-red-900 border border-red-300";
     } else if (app.level === 2) {
       return app.status === "confirmed" ? "bg-blue-600 text-white shadow-sm" : "bg-blue-100 text-blue-800 border border-blue-200";
     } else if (app.is_within_lottery_period) {
-      return app.status === "confirmed" ? "bg-green-600 text-white shadow-sm" : "bg-green-100 text-green-800 border border-green-200";
+      return app.status === "confirmed" ? "bg-green-600 text-white shadow-sm" : "bg-[#D6E2CC] text-green-900 border border-green-300";
     } else {
       return app.status === "confirmed" ? "bg-gray-600 text-white shadow-sm" : "bg-gray-100 text-gray-800 border border-gray-200";
     }
@@ -656,7 +734,7 @@ function AdminCalendarPageContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-red-100 border border-red-200 rounded flex items-center justify-center text-xs text-red-800 font-medium">確定以外</div>
+                    <div className="w-16 h-8 bg-[#F8CCCC] border border-red-300 rounded flex items-center justify-center text-xs text-red-900 font-medium">確定以外</div>
                     <div className="w-12 h-8 bg-red-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
                   </div>
                   <span className="text-sm font-medium text-gray-700">レベル1</span>
@@ -670,7 +748,7 @@ function AdminCalendarPageContent() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-green-100 border border-green-200 rounded flex items-center justify-center text-xs text-green-800 font-medium">確定以外</div>
+                    <div className="w-16 h-8 bg-[#D6E2CC] border border-green-300 rounded flex items-center justify-center text-xs text-green-900 font-medium">確定以外</div>
                     <div className="w-12 h-8 bg-green-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
                   </div>
                   <span className="text-sm font-medium text-gray-700">レベル3(期間内)</span>
@@ -701,13 +779,13 @@ function AdminCalendarPageContent() {
                       <h3 className={`text-lg font-bold flex items-center gap-2 ${getDateTextColor(day)}`}>
                         <span className="text-2xl">{day.date.split('-')[2]}</span>
 
-                        <span className={`text-sm px-2 py-0.5 rounded-md ${day.dayOfWeek === 0 ? 'bg-red-100 text-red-700' :
+                        <span className={`text-sm px-2 py-0.5 rounded-md ${day.dayOfWeek === 0 ? 'bg-[#F8CCCC] text-red-900' :
                           day.dayOfWeek === 6 ? 'bg-blue-100 text-blue-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
                           {["日", "月", "火", "水", "木", "金", "土"][day.dayOfWeek]}
                         </span>
-                        {day.isHoliday && <span className="text-sm font-medium bg-red-100 text-red-700 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
+                        {day.isHoliday && <span className="text-sm font-medium bg-[#F8CCCC] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
                       </h3>
                       <div className="flex gap-2">
                         {day.calendar?.status === "after_lottery" && (
@@ -716,7 +794,7 @@ function AdminCalendarPageContent() {
                           </span>
                         )}
                         {day.calendar?.status === "confirmation_completed" && (
-                          <span className="px-2.5 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full border border-red-200">
+                          <span className="px-2.5 py-1 text-xs font-medium bg-[#F8CCCC] text-red-900 rounded-full border border-red-300">
                             確定処理済み
                           </span>
                         )}
@@ -756,6 +834,22 @@ function AdminCalendarPageContent() {
                         >
                           確定解除
                         </button>
+                        {(() => {
+                          const selectedInThisDate = visibleApplications.filter(app =>
+                            selectedApplications.includes(app.id)
+                          );
+                          const canExchange = selectedInThisDate.length === 2;
+                          return canExchange && (
+                            <button
+                              onClick={handleExchange}
+                              disabled={processing}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-all flex items-center gap-1"
+                            >
+                              <Icons.RefreshCw />
+                              交換
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -765,31 +859,48 @@ function AdminCalendarPageContent() {
                     <p className="text-gray-400 text-sm italic pl-1">申請なし</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {visibleApplications.map((app) => (
-                        <div
-                          key={app.id}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-transform hover:scale-105 ${getApplicationBackgroundColor(app)}`}
-                        >
-                          <span>
-                            {app.user.name}
-                            {app.period !== "full_day" && ` (${app.period.toUpperCase()})`}
-                            {app.priority && ` [${app.priority}]`}
-                          </span>
-                          {app.status !== "confirmed" && app.status !== "withdrawn" && app.status !== "cancelled" && (
-                            <button
-                              onClick={() => handleAdminCancel(app)}
-                              disabled={processing}
-                              className="ml-1 bg-white/20 hover:bg-white/40 rounded-full w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-50"
-                              title="この申請をキャンセルする"
-                            >
-                              <Icons.X />
-                            </button>
-                          )}
-                          {app.status === "withdrawn" && (
-                            <span className="ml-1 text-[10px] opacity-80">(取り下げ)</span>
-                          )}
-                        </div>
-                      ))}
+                      {visibleApplications.map((app) => {
+                        const isAfterLottery = app.status === "after_lottery";
+                        const isSelected = selectedApplications.includes(app.id);
+                        return (
+                          <div
+                            key={app.id}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-transform hover:scale-105 ${getApplicationBackgroundColor(app)} ${isSelected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+                          >
+                            {isAfterLottery && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleApplicationSelect(app.id, app.vacation_date)}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                title="交換対象として選択"
+                              />
+                            )}
+                            <span>
+                              {app.user.name}
+                              {app.period !== "full_day" && ` (${app.period.toUpperCase()})`}
+                              {app.priority && ` [${app.priority}]`}
+                            </span>
+                            {app.status !== "confirmed" &&
+                             app.status !== "withdrawn" &&
+                             app.status !== "cancelled" &&
+                             app.status !== "cancelled_before_lottery" &&
+                             app.status !== "cancelled_after_lottery" && (
+                              <button
+                                onClick={() => handleAdminCancel(app)}
+                                disabled={processing}
+                                className="ml-1 bg-white/20 hover:bg-white/40 rounded-full w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-50"
+                                title="この申請をキャンセルする"
+                              >
+                                <Icons.X />
+                              </button>
+                            )}
+                            {app.status === "withdrawn" && (
+                              <span className="ml-1 text-[10px] opacity-80">(取り下げ)</span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -798,6 +909,92 @@ function AdminCalendarPageContent() {
           </div>
         </div>
       </main>
+
+      {/* 交換確認ダイアログ */}
+      {exchangeDialogOpen && selectedApplications.length === 2 && (() => {
+        const apps = daysData
+          .flatMap(day => day.applications)
+          .filter(app => selectedApplications.includes(app.id));
+
+        if (apps.length !== 2) return null;
+
+        const app1 = apps[0];
+        const app2 = apps[1];
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">優先順位・レベル交換の確認</h3>
+
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-700 mb-2">交換前</h4>
+                  <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold text-gray-700 min-w-[20px]">A:</span>
+                      <div>
+                        <p className="font-medium text-gray-900">{app1.user.name} (職員ID: {app1.staff_id})</p>
+                        <p className="text-sm text-gray-600">レベル: {app1.level}</p>
+                        <p className="text-sm text-gray-600">優先順位: {app1.priority}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold text-gray-700 min-w-[20px]">B:</span>
+                      <div>
+                        <p className="font-medium text-gray-900">{app2.user.name} (職員ID: {app2.staff_id})</p>
+                        <p className="text-sm text-gray-600">レベル: {app2.level}</p>
+                        <p className="text-sm text-gray-600">優先順位: {app2.priority}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center">
+                  <Icons.RefreshCw />
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-bold text-gray-700 mb-2">交換後</h4>
+                  <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold text-gray-700 min-w-[20px]">A:</span>
+                      <div>
+                        <p className="font-medium text-gray-900">{app1.user.name} (職員ID: {app1.staff_id})</p>
+                        <p className="text-sm text-blue-700 font-bold">レベル: {app2.level}</p>
+                        <p className="text-sm text-blue-700 font-bold">優先順位: {app2.priority}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="font-bold text-gray-700 min-w-[20px]">B:</span>
+                      <div>
+                        <p className="font-medium text-gray-900">{app2.user.name} (職員ID: {app2.staff_id})</p>
+                        <p className="text-sm text-blue-700 font-bold">レベル: {app1.level}</p>
+                        <p className="text-sm text-blue-700 font-bold">優先順位: {app1.priority}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setExchangeDialogOpen(false)}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleExchangeConfirm}
+                  disabled={processing}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-bold transition-colors"
+                >
+                  {processing ? "交換中..." : "交換する"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
