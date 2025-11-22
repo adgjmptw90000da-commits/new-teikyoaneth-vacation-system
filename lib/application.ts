@@ -142,13 +142,13 @@ export const recalculatePriorities = async (
   vacationDate: string
 ): Promise<void> => {
   try {
-    // 同一希望日の有効な申請（キャンセル以外）を取得
+    // 同一希望日の有効な申請（キャンセル以外）を優先順位順に取得
     const { data: applications, error } = await supabase
       .from('application')
       .select('*')
       .eq('vacation_date', vacationDate)
       .not('status', 'in', '(cancelled,cancelled_before_lottery,cancelled_after_lottery)')
-      .order('applied_at', { ascending: true });
+      .order('priority', { ascending: true });
 
     if (error || !applications) {
       console.error('Error fetching applications:', error);
