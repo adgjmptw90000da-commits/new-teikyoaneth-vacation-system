@@ -182,7 +182,7 @@ export default function DataCleanupPage() {
                     max="2100"
                     value={fiscalYear}
                     onChange={(e) => setFiscalYear(Number(e.target.value))}
-                    className="w-32 pl-4 pr-12 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
+                    className="w-32 pl-4 pr-12 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-medium">年度</span>
                 </div>
