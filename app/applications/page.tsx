@@ -151,6 +151,13 @@ export default function ApplicationsPage() {
       return;
     }
 
+    // 抽選後キャンセルの場合は2段階確認
+    if (app.status === "after_lottery") {
+      if (!window.confirm("本当にキャンセルしますか。年休得点は回復しません。")) {
+        return;
+      }
+    }
+
     setCancelingId(app.id);
 
     try {
