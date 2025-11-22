@@ -169,7 +169,7 @@ export default function ApplicationsPage() {
       if (result.requiresApproval) {
         alert("キャンセル申請を送信しました。管理者の承認をお待ちください。");
       } else if (result.pointsWillRecover) {
-        alert("申請をキャンセルしました。得点が回復されます。");
+        alert("申請をキャンセルしました。得点が回復します。");
       } else {
         alert("申請をキャンセルしました。");
       }

@@ -201,7 +201,7 @@ export default function ApprovalsPage() {
   };
 
   const handleApproveCancellation = async (request: CancellationRequest) => {
-    if (!window.confirm(`${request.application.user.name}さんのキャンセル申請を承認しますか？\n得点が回復されます。`)) {
+    if (!window.confirm(`${request.application.user.name}さんのキャンセル申請を承認しますか？\n得点が回復します。`)) {
       return;
     }
 
@@ -328,7 +328,7 @@ export default function ApprovalsPage() {
                   <Icons.AlertCircle />
                 </div>
                 <p className="text-sm font-medium text-gray-600">
-                  期間外に申請されたキャンセル要求を承認または却下できます。承認すると得点が回復されます。
+                  期間外に申請されたキャンセル要求を承認または却下できます。承認すると得点が回復します。
                 </p>
               </div>
             </div>
