@@ -277,7 +277,7 @@ function AdminCalendarPageContent() {
   };
 
   const handleConfirmAll = async (date: string) => {
-    if (!window.confirm(`${date}の年休を一括確定しますか？`)) {
+    if (!window.confirm(`${date}の年休を確定しますか？`)) {
       return;
     }
 
