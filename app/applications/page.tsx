@@ -194,7 +194,7 @@ export default function ApplicationsPage() {
       case "cancelled":
         return "キャンセル";
       case "pending_approval":
-        return "承認待ち";
+        return "確定後年休承認待ち";
       case "pending_cancellation":
         return "キャンセル承認待ち";
       case "cancelled_before_lottery":
