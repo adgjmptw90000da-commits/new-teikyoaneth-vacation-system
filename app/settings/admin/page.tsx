@@ -230,7 +230,7 @@ export default function AdminSettingsPage() {
                     id="organizationCode"
                     type="text"
                     required
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                     value={organizationCode}
                     onChange={(e) => setOrganizationCode(e.target.value)}
                   />
@@ -266,7 +266,7 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="1"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodMonths}
                       onChange={(e) => setLotteryPeriodMonths(Number(e.target.value))}
                     />
@@ -286,7 +286,7 @@ export default function AdminSettingsPage() {
                       min="1"
                       max="31"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodStartDay}
                       onChange={(e) => setLotteryPeriodStartDay(Number(e.target.value))}
                     />
@@ -306,7 +306,7 @@ export default function AdminSettingsPage() {
                       min="1"
                       max="31"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={lotteryPeriodEndDay}
                       onChange={(e) => setLotteryPeriodEndDay(Number(e.target.value))}
                     />
@@ -377,7 +377,7 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="1"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={maxAnnualLeavePoints}
                       onChange={(e) => setMaxAnnualLeavePoints(Number(e.target.value))}
                     />
@@ -396,7 +396,7 @@ export default function AdminSettingsPage() {
                       type="number"
                       min="2000"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={currentFiscalYear}
                       onChange={(e) => setCurrentFiscalYear(Number(e.target.value))}
                     />
@@ -416,7 +416,7 @@ export default function AdminSettingsPage() {
                       min="0"
                       step="0.5"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={level1Points}
                       onChange={(e) => setLevel1Points(Number(e.target.value))}
                     />
@@ -436,7 +436,7 @@ export default function AdminSettingsPage() {
                       min="0"
                       step="0.5"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={level2Points}
                       onChange={(e) => setLevel2Points(Number(e.target.value))}
                     />
@@ -456,7 +456,7 @@ export default function AdminSettingsPage() {
                       min="0"
                       step="0.1"
                       required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       value={level3Points}
                       onChange={(e) => setLevel3Points(Number(e.target.value))}
                     />
