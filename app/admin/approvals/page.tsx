@@ -150,10 +150,25 @@ export default function ApprovalsPage() {
         return;
       }
 
-      // 承認（ステータスを確定に変更）
+      // その日付の最大優先順位を取得
+      const { data: maxPriorityData } = await supabase
+        .from("application")
+        .select("priority")
+        .eq("vacation_date", app.vacation_date)
+        .not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)")
+        .order("priority", { ascending: false })
+        .limit(1)
+        .single();
+
+      const nextPriority = (maxPriorityData?.priority || 0) + 1;
+
+      // 承認（ステータスを確定に変更し、優先順位を設定）
       const { error } = await supabase
         .from("application")
-        .update({ status: "confirmed" } as any)
+        .update({
+          status: "confirmed",
+          priority: nextPriority
+        } as any)
         .eq("id", app.id);
 
       if (error) {
