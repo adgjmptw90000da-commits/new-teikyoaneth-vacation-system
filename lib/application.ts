@@ -3,6 +3,7 @@
 
 import { supabase } from './supabase';
 import type { Database } from './database.types';
+import { getJSTDate, formatDateToYYYYMMDD } from './dateUtils';
 
 type Application = Database['public']['Tables']['application']['Row'];
 type ApplicationInsert = Database['public']['Tables']['application']['Insert'];
@@ -28,7 +29,7 @@ export const isWithinLotteryPeriod = async (
     }
 
     const vacation = new Date(vacationDate);
-    const today = new Date();
+    const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の計算: Xヶ月前のx日〜x日
     const targetMonth = new Date(vacation);
@@ -180,12 +181,12 @@ export const performLottery = async (
   month: number
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // 対象月の開始日と終了日を計算
+    // 対象月の開始日と終了日を計算（日本時間）
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
 
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
+    const startDateStr = formatDateToYYYYMMDD(startDate);
+    const endDateStr = formatDateToYYYYMMDD(endDate);
 
     // 対象月の全申請を取得
     const { data: applications, error } = await supabase
@@ -302,13 +303,13 @@ export const confirmAllApplicationsForMonth = async (
   month: number
 ): Promise<{ success: boolean; error?: string; processedCount?: number }> => {
   try {
-    // 対象月の開始日と終了日を計算
+    // 対象月の開始日と終了日を計算（日本時間）
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0);
     const daysInMonth = endDate.getDate();
 
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
+    const startDateStr = formatDateToYYYYMMDD(startDate);
+    const endDateStr = formatDateToYYYYMMDD(endDate);
 
     // 祝日を取得
     const { data: holidays } = await supabase
@@ -662,7 +663,7 @@ export const isCurrentlyInLotteryPeriodForDate = async (
     }
 
     const vacation = new Date(vacationDate);
-    const today = new Date();
+    const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の計算: Xヶ月前のx日〜x日
     const targetMonth = new Date(vacation);
@@ -710,7 +711,7 @@ export const isBeforeLotteryPeriod = async (
     }
 
     const vacation = new Date(vacationDate);
-    const today = new Date();
+    const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の開始日を計算: Xヶ月前のx日
     const targetMonth = new Date(vacation);
@@ -753,7 +754,7 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
       return null;
     }
 
-    const today = new Date();
+    const today = getJSTDate(); // 日本時間で取得
 
     // 現在の月の抽選期間を計算
     const currentPeriodStart = new Date(

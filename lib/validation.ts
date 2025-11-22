@@ -1,5 +1,7 @@
 // バリデーション関連の関数
 
+import { getJSTDate, formatDateToYYYYMMDD } from './dateUtils';
+
 export interface ValidationResult {
   isValid: boolean;
   error?: string;
@@ -81,9 +83,9 @@ export const validateVacationDate = (date: string): ValidationResult => {
     return { isValid: false, error: '年休取得希望日を入力してください' };
   }
 
-  // 日付文字列を比較するために、YYYY-MM-DD形式で今日の日付を取得
-  const today = new Date();
-  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  // 日付文字列を比較するために、YYYY-MM-DD形式で今日の日付を取得（日本時間）
+  const today = getJSTDate();
+  const todayString = formatDateToYYYYMMDD(today);
 
   if (date <= todayString) {
     return { isValid: false, error: '年休取得希望日は未来の日付を指定してください' };
