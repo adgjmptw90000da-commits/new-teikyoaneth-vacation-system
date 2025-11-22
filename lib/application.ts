@@ -337,22 +337,28 @@ export const confirmAllApplicationsForMonth = async (
     }
 
     // マンパワーが設定されている各日付に対して確定処理を実施（日曜・祝日を除く）
-    let processedCount = 0;
-    for (const calendar of calendarData) {
+    // 並列処理で高速化
+    const targetCalendars = calendarData.filter(calendar => {
       const dayOfWeek = new Date(calendar.vacation_date).getDay();
-
       // 日曜日(0)または祝日はスキップ
-      if (dayOfWeek === 0 || holidayDates.has(calendar.vacation_date)) {
-        continue;
-      }
+      return dayOfWeek !== 0 && !holidayDates.has(calendar.vacation_date);
+    });
 
-      const result = await confirmApplications(calendar.vacation_date);
-      if (result.success) {
-        processedCount++;
-      } else {
-        console.error(`Error confirming ${calendar.vacation_date}:`, result.error);
+    const confirmPromises = targetCalendars.map(calendar =>
+      confirmApplications(calendar.vacation_date)
+    );
+
+    const results = await Promise.all(confirmPromises);
+
+    // 成功した処理をカウント
+    const processedCount = results.filter(result => result.success).length;
+
+    // エラーがあった日付をログ出力
+    results.forEach((result, index) => {
+      if (!result.success) {
+        console.error(`Error confirming ${targetCalendars[index].vacation_date}:`, result.error);
       }
-    }
+    });
 
     return { success: true, processedCount };
   } catch (error) {
@@ -494,17 +500,39 @@ export const confirmApplications = async (
         };
       }
 
-      // 優先順位順に確定または取り下げ
+      // 確定と取り下げの申請IDを分類
+      const confirmedIds: number[] = [];
+      const withdrawnIds: number[] = [];
+
       for (let i = 0; i < applications.length; i++) {
-        const newStatus = i < calendar.max_people ? 'confirmed' : 'withdrawn';
+        if (i < calendar.max_people) {
+          confirmedIds.push(applications[i].id);
+        } else {
+          withdrawnIds.push(applications[i].id);
+        }
+      }
 
-        const { error: updateError } = await supabase
+      // 確定分を一括更新
+      if (confirmedIds.length > 0) {
+        const { error: confirmError } = await supabase
           .from('application')
-          .update({ status: newStatus })
-          .eq('id', applications[i].id);
+          .update({ status: 'confirmed' })
+          .in('id', confirmedIds);
 
-        if (updateError) {
-          console.error('Error updating application status:', updateError);
+        if (confirmError) {
+          console.error('Error confirming applications:', confirmError);
+        }
+      }
+
+      // 取り下げ分を一括更新
+      if (withdrawnIds.length > 0) {
+        const { error: withdrawError } = await supabase
+          .from('application')
+          .update({ status: 'withdrawn' })
+          .in('id', withdrawnIds);
+
+        if (withdrawError) {
+          console.error('Error withdrawing applications:', withdrawError);
         }
       }
     }
