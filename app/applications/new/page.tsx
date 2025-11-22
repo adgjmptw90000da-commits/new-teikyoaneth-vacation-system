@@ -262,7 +262,7 @@ export default function NewApplicationPage() {
 
           // 余裕がある場合は承認待ちステータスで申請
           status = "pending_approval";
-          priority = null; // 承認待ちは優先順位なし
+          priority = await calculateInitialPriority(vacationDate); // 申請時に優先順位を付与（承認時に再計算される）
         } else {
           // 確定処理前のレベル3
           status = withinPeriod ? "before_lottery" : "after_lottery";
