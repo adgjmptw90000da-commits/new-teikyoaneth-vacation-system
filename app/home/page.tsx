@@ -352,6 +352,19 @@ export default function HomePage() {
               </button>
 
               <button
+                onClick={() => router.push("/settings/events")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all"
+              >
+                <div className="bg-blue-50 p-3 rounded-lg text-blue-600 mr-4">
+                  <Icons.Calendar />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">イベント管理</h4>
+                  <p className="text-xs text-gray-500">イベントの登録・編集</p>
+                </div>
+              </button>
+
+              <button
                 onClick={() => router.push("/settings/admin")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >

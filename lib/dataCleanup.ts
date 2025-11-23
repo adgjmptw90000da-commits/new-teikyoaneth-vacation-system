@@ -5,6 +5,7 @@ interface RecordCounts {
   applications: number;
   calendarRecords: number;
   holidays: number;
+  events: number;
 }
 
 /**
@@ -55,10 +56,23 @@ export async function getRecordCountsByFiscalYear(
       return null;
     }
 
+    // イベント数をカウント
+    const { count: eventCount, error: eventError } = await supabase
+      .from("event")
+      .select("id", { count: "exact", head: true })
+      .gte("event_date", startDate)
+      .lte("event_date", endDate);
+
+    if (eventError) {
+      console.error("Error counting events:", eventError);
+      return null;
+    }
+
     return {
       applications: applicationCount || 0,
       calendarRecords: calendarCount || 0,
       holidays: holidayCount || 0,
+      events: eventCount || 0,
     };
   } catch (error) {
     console.error("Error in getRecordCountsByFiscalYear:", error);
@@ -111,6 +125,18 @@ export async function deleteRecordsByFiscalYear(
 
     if (holError) {
       console.error("Error deleting holidays:", holError);
+      return false;
+    }
+
+    // イベントを削除
+    const { error: eventError } = await supabase
+      .from("event")
+      .delete()
+      .gte("event_date", startDate)
+      .lte("event_date", endDate);
+
+    if (eventError) {
+      console.error("Error deleting events:", eventError);
       return false;
     }
 

@@ -32,6 +32,7 @@ export default function DataCleanupPage() {
     applications: number;
     calendarRecords: number;
     holidays: number;
+    events: number;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -79,7 +80,7 @@ export default function DataCleanupPage() {
     }
 
     const totalCount =
-      counts.applications + counts.calendarRecords + counts.holidays;
+      counts.applications + counts.calendarRecords + counts.holidays + counts.events;
 
     if (totalCount === 0) {
       alert("削除対象のデータがありません");
@@ -92,6 +93,7 @@ export default function DataCleanupPage() {
       `申請: ${counts.applications}件\n` +
       `カレンダー: ${counts.calendarRecords}件\n` +
       `祝日・主要学会: ${counts.holidays}件\n` +
+      `イベント: ${counts.events}件\n` +
       `合計: ${totalCount}件`
     );
 
@@ -239,12 +241,19 @@ export default function DataCleanupPage() {
                           {counts.holidays}件
                         </td>
                       </tr>
+                      <tr>
+                        <td className="px-6 py-4 text-gray-900 font-medium">イベント</td>
+                        <td className="px-6 py-4 text-right text-gray-900 font-bold">
+                          {counts.events}件
+                        </td>
+                      </tr>
                       <tr className="bg-gray-50">
                         <td className="px-6 py-4 text-gray-900 font-bold">合計</td>
                         <td className="px-6 py-4 text-right text-gray-900 font-bold text-lg">
                           {counts.applications +
                             counts.calendarRecords +
-                            counts.holidays}
+                            counts.holidays +
+                            counts.events}
                           件
                         </td>
                       </tr>

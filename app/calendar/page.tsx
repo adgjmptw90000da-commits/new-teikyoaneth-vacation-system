@@ -13,12 +13,15 @@ type Application = Database["public"]["Tables"]["application"]["Row"] & {
 };
 type CalendarManagement = Database["public"]["Tables"]["calendar_management"]["Row"];
 type Holiday = Database["public"]["Tables"]["holiday"]["Row"];
+type Event = Database["public"]["Tables"]["event"]["Row"];
 
 interface DayData {
   date: string;
   dayOfWeek: number;
   isHoliday: boolean;
   holidayName?: string;
+  isEvent: boolean;
+  eventName?: string;
   calendar?: CalendarManagement;
   applications: Application[];
 }
@@ -49,6 +52,7 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [daysData, setDaysData] = useState<DayData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
@@ -89,17 +93,20 @@ export default function CalendarPage() {
       // データを並列取得（パフォーマンス改善）
       const [
         { data: holidaysData },
+        { data: eventsData },
         { data: calendarDataAll },
         { data: applicationsDataAll },
         { data: setting }
       ] = await Promise.all([
         supabase.from("holiday").select("*"),
+        supabase.from("event").select("*"),
         supabase.from("calendar_management").select("*").gte("vacation_date", startDate).lte("vacation_date", endDate),
         supabase.from("application").select("*, user:staff_id(name)").gte("vacation_date", startDate).lte("vacation_date", endDate).not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)").order("vacation_date", { ascending: true }).order("priority", { ascending: true }),
         supabase.from("setting").select("*").eq("id", 1).single()
       ]);
 
       setHolidays(holidaysData || []);
+      setEvents(eventsData || []);
 
       // 日付ごとにデータを整理
       const calendarMap = new Map<string, CalendarManagement>();
@@ -147,12 +154,15 @@ export default function CalendarPage() {
         const date = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const dayOfWeek = new Date(date).getDay();
         const holiday = holidaysData?.find((h) => h.holiday_date === date);
+        const event = eventsData?.find((e) => e.event_date === date);
 
         days.push({
           date,
           dayOfWeek,
           isHoliday: !!holiday,
           holidayName: holiday?.name,
+          isEvent: !!event,
+          eventName: event?.name,
           calendar: calendarMap.get(date),
           applications: applicationsMap.get(date) || [],
         });
@@ -379,6 +389,7 @@ export default function CalendarPage() {
                           {["日", "月", "火", "水", "木", "金", "土"][day.dayOfWeek]}
                         </span>
                         {day.isHoliday && <span className="text-sm font-medium bg-[#ffb3c8] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
+                        {day.isEvent && <span className="text-sm font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">{day.eventName}</span>}
                       </h3>
                       <div className="flex gap-2">
                         {day.calendar?.status === "after_lottery" && (

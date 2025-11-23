@@ -67,10 +67,19 @@
    - 祝日・主要学会の登録・編集・削除
    - 祝日・主要学会一覧表示
 
-9. **管理者設定** (`/settings/admin`)
-   - 組織コード変更
-   - 抽選参加期間設定（何ヶ月前の何日〜何日）
-   - カレンダー表示設定（抽選期間内申請の表示/非表示）
+9. **イベント管理** (`/settings/events`)
+   - イベントの登録・編集・削除
+   - イベント一覧表示
+   - カレンダー上に表示されるが申請制限はなし（祝日・主要学会とは別）
+
+10. **管理者設定** (`/settings/admin`)
+    - 組織コード変更
+    - 抽選参加期間設定（何ヶ月前の何日〜何日）
+    - カレンダー表示設定（抽選期間内申請の表示/非表示）
+
+11. **データ削除** (`/admin/data-cleanup`)
+    - 年度別データの一括削除
+    - 申請、カレンダー、祝日・主要学会、イベントの削除
 
 ## データベース構造
 
@@ -141,6 +150,17 @@
 | id | SERIAL (PRIMARY KEY) | 祝日・主要学会ID |
 | holiday_date | DATE (UNIQUE) | 祝日・主要学会 |
 | name | VARCHAR | 祝日・主要学会名 |
+| created_at | TIMESTAMP | 作成日時 |
+| updated_at | TIMESTAMP | 更新日時 |
+
+### `event` テーブル
+イベント情報（申請制限なし）
+
+| カラム名 | 型 | 説明 |
+|---------|-----|------|
+| id | SERIAL (PRIMARY KEY) | イベントID |
+| event_date | DATE (UNIQUE) | イベント日付 |
+| name | VARCHAR | イベント名 |
 | created_at | TIMESTAMP | 作成日時 |
 | updated_at | TIMESTAMP | 更新日時 |
 
