@@ -106,7 +106,7 @@ export default function HolidaysPage() {
       setNewDate("");
       setNewName("");
       await fetchHolidays();
-      alert("祝日を登録しました");
+      alert("祝日・主要学会を登録しました");
     } catch (err) {
       console.error("Error:", err);
       setError("エラーが発生しました");
@@ -133,7 +133,7 @@ export default function HolidaysPage() {
       }
 
       await fetchHolidays();
-      alert("祝日を削除しました");
+      alert("祝日・主要学会を削除しました");
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -161,7 +161,7 @@ export default function HolidaysPage() {
                 <Icons.Calendar />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                祝日管理
+                祝日・主要学会管理
               </h1>
             </div>
             <div className="flex items-center">
@@ -183,7 +183,7 @@ export default function HolidaysPage() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <h2 className="text-lg font-bold text-gray-900">
-                祝日を追加
+                祝日・主要学会を追加
               </h2>
             </div>
             <div className="p-6">
@@ -240,7 +240,7 @@ export default function HolidaysPage() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <h2 className="text-lg font-bold text-gray-900">
-                登録済み祝日
+                登録済み祝日・主要学会
               </h2>
             </div>
 
@@ -250,7 +250,7 @@ export default function HolidaysPage() {
                   <Icons.Calendar />
                 </div>
                 <p className="text-gray-500 font-medium">
-                  登録されている祝日がありません
+                  登録されている祝日・主要学会がありません
                 </p>
               </div>
             ) : (

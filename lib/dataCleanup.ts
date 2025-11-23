@@ -43,7 +43,7 @@ export async function getRecordCountsByFiscalYear(
       return null;
     }
 
-    // 祝日数をカウント
+    // 祝日・主要学会数をカウント
     const { count: holidayCount, error: holError } = await supabase
       .from("holiday")
       .select("id", { count: "exact", head: true })
@@ -102,7 +102,7 @@ export async function deleteRecordsByFiscalYear(
       return false;
     }
 
-    // 祝日を削除
+    // 祝日・主要学会を削除
     const { error: holError } = await supabase
       .from("holiday")
       .delete()

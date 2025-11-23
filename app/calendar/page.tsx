@@ -173,7 +173,7 @@ export default function CalendarPage() {
   };
 
   const getDateBackgroundColor = (day: DayData): string => {
-    // 祝日・曜日に応じた背景色のみ
+    // 祝日・主要学会・曜日に応じた背景色のみ
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "bg-red-50/50";
     }
@@ -208,7 +208,7 @@ export default function CalendarPage() {
   };
 
   const getDateTextColor = (day: DayData): string => {
-    // 日付の文字色（日曜・祝日=赤、土曜=青）
+    // 日付の文字色（日曜・祝日・主要学会=赤、土曜=青）
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "text-red-600";
     }

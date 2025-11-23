@@ -173,10 +173,10 @@ export default function NewApplicationPage() {
         return;
       }
 
-      // バリデーション: 祝日
+      // バリデーション: 祝日・主要学会
       const holiday = await isHoliday(vacationDate);
       if (holiday) {
-        setError("祝日は年休申請できません");
+        setError("祝日・主要学会の日は年休申請できません");
         setLoading(false);
         return;
       }

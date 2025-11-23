@@ -57,7 +57,7 @@ export const isWithinLotteryPeriod = async (
 };
 
 /**
- * 祝日かどうかを判定
+ * 祝日・主要学会かどうかを判定
  */
 export const isHoliday = async (date: string): Promise<boolean> => {
   try {
@@ -68,7 +68,7 @@ export const isHoliday = async (date: string): Promise<boolean> => {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      // PGRST116 = データが見つからない（祝日ではない）
+      // PGRST116 = データが見つからない（祝日・主要学会ではない）
       console.error('Error checking holiday:', error);
       return false;
     }
@@ -270,7 +270,7 @@ export const performLottery = async (
       }
     }
 
-    // 祝日を取得
+    // 祝日・主要学会を取得
     const { data: holidays } = await supabase
       .from('holiday')
       .select('*')
@@ -279,7 +279,7 @@ export const performLottery = async (
 
     const holidayDates = new Set(holidays?.map(h => h.holiday_date) || []);
 
-    // 月内の全日付のステータスを抽選済みに変更（日曜・祝日を除く）
+    // 月内の全日付のステータスを抽選済みに変更（日曜・祝日・主要学会を除く）
     // 一括更新でパフォーマンス改善
     const daysInMonth = endDate.getDate();
     const calendarUpdates = [];
@@ -288,7 +288,7 @@ export const performLottery = async (
       const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayOfWeek = new Date(date).getDay();
 
-      // 日曜日(0)または祝日はスキップ
+      // 日曜日(0)または祝日・主要学会はスキップ
       if (dayOfWeek === 0 || holidayDates.has(date)) {
         continue;
       }
@@ -334,7 +334,7 @@ export const confirmAllApplicationsForMonth = async (
     const startDateStr = formatDateToYYYYMMDD(startDate);
     const endDateStr = formatDateToYYYYMMDD(endDate);
 
-    // 祝日を取得
+    // 祝日・主要学会を取得
     const { data: holidays } = await supabase
       .from('holiday')
       .select('*')
@@ -348,7 +348,7 @@ export const confirmAllApplicationsForMonth = async (
       .from('calendar_management')
       .select('*')
       .gte('vacation_date', startDateStr)
-      .lte('vacation_date', endDateStr)
+      .lte('holiday_date', endDateStr)
       .not('max_people', 'is', null);
 
     if (calendarError) {
@@ -359,11 +359,11 @@ export const confirmAllApplicationsForMonth = async (
       return { success: false, error: 'マンパワーが設定されている日付がありません' };
     }
 
-    // マンパワーが設定されている各日付に対して確定処理を実施（日曜・祝日を除く）
+    // マンパワーが設定されている各日付に対して確定処理を実施（日曜・祝日・主要学会を除く）
     // 並列処理で高速化
     const targetCalendars = calendarData.filter(calendar => {
       const dayOfWeek = new Date(calendar.vacation_date).getDay();
-      // 日曜日(0)または祝日はスキップ
+      // 日曜日(0)または祝日・主要学会はスキップ
       return dayOfWeek !== 0 && !holidayDates.has(calendar.vacation_date);
     });
 

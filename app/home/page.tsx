@@ -346,8 +346,8 @@ export default function HomePage() {
                   <Icons.Flag />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">祝日管理</h4>
-                  <p className="text-xs text-gray-500">祝日の登録・編集</p>
+                  <h4 className="font-semibold text-gray-900">祝日・主要学会管理</h4>
+                  <p className="text-xs text-gray-500">祝日・主要学会の登録・編集</p>
                 </div>
               </button>
 

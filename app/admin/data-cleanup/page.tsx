@@ -91,7 +91,7 @@ export default function DataCleanupPage() {
       `以下のデータを削除しますか？\n\n` +
       `申請: ${counts.applications}件\n` +
       `カレンダー: ${counts.calendarRecords}件\n` +
-      `祝日: ${counts.holidays}件\n` +
+      `祝日・主要学会: ${counts.holidays}件\n` +
       `合計: ${totalCount}件`
     );
 
@@ -158,7 +158,7 @@ export default function DataCleanupPage() {
               年度別データ削除
             </h2>
             <p className="text-sm text-gray-600">
-              指定した年度の申請ログ、カレンダーデータ、祝日データを削除します。
+              指定した年度の申請ログ、カレンダーデータ、祝日・主要学会データを削除します。
               <br />
               年度は4月1日〜翌年3月31日です（例: 2023年度 = 2023/4/1〜2024/3/31）
             </p>
@@ -234,7 +234,7 @@ export default function DataCleanupPage() {
                         </td>
                       </tr>
                       <tr>
-                        <td className="px-6 py-4 text-gray-900 font-medium">祝日</td>
+                        <td className="px-6 py-4 text-gray-900 font-medium">祝日・主要学会</td>
                         <td className="px-6 py-4 text-right text-gray-900 font-bold">
                           {counts.holidays}件
                         </td>
