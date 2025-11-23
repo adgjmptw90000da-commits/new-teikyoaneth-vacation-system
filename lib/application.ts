@@ -197,13 +197,14 @@ export const performLottery = async (
     const startDateStr = formatDateToYYYYMMDD(startDate);
     const endDateStr = formatDateToYYYYMMDD(endDate);
 
-    // 対象月の全申請を取得
+    // 対象月の全申請を取得（申請日時順）
     const { data: applications, error } = await supabase
       .from('application')
       .select('*')
       .gte('vacation_date', startDateStr)
       .lte('vacation_date', endDateStr)
-      .eq('status', 'before_lottery');
+      .eq('status', 'before_lottery')
+      .order('applied_at', { ascending: true });
 
     if (error) {
       return { success: false, error: error.message };
@@ -235,8 +236,8 @@ export const performLottery = async (
       const shuffledLevel2 = shuffle([...level2]);
       const shuffledLevel3Within = shuffle([...level3Within]);
 
-      // 期間外レベル3は申請順のまま（applied_atでソート）
-      const sortedLevel3Outside = level3Outside.sort(
+      // 期間外レベル3は申請順のまま（シャッフルしない、applied_atでソート）
+      const sortedLevel3Outside = [...level3Outside].sort(
         (a, b) => new Date(a.applied_at).getTime() - new Date(b.applied_at).getTime()
       );
 
@@ -408,12 +409,13 @@ export const performLotteryForDate = async (
   vacationDate: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    // 対象日の抽選前申請を取得
+    // 対象日の抽選前申請を取得（申請日時順）
     const { data: applications, error } = await supabase
       .from('application')
       .select('*')
       .eq('vacation_date', vacationDate)
-      .eq('status', 'before_lottery');
+      .eq('status', 'before_lottery')
+      .order('applied_at', { ascending: true });
 
     if (error) {
       return { success: false, error: error.message };
@@ -436,8 +438,8 @@ export const performLotteryForDate = async (
       const shuffledLevel2 = shuffle([...level2]);
       const shuffledLevel3Within = shuffle([...level3Within]);
 
-      // 期間外レベル3は申請順のまま
-      const sortedLevel3Outside = level3Outside.sort(
+      // 期間外レベル3は申請順のまま（シャッフルしない、applied_atでソート）
+      const sortedLevel3Outside = [...level3Outside].sort(
         (a, b) => new Date(a.applied_at).getTime() - new Date(b.applied_at).getTime()
       );
 
