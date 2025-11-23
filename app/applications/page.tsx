@@ -199,7 +199,7 @@ export default function ApplicationsPage() {
       case "withdrawn":
         return "取り下げ";
       case "cancelled":
-        return "キャンセル";
+        return "管理者キャンセル";
       case "pending_approval":
         return "確定後年休承認待ち";
       case "pending_cancellation":
