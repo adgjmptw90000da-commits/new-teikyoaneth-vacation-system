@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { approveCancellation, rejectCancellation } from "@/lib/cancellation";
+import { recalculatePriorities } from "@/lib/application";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
@@ -173,24 +174,31 @@ export default function ApprovalsPage() {
   };
 
   const handleReject = async (app: ApplicationWithCapacity) => {
-    if (!window.confirm(`${app.user.name}さんの申請を却下しますか？`)) {
+    if (!window.confirm(`${app.user.name}さんの申請を却下しますか？\n却下するとキャンセル扱いとなり、得点が回復します。`)) {
       return;
     }
 
     setProcessing(true);
 
     try {
-      // 却下（ステータスをbefore_lotteryに戻す）
+      // 却下（ステータスをcancelled_before_lotteryに変更）
       const { error } = await supabase
         .from("application")
-        .update({ status: "before_lottery" } as any)
+        .update({
+          status: "cancelled_before_lottery",
+          priority: null,
+          updated_at: new Date().toISOString()
+        } as any)
         .eq("id", app.id);
 
       if (error) {
         alert("却下に失敗しました");
         console.error("Error:", error);
       } else {
-        alert("申請を却下しました");
+        // 優先順位再計算
+        await recalculatePriorities(app.vacation_date);
+
+        alert("申請を却下しました。得点が回復します。");
         await fetchApplications();
       }
     } catch (err) {
