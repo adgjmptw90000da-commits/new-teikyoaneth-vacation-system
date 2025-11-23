@@ -122,29 +122,20 @@ function AdminCalendarPageContent() {
       const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
       const endDate = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-      // 祝日を一括取得
-      const { data: holidaysData } = await supabase
-        .from("holiday")
-        .select("*");
+      // データを並列取得（パフォーマンス改善）
+      const [
+        { data: holidaysData },
+        { data: calendarDataAll },
+        { data: applicationsDataAll },
+        { data: setting }
+      ] = await Promise.all([
+        supabase.from("holiday").select("*"),
+        supabase.from("calendar_management").select("*").gte("vacation_date", startDate).lte("vacation_date", endDate),
+        supabase.from("application").select("*, user:staff_id(name)").gte("vacation_date", startDate).lte("vacation_date", endDate).not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)").order("vacation_date", { ascending: true }).order("priority", { ascending: true }),
+        supabase.from("setting").select("*").eq("id", 1).single()
+      ]);
 
       setHolidays(holidaysData || []);
-
-      // カレンダー管理情報を月全体で一括取得
-      const { data: calendarDataAll } = await supabase
-        .from("calendar_management")
-        .select("*")
-        .gte("vacation_date", startDate)
-        .lte("vacation_date", endDate);
-
-      // 申請を月全体で一括取得（キャンセル以外、優先順位順）
-      const { data: applicationsDataAll } = await supabase
-        .from("application")
-        .select("*, user:staff_id(name)")
-        .gte("vacation_date", startDate)
-        .lte("vacation_date", endDate)
-        .not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)")
-        .order("vacation_date", { ascending: true })
-        .order("priority", { ascending: true });
 
       // 日付ごとにデータを整理
       const calendarMap = new Map<string, CalendarManagement>();
@@ -159,11 +150,30 @@ function AdminCalendarPageContent() {
         applicationsMap.set(app.vacation_date, apps);
       });
 
-      // 各申請に対して動的に抽選期間内かを判定
+      // 各申請に対して抽選期間内かを判定（クライアント側で計算 - パフォーマンス改善）
       const lotteryStatusMap = new Map<number, boolean>();
-      for (const app of (applicationsDataAll || [])) {
-        const isInLotteryPeriod = await isCurrentlyInLotteryPeriodForDate(app.vacation_date);
-        lotteryStatusMap.set(app.id, isInLotteryPeriod);
+      if (setting) {
+        const today = new Date();
+        for (const app of (applicationsDataAll || [])) {
+          const vacation = new Date(app.vacation_date);
+          const targetMonth = new Date(vacation);
+          targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+
+          const startDate = new Date(
+            targetMonth.getFullYear(),
+            targetMonth.getMonth(),
+            setting.lottery_period_start_day
+          );
+          const endDate = new Date(
+            targetMonth.getFullYear(),
+            targetMonth.getMonth(),
+            setting.lottery_period_end_day,
+            23, 59, 59
+          );
+
+          const isInLotteryPeriod = today >= startDate && today <= endDate;
+          lotteryStatusMap.set(app.id, isInLotteryPeriod);
+        }
       }
       setLotteryPeriodStatusMap(lotteryStatusMap);
 

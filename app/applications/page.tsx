@@ -72,23 +72,44 @@ export default function ApplicationsPage() {
       const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const currentMonthStr = currentMonth.toISOString().split('T')[0];
 
-      const { data, error } = await supabase
-        .from("application")
-        .select("*")
-        .eq("staff_id", user.staff_id)
-        .gte("vacation_date", currentMonthStr) // 現在の月以降のみ
-        .order("vacation_date", { ascending: true }); // 古い順
+      // データを並列取得（パフォーマンス改善）
+      const [
+        { data, error },
+        { data: setting }
+      ] = await Promise.all([
+        supabase.from("application").select("*").eq("staff_id", user.staff_id).gte("vacation_date", currentMonthStr).order("vacation_date", { ascending: true }),
+        supabase.from("setting").select("*").eq("id", 1).single()
+      ]);
 
       if (error) {
         console.error("Error fetching applications:", error);
       } else {
         setApplications(data || []);
 
-        // 各申請に対して動的に抽選期間内かを判定
+        // 各申請に対して抽選期間内かを判定（クライアント側で計算 - パフォーマンス改善）
         const lotteryStatusMap = new Map<number, boolean>();
-        for (const app of (data || [])) {
-          const isInLotteryPeriod = await isCurrentlyInLotteryPeriodForDate(app.vacation_date);
-          lotteryStatusMap.set(app.id, isInLotteryPeriod);
+        if (setting) {
+          const today = new Date();
+          for (const app of (data || [])) {
+            const vacation = new Date(app.vacation_date);
+            const targetMonth = new Date(vacation);
+            targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+
+            const startDate = new Date(
+              targetMonth.getFullYear(),
+              targetMonth.getMonth(),
+              setting.lottery_period_start_day
+            );
+            const endDate = new Date(
+              targetMonth.getFullYear(),
+              targetMonth.getMonth(),
+              setting.lottery_period_end_day,
+              23, 59, 59
+            );
+
+            const isInLotteryPeriod = today >= startDate && today <= endDate;
+            lotteryStatusMap.set(app.id, isInLotteryPeriod);
+          }
         }
         setLotteryPeriodStatusMap(lotteryStatusMap);
       }

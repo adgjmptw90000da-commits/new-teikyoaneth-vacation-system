@@ -155,15 +155,20 @@ export const recalculatePriorities = async (
       return;
     }
 
-    // 優先順位を1から振り直し
-    for (let i = 0; i < applications.length; i++) {
+    // 優先順位を1から振り直し（一括更新でパフォーマンス改善）
+    if (applications.length > 0) {
+      const updates = applications.map((app, i) => ({
+        id: app.id,
+        priority: i + 1,
+        updated_at: new Date().toISOString(),
+      }));
+
       const { error: updateError } = await supabase
         .from('application')
-        .update({ priority: i + 1 })
-        .eq('id', applications[i].id);
+        .upsert(updates);
 
       if (updateError) {
-        console.error('Error updating priority:', updateError);
+        console.error('Error updating priorities:', updateError);
       }
     }
   } catch (error) {
@@ -239,19 +244,20 @@ export const performLottery = async (
         ...sortedLevel3Outside,
       ];
 
-      // 優先順位を更新
-      for (let i = 0; i < allApplications.length; i++) {
-        const { error: updateError } = await supabase
-          .from('application')
-          .update({
-            priority: i + 1,
-            status: 'after_lottery',
-          })
-          .eq('id', allApplications[i].id);
+      // 優先順位を一括更新（パフォーマンス改善）
+      const updates = allApplications.map((app, i) => ({
+        id: app.id,
+        priority: i + 1,
+        status: 'after_lottery' as const,
+        updated_at: new Date().toISOString(),
+      }));
 
-        if (updateError) {
-          console.error('Error updating application:', updateError);
-        }
+      const { error: updateError } = await supabase
+        .from('application')
+        .upsert(updates);
+
+      if (updateError) {
+        console.error('Error updating applications:', updateError);
       }
     }
 
@@ -265,7 +271,10 @@ export const performLottery = async (
     const holidayDates = new Set(holidays?.map(h => h.holiday_date) || []);
 
     // 月内の全日付のステータスを抽選済みに変更（日曜・祝日を除く）
+    // 一括更新でパフォーマンス改善
     const daysInMonth = endDate.getDate();
+    const calendarUpdates = [];
+
     for (let day = 1; day <= daysInMonth; day++) {
       const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const dayOfWeek = new Date(date).getDay();
@@ -275,12 +284,17 @@ export const performLottery = async (
         continue;
       }
 
+      calendarUpdates.push({
+        vacation_date: date,
+        status: 'after_lottery' as const,
+      });
+    }
+
+    // 一括upsert
+    if (calendarUpdates.length > 0) {
       const { error: calendarError } = await supabase
         .from('calendar_management')
-        .upsert({
-          vacation_date: date,
-          status: 'after_lottery',
-        });
+        .upsert(calendarUpdates);
 
       if (calendarError) {
         console.error('Error updating calendar status:', calendarError);
@@ -427,19 +441,20 @@ export const performLotteryForDate = async (
         ...sortedLevel3Outside,
       ];
 
-      // 優先順位を更新
-      for (let i = 0; i < allApplications.length; i++) {
-        const { error: updateError } = await supabase
-          .from('application')
-          .update({
-            priority: i + 1,
-            status: 'after_lottery',
-          })
-          .eq('id', allApplications[i].id);
+      // 優先順位を一括更新（パフォーマンス改善）
+      const updates = allApplications.map((app, i) => ({
+        id: app.id,
+        priority: i + 1,
+        status: 'after_lottery' as const,
+        updated_at: new Date().toISOString(),
+      }));
 
-        if (updateError) {
-          console.error('Error updating application:', updateError);
-        }
+      const { error: updateError } = await supabase
+        .from('application')
+        .upsert(updates);
+
+      if (updateError) {
+        console.error('Error updating applications:', updateError);
       }
     }
 

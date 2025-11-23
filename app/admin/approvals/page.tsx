@@ -181,11 +181,11 @@ export default function ApprovalsPage() {
     setProcessing(true);
 
     try {
-      // 却下（ステータスをcancelled_before_lotteryに変更）
+      // 却下（ステータスをcancelledに変更 - 管理者キャンセル扱い）
       const { error } = await supabase
         .from("application")
         .update({
-          status: "cancelled_before_lottery",
+          status: "cancelled",
           priority: null,
           updated_at: new Date().toISOString()
         } as any)
