@@ -12,6 +12,7 @@ DECLARE
   period_val TEXT;
   applied_timestamp TIMESTAMPTZ;
   is_within_period BOOLEAN;
+  app_record RECORD;
 
   -- 日付ごとの配分設定
   dates_config CONSTANT JSONB := jsonb_build_array(
