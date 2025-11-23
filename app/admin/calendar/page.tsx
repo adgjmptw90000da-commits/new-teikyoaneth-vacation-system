@@ -716,9 +716,9 @@ function AdminCalendarPageContent() {
               </div>
             </div>
 
-            {/* 直近4ヶ月タブ */}
+            {/* 直近5ヶ月タブ */}
             <div className="mb-6 flex justify-start sm:justify-center gap-2 overflow-x-auto pb-2">
-              {[0, 1, 2, 3].map(offset => {
+              {[0, 1, 2, 3, 4].map(offset => {
                 const tabDate = new Date();
                 tabDate.setMonth(tabDate.getMonth() + offset);
                 const tabYear = tabDate.getFullYear();
