@@ -220,19 +220,19 @@ export default function ApplicationsPage() {
       case "after_lottery":
         return "bg-orange-100 text-orange-800";
       case "confirmed":
-        return "bg-[#D6E2CC] text-green-900";
+        return "bg-[#e0ffe0] text-green-900";
       case "withdrawn":
         return "bg-yellow-100 text-yellow-800";
       case "cancelled":
-        return "bg-[#F8CCCC] text-red-900";
+        return "bg-[#ffb3c8] text-red-900";
       case "pending_approval":
         return "bg-yellow-100 text-yellow-800";
       case "pending_cancellation":
         return "bg-purple-100 text-purple-800";
       case "cancelled_before_lottery":
-        return "bg-[#F8CCCC] text-red-900";
+        return "bg-[#ffb3c8] text-red-900";
       case "cancelled_after_lottery":
-        return "bg-[#F8CCCC] text-red-900";
+        return "bg-[#ffb3c8] text-red-900";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -319,11 +319,11 @@ export default function ApplicationsPage() {
   const getLevelBadgeColor = (level: number): string => {
     switch (level) {
       case 1:
-        return "bg-[#F8CCCC] text-red-900";
+        return "bg-[#ffb3c8] text-red-900";
       case 2:
         return "bg-blue-100 text-blue-800";
       case 3:
-        return "bg-[#D6E2CC] text-green-900";
+        return "bg-[#e0ffe0] text-green-900";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -467,7 +467,7 @@ export default function ApplicationsPage() {
                                 <button
                                   onClick={() => handleCancel(app)}
                                   disabled={cancelingId === app.id}
-                                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-[#F8CCCC] border border-red-200 rounded-lg transition-colors disabled:opacity-50"
+                                  className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-[#ffb3c8] border border-red-200 rounded-lg transition-colors disabled:opacity-50"
                                 >
                                   {cancelingId === app.id ? "キャンセル中..." : "キャンセル"}
                                 </button>

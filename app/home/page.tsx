@@ -368,7 +368,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/data-cleanup")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-red-300 transition-all group"
               >
-                <div className="bg-red-50 p-3 rounded-lg text-red-600 mr-4 group-hover:bg-[#F8CCCC] transition-colors">
+                <div className="bg-red-50 p-3 rounded-lg text-red-600 mr-4 group-hover:bg-[#ffb3c8] transition-colors">
                   <Icons.Trash />
                 </div>
                 <div className="text-left">

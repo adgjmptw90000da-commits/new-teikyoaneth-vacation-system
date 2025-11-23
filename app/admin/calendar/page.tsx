@@ -588,11 +588,11 @@ function AdminCalendarPageContent() {
   const getApplicationBackgroundColor = (app: Application): string => {
     // レベルに応じた背景色
     if (app.level === 1) {
-      return app.status === "confirmed" ? "bg-red-600 text-white shadow-sm" : "bg-[#F8CCCC] text-red-900 border border-red-300";
+      return app.status === "confirmed" ? "bg-red-600 text-white shadow-sm" : "bg-[#ffb3c8] text-red-900 border border-red-300";
     } else if (app.level === 2) {
       return app.status === "confirmed" ? "bg-blue-600 text-white shadow-sm" : "bg-blue-100 text-blue-800 border border-blue-200";
     } else if (app.is_within_lottery_period) {
-      return app.status === "confirmed" ? "bg-green-600 text-white shadow-sm" : "bg-[#D6E2CC] text-green-900 border border-green-300";
+      return app.status === "confirmed" ? "bg-green-600 text-white shadow-sm" : "bg-[#e0ffe0] text-green-900 border border-green-300";
     } else {
       return app.status === "confirmed" ? "bg-gray-600 text-white shadow-sm" : "bg-gray-100 text-gray-800 border border-gray-200";
     }
@@ -734,7 +734,7 @@ function AdminCalendarPageContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-[#F8CCCC] border border-red-300 rounded flex items-center justify-center text-xs text-red-900 font-medium">確定以外</div>
+                    <div className="w-16 h-8 bg-[#ffb3c8] border border-red-300 rounded flex items-center justify-center text-xs text-red-900 font-medium">確定以外</div>
                     <div className="w-12 h-8 bg-red-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
                   </div>
                   <span className="text-sm font-medium text-gray-700">レベル1</span>
@@ -748,7 +748,7 @@ function AdminCalendarPageContent() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-[#D6E2CC] border border-green-300 rounded flex items-center justify-center text-xs text-green-900 font-medium">確定以外</div>
+                    <div className="w-16 h-8 bg-[#e0ffe0] border border-green-300 rounded flex items-center justify-center text-xs text-green-900 font-medium">確定以外</div>
                     <div className="w-12 h-8 bg-green-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
                   </div>
                   <span className="text-sm font-medium text-gray-700">レベル3(期間内)</span>
@@ -779,13 +779,13 @@ function AdminCalendarPageContent() {
                       <h3 className={`text-lg font-bold flex items-center gap-2 ${getDateTextColor(day)}`}>
                         <span className="text-2xl">{day.date.split('-')[2]}</span>
 
-                        <span className={`text-sm px-2 py-0.5 rounded-md ${day.dayOfWeek === 0 ? 'bg-[#F8CCCC] text-red-900' :
+                        <span className={`text-sm px-2 py-0.5 rounded-md ${day.dayOfWeek === 0 ? 'bg-[#ffb3c8] text-red-900' :
                           day.dayOfWeek === 6 ? 'bg-blue-100 text-blue-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
                           {["日", "月", "火", "水", "木", "金", "土"][day.dayOfWeek]}
                         </span>
-                        {day.isHoliday && <span className="text-sm font-medium bg-[#F8CCCC] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
+                        {day.isHoliday && <span className="text-sm font-medium bg-[#ffb3c8] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
                       </h3>
                       <div className="flex gap-2">
                         {day.calendar?.status === "after_lottery" && (
@@ -794,7 +794,7 @@ function AdminCalendarPageContent() {
                           </span>
                         )}
                         {day.calendar?.status === "confirmation_completed" && (
-                          <span className="px-2.5 py-1 text-xs font-medium bg-[#F8CCCC] text-red-900 rounded-full border border-red-300">
+                          <span className="px-2.5 py-1 text-xs font-medium bg-[#ffb3c8] text-red-900 rounded-full border border-red-300">
                             確定処理済み
                           </span>
                         )}

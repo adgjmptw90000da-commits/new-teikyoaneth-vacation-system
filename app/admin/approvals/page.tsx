@@ -504,8 +504,8 @@ export default function ApprovalsPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${app.confirmed_count < app.max_people
-                                ? "bg-[#D6E2CC] text-green-900"
-                                : "bg-[#F8CCCC] text-red-900"
+                                ? "bg-[#e0ffe0] text-green-900"
+                                : "bg-[#ffb3c8] text-red-900"
                               }`}
                           >
                             {app.confirmed_count} / {app.max_people}
