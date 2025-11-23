@@ -155,20 +155,24 @@ export const recalculatePriorities = async (
       return;
     }
 
-    // 優先順位を1から振り直し（一括更新でパフォーマンス改善）
+    // 優先順位を1から振り直し（並列更新でパフォーマンス改善）
     if (applications.length > 0) {
-      const updates = applications.map((app, i) => ({
-        id: app.id,
-        priority: i + 1,
-        updated_at: new Date().toISOString(),
-      }));
+      const updatePromises = applications.map((app, i) =>
+        supabase
+          .from('application')
+          .update({
+            priority: i + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', app.id)
+      );
 
-      const { error: updateError } = await supabase
-        .from('application')
-        .upsert(updates);
+      const results = await Promise.all(updatePromises);
 
-      if (updateError) {
-        console.error('Error updating priorities:', updateError);
+      // エラーチェック
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Error updating priorities:', errors);
       }
     }
   } catch (error) {
@@ -244,20 +248,24 @@ export const performLottery = async (
         ...sortedLevel3Outside,
       ];
 
-      // 優先順位を一括更新（パフォーマンス改善）
-      const updates = allApplications.map((app, i) => ({
-        id: app.id,
-        priority: i + 1,
-        status: 'after_lottery' as const,
-        updated_at: new Date().toISOString(),
-      }));
+      // 優先順位を並列更新（パフォーマンス改善）
+      const updatePromises = allApplications.map((app, i) =>
+        supabase
+          .from('application')
+          .update({
+            priority: i + 1,
+            status: 'after_lottery',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', app.id)
+      );
 
-      const { error: updateError } = await supabase
-        .from('application')
-        .upsert(updates);
+      const results = await Promise.all(updatePromises);
 
-      if (updateError) {
-        console.error('Error updating applications:', updateError);
+      // エラーチェック
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Error updating applications:', errors);
       }
     }
 
@@ -441,20 +449,24 @@ export const performLotteryForDate = async (
         ...sortedLevel3Outside,
       ];
 
-      // 優先順位を一括更新（パフォーマンス改善）
-      const updates = allApplications.map((app, i) => ({
-        id: app.id,
-        priority: i + 1,
-        status: 'after_lottery' as const,
-        updated_at: new Date().toISOString(),
-      }));
+      // 優先順位を並列更新（パフォーマンス改善）
+      const updatePromises = allApplications.map((app, i) =>
+        supabase
+          .from('application')
+          .update({
+            priority: i + 1,
+            status: 'after_lottery',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', app.id)
+      );
 
-      const { error: updateError } = await supabase
-        .from('application')
-        .upsert(updates);
+      const results = await Promise.all(updatePromises);
 
-      if (updateError) {
-        console.error('Error updating applications:', updateError);
+      // エラーチェック
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Error updating applications:', errors);
       }
     }
 
