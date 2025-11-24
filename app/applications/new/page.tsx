@@ -189,7 +189,7 @@ export default function NewApplicationPage() {
       const event = await isEvent(vacationDate);
       if (event) {
         const confirmed = window.confirm(
-          "イベントが登録されている日です。通常より年休枠が少ない可能性が高いですが、このまま申請しますか。"
+          `イベント（${event.name}）が登録されている日です。通常より年休枠が少ない可能性が高いですが、このまま申請しますか。`
         );
         if (!confirmed) {
           setLoading(false);
