@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import {
   calculateAnnualLeavePoints,
   checkAnnualLeavePointsAvailable,
+  getCurrentLotteryPeriodInfo,
 } from "@/lib/application";
 import { PointsStatus } from "@/components/PointsStatus";
 
@@ -50,12 +51,21 @@ const Icons = {
   Trash: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
   ),
+  Info: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="16" y2="12" /><line x1="12" x2="12.01" y1="8" y2="8" /></svg>
+  ),
 };
 
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
+  const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
+    isWithinPeriod: boolean;
+    targetMonth: string;
+    periodStart: string;
+    periodEnd: string;
+  } | null>(null);
   const [pointsInfo, setPointsInfo] = useState<{
     level1ApplicationCount: number;
     level1ConfirmedCount: number;
@@ -75,6 +85,12 @@ export default function HomePage() {
       return;
     }
     setUser(currentUser);
+
+    // 抽選期間情報を取得
+    const fetchLotteryPeriodInfo = async () => {
+      const info = await getCurrentLotteryPeriodInfo();
+      setLotteryPeriodInfo(info);
+    };
 
     // 年休得点情報を取得
     const fetchPointsInfo = async () => {
@@ -120,6 +136,7 @@ export default function HomePage() {
       });
     };
 
+    fetchLotteryPeriodInfo();
     fetchPointsInfo();
 
     // 管理者の場合、承認待ち申請数を取得（レベル3承認待ち + キャンセル承認待ち）
@@ -215,6 +232,32 @@ export default function HomePage() {
           <div className="absolute right-0 top-0 h-full w-1/3 bg-white/10 transform skew-x-12 translate-x-12"></div>
         </div>
 
+        {/* Lottery Period Info */}
+        {lotteryPeriodInfo && (
+          <div
+            className={`${
+              lotteryPeriodInfo.isWithinPeriod
+                ? "bg-blue-50 border-blue-200 text-blue-800"
+                : "bg-gray-50 border-gray-200 text-gray-700"
+            } border px-4 py-3 rounded-xl flex items-start gap-3 shadow-sm`}
+          >
+            <div className="mt-0.5 shrink-0">
+              <Icons.Info />
+            </div>
+            <div>
+              {lotteryPeriodInfo.isWithinPeriod ? (
+                <p className="text-sm font-medium">
+                  現在は<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間です（{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}）
+                </p>
+              ) : (
+                <p className="text-sm font-medium">
+                  現在は抽選参加可能期間外です（<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間は{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}です）
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Points Info Card */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <PointsStatus pointsInfo={pointsInfo} className="lg:col-span-3" />
@@ -238,7 +281,7 @@ export default function HomePage() {
               onClick={() => router.push("/applications/new")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
-              <div className="bg-blue-50 w-12 h-12 rounded-lg flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.FileText />
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">年休申請</h4>
@@ -249,7 +292,7 @@ export default function HomePage() {
               onClick={() => router.push("/applications")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
-              <div className="bg-indigo-50 w-12 h-12 rounded-lg flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-indigo-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.List />
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">申請一覧</h4>
@@ -260,7 +303,7 @@ export default function HomePage() {
               onClick={() => router.push("/calendar")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
-              <div className="bg-teal-50 w-12 h-12 rounded-lg flex items-center justify-center text-teal-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-teal-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-teal-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.Calendar />
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">年休カレンダー</h4>
@@ -271,7 +314,7 @@ export default function HomePage() {
               onClick={() => router.push("/settings/profile")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
-              <div className="bg-gray-50 w-12 h-12 rounded-lg flex items-center justify-center text-gray-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-gray-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-gray-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.User />
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-gray-800 transition-colors">個人情報設定</h4>
@@ -298,7 +341,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/calendar")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
-                <div className="bg-purple-50 p-3 rounded-lg text-purple-600 mr-4">
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
                   <Icons.Calendar />
                 </div>
                 <div className="text-left">
@@ -311,7 +354,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/approvals")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all relative overflow-hidden"
               >
-                <div className="bg-purple-50 p-3 rounded-lg text-purple-600 mr-4 relative">
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4 relative">
                   <Icons.CheckCircle />
                   {pendingApprovalsCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
@@ -321,7 +364,7 @@ export default function HomePage() {
                 </div>
                 <div className="text-left">
                   <h4 className="font-semibold text-gray-900">承認待ち申請</h4>
-                  <p className="text-xs text-gray-500">確定後レベル3申請の承認・却下</p>
+                  <p className="text-xs text-gray-500">抽選前キャンセル及び確定後年休申請の承認・却下</p>
                 </div>
               </button>
 
@@ -329,7 +372,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/members")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
-                <div className="bg-purple-50 p-3 rounded-lg text-purple-600 mr-4">
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
                   <Icons.Users />
                 </div>
                 <div className="text-left">
@@ -342,7 +385,7 @@ export default function HomePage() {
                 onClick={() => router.push("/settings/holidays")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
-                <div className="bg-purple-50 p-3 rounded-lg text-purple-600 mr-4">
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
                   <Icons.Flag />
                 </div>
                 <div className="text-left">
@@ -355,7 +398,7 @@ export default function HomePage() {
                 onClick={() => router.push("/settings/events")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all"
               >
-                <div className="bg-blue-50 p-3 rounded-lg text-blue-600 mr-4">
+                <div className="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-blue-600 mr-4">
                   <Icons.Calendar />
                 </div>
                 <div className="text-left">
@@ -368,7 +411,7 @@ export default function HomePage() {
                 onClick={() => router.push("/settings/admin")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
-                <div className="bg-purple-50 p-3 rounded-lg text-purple-600 mr-4">
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
                   <Icons.Tool />
                 </div>
                 <div className="text-left">
@@ -381,7 +424,7 @@ export default function HomePage() {
                 onClick={() => router.push("/admin/data-cleanup")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-red-300 transition-all group"
               >
-                <div className="bg-red-50 p-3 rounded-lg text-red-600 mr-4 group-hover:bg-[#ffb3c8] transition-colors">
+                <div className="bg-red-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg text-red-600 mr-4 flex items-center justify-center group-hover:bg-[#ffb3c8] transition-colors">
                   <Icons.Trash />
                 </div>
                 <div className="text-left">

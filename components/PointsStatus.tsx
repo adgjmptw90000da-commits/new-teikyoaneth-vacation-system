@@ -106,7 +106,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-[8px] sm:text-xs text-gray-600">抽選後キャンセル</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
                                             {pointsInfo.level1CancelledAfterLotteryCount.toFixed(2)}
                                         </span>
@@ -139,7 +139,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-[8px] sm:text-xs text-gray-600">抽選後キャンセル</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
                                             {pointsInfo.level2CancelledAfterLotteryCount.toFixed(2)}
                                         </span>
@@ -172,7 +172,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                                         </span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-[10px] sm:text-xs text-gray-600">抽選後キャンセル</span>
+                                        <span className="text-[8px] sm:text-xs text-gray-600">抽選後キャンセル</span>
                                         <span className="text-sm sm:text-base font-bold text-gray-900 text-center min-w-[2rem]">
                                             {pointsInfo.level3CancelledAfterLotteryCount.toFixed(2)}
                                         </span>

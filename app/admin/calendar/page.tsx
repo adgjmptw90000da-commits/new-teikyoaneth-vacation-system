@@ -680,36 +680,36 @@ function AdminCalendarPageContent() {
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             {/* 月移動とアクションボタン */}
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
               <div className="flex justify-between items-center gap-2">
                 <button
                   onClick={() => changeMonth(-1)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition-colors"
+                  className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 text-sm font-medium transition-colors"
                 >
                   <Icons.ChevronLeft />
-                  <span className="hidden sm:inline">前月</span>
+                  <span className="hidden sm:inline text-xs sm:text-sm">前月</span>
                 </button>
-                <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{currentYear}年{currentMonth}月</h2>
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 tracking-tight">{currentYear}年{currentMonth}月</h2>
                 <button
                   onClick={() => changeMonth(1)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium transition-colors"
+                  className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 text-sm font-medium transition-colors"
                 >
-                  <span className="hidden sm:inline">次月</span>
+                  <span className="hidden sm:inline text-xs sm:text-sm">次月</span>
                   <Icons.ChevronRight />
                 </button>
               </div>
-              <div className="flex items-center gap-2 sm:gap-3 justify-center">
+              <div className="flex items-center gap-2 justify-center">
                 <button
                   onClick={handleLottery}
                   disabled={processing}
-                  className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:bg-gray-400 text-sm font-bold shadow-sm transition-all"
+                  className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:bg-gray-400 text-xs sm:text-sm font-bold shadow-sm transition-all"
                 >
                   {processing ? "抽選中..." : "一括抽選"}
                 </button>
                 <button
                   onClick={handleBatchConfirm}
                   disabled={processing}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 text-sm font-bold shadow-sm transition-all"
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 text-xs sm:text-sm font-bold shadow-sm transition-all"
                 >
                   一括確定
                 </button>
@@ -717,7 +717,7 @@ function AdminCalendarPageContent() {
             </div>
 
             {/* 直近5ヶ月タブ */}
-            <div className="mb-6 flex justify-start sm:justify-center gap-2 overflow-x-auto pb-2">
+            <div className="mb-4 flex justify-start sm:justify-center gap-1 sm:gap-2 overflow-x-auto pb-2">
               {[0, 1, 2, 3, 4].map(offset => {
                 const tabDate = new Date();
                 tabDate.setMonth(tabDate.getMonth() + offset);
@@ -734,7 +734,7 @@ function AdminCalendarPageContent() {
                       // URLを更新
                       router.push(`/admin/calendar?year=${tabYear}&month=${tabMonth}`);
                     }}
-                    className={`px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium transition-all ${isActive
+                    className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg whitespace-nowrap text-xs sm:text-sm font-medium transition-all ${isActive
                       ? 'bg-blue-600 text-white shadow-md'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
@@ -746,39 +746,46 @@ function AdminCalendarPageContent() {
             </div>
 
             {/* 凡例 */}
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex items-center gap-2 mb-3">
+            <div className="p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="flex items-center gap-1.5 mb-1.5 sm:mb-2">
                 <Icons.Info />
-                <p className="font-bold text-sm text-gray-900">凡例</p>
+                <p className="font-bold text-xs text-gray-900">凡例</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-[#ffb3c8] border border-red-300 rounded flex items-center justify-center text-xs text-red-900 font-medium">確定以外</div>
-                    <div className="w-12 h-8 bg-red-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
+              <div className="grid grid-cols-4 gap-1 sm:gap-2">
+                {/* レベル1 */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル1</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-[#ffb3c8] border border-red-300 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-red-900 font-medium">確定以外</div>
+                    <div className="h-5 bg-red-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">レベル1</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-blue-100 border border-blue-200 rounded flex items-center justify-center text-xs text-blue-800 font-medium">確定以外</div>
-                    <div className="w-12 h-8 bg-blue-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
+
+                {/* レベル2 */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル2</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-blue-100 border border-blue-200 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-blue-800 font-medium">確定以外</div>
+                    <div className="h-5 bg-blue-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">レベル2</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-[#e0ffe0] border border-green-300 rounded flex items-center justify-center text-xs text-green-900 font-medium">確定以外</div>
-                    <div className="w-12 h-8 bg-green-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
+
+                {/* レベル3(期間内) */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル3(期間内)</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-[#e0ffe0] border border-green-300 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-green-900 font-medium">確定以外</div>
+                    <div className="h-5 bg-green-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">レベル3(期間内)</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-16 h-8 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-xs text-gray-800 font-medium">確定以外</div>
-                    <div className="w-12 h-8 bg-gray-600 text-white rounded flex items-center justify-center text-xs font-bold shadow-sm">確定</div>
+
+                {/* レベル3(期間外) */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル3(期間外)</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-gray-800 font-medium">確定以外</div>
+                    <div className="h-5 bg-gray-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
                   </div>
-                  <span className="text-sm font-medium text-gray-700">レベル3(期間外)</span>
                 </div>
               </div>
             </div>
