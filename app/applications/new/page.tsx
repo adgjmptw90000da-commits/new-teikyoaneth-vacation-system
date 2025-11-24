@@ -13,6 +13,7 @@ import {
 import {
   isWithinLotteryPeriod,
   isHoliday,
+  isEvent,
   checkDuplicateApplication,
   calculateInitialPriority,
   isBeforeLotteryPeriod,
@@ -179,6 +180,18 @@ export default function NewApplicationPage() {
         setError("祝日・主要学会の日は年休申請できません");
         setLoading(false);
         return;
+      }
+
+      // イベントチェック: 警告のみ表示
+      const event = await isEvent(vacationDate);
+      if (event) {
+        const confirmed = window.confirm(
+          "イベントが登録されている日です。通常より年休枠が少ない可能性が高いですが、このまま申請しますか。"
+        );
+        if (!confirmed) {
+          setLoading(false);
+          return;
+        }
       }
 
       // バリデーション: 重複チェック（キャンセル以外）

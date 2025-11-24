@@ -81,6 +81,30 @@ export const isHoliday = async (date: string): Promise<boolean> => {
 };
 
 /**
+ * イベントが登録されているかを判定
+ */
+export const isEvent = async (date: string): Promise<{ name: string } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('event')
+      .select('*')
+      .eq('event_date', date)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = データが見つからない（イベントではない）
+      console.error('Error checking event:', error);
+      return null;
+    }
+
+    return data ? { name: data.name } : null;
+  } catch (error) {
+    console.error('Error in isEvent:', error);
+    return null;
+  }
+};
+
+/**
  * 同一日付の既存申請をチェック
  */
 export const checkDuplicateApplication = async (

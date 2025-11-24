@@ -175,6 +175,29 @@ export interface Database {
           updated_at?: string
         }
       }
+      event: {
+        Row: {
+          id: number
+          event_date: string
+          name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          event_date: string
+          name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          event_date?: string
+          name?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       priority_exchange_log: {
         Row: {
           id: number
