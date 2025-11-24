@@ -92,7 +92,7 @@ export default function NewApplicationPage() {
       // 設定から現在の年度を取得
       const { data: settingData } = await supabase
         .from("setting")
-        .select("current_fiscal_year")
+        .select("current_fiscal_year, level1_points, level2_points, level3_points")
         .eq("id", 1)
         .single();
 
@@ -120,14 +120,17 @@ export default function NewApplicationPage() {
         level1ConfirmedCount: pointsData.level1ConfirmedCount,
         level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
         level1Points: pointsData.level1Points,
+        level1PointsPerApplication: settingData.level1_points,
         level2PendingCount: pointsData.level2PendingCount,
         level2ConfirmedCount: pointsData.level2ConfirmedCount,
         level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
         level2Points: pointsData.level2Points,
+        level2PointsPerApplication: settingData.level2_points,
         level3PendingCount: pointsData.level3PendingCount,
         level3ConfirmedCount: pointsData.level3ConfirmedCount,
         level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
         level3Points: pointsData.level3Points,
+        level3PointsPerApplication: settingData.level3_points,
         totalPoints: pointsData.totalPoints,
         maxPoints: availabilityData.maxPoints,
         remainingPoints: availabilityData.remainingPoints,

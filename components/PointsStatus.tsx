@@ -5,14 +5,17 @@ type PointsInfo = {
     level1ConfirmedCount: number;
     level1CancelledAfterLotteryCount: number;
     level1Points: number;
+    level1PointsPerApplication: number;
     level2PendingCount: number;
     level2ConfirmedCount: number;
     level2CancelledAfterLotteryCount: number;
     level2Points: number;
+    level2PointsPerApplication: number;
     level3PendingCount: number;
     level3ConfirmedCount: number;
     level3CancelledAfterLotteryCount: number;
     level3Points: number;
+    level3PointsPerApplication: number;
     totalPoints: number;
     maxPoints: number;
     remainingPoints: number;
@@ -90,7 +93,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                             {/* Level 1 */}
                             <div className="bg-red-50 rounded-lg p-2 sm:p-3 border border-red-100">
                                 <div className="text-[10px] sm:text-xs font-semibold text-red-600 uppercase tracking-wider mb-2 text-center">
-                                    Lv1
+                                    Lv1 ({pointsInfo.level1PointsPerApplication}点/申請)
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
@@ -123,7 +126,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                             {/* Level 2 */}
                             <div className="bg-blue-50 rounded-lg p-2 sm:p-3 border border-blue-100">
                                 <div className="text-[10px] sm:text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2 text-center">
-                                    Lv2
+                                    Lv2 ({pointsInfo.level2PointsPerApplication}点/申請)
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
@@ -156,7 +159,7 @@ export const PointsStatus: React.FC<PointsStatusProps> = ({
                             {/* Level 3 */}
                             <div className="bg-green-50 rounded-lg p-2 sm:p-3 border border-green-100">
                                 <div className="text-[10px] sm:text-xs font-semibold text-green-600 uppercase tracking-wider mb-2 text-center">
-                                    Lv3
+                                    Lv3 ({pointsInfo.level3PointsPerApplication}点/申請)
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex justify-between items-center">
