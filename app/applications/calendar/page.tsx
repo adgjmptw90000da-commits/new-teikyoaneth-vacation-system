@@ -500,7 +500,7 @@ export default function ApplicationCalendarPage() {
           priority = await calculateInitialPriority(vacationDate);
         } else {
           // 確定処理前のレベル3
-          status = withinPeriod ? "before_lottery" : "before_lottery";
+          status = withinPeriod ? "before_lottery" : "after_lottery";
           priority = await calculateInitialPriority(vacationDate);
         }
       } else {
