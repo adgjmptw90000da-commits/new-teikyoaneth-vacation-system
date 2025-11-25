@@ -1001,7 +1001,7 @@ export default function ApplicationCalendarPage() {
 
                   {/* 期間選択 */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">期間</label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">期間</label>
                     <div className="flex gap-2">
                       {['full_day', 'am', 'pm'].map((period) => {
                         const disabled = selectedDay.dayOfWeek === 6 && period !== 'am';
@@ -1030,7 +1030,7 @@ export default function ApplicationCalendarPage() {
 
                   {/* レベル選択 */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">レベル</label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">レベル</label>
                     <div className="flex gap-2">
                       {[1, 2, 3].map((level) => {
                         // レベル1・2は抽選期間内のみ選択可能
@@ -1072,7 +1072,7 @@ export default function ApplicationCalendarPage() {
 
                   {/* 備考 */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">備考（任意）</label>
+                    <label className="block text-sm font-medium text-gray-900 mb-2">備考（任意）</label>
                     <textarea
                       value={applyRemarks}
                       onChange={(e) => setApplyRemarks(e.target.value)}
@@ -1086,7 +1086,7 @@ export default function ApplicationCalendarPage() {
                   <div className="flex gap-3 pt-2">
                     <button
                       onClick={() => setShowModal(false)}
-                      className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors"
+                      className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 font-medium rounded-lg transition-colors"
                     >
                       キャンセル
                     </button>
@@ -1108,11 +1108,11 @@ export default function ApplicationCalendarPage() {
                     <>
                       <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                         <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">期間</span>
+                          <span className="text-sm text-gray-900">期間</span>
                           <span className="font-medium">{getPeriodLabel(selectedDay.application.period)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">レベル</span>
+                          <span className="text-sm text-gray-900">レベル</span>
                           <span className={`font-bold px-2 py-0.5 rounded ${
                             selectedDay.application.level === 1 ? 'bg-[#ffb3c8] text-red-900' :
                             selectedDay.application.level === 2 ? 'bg-blue-100 text-blue-800' :
@@ -1122,18 +1122,18 @@ export default function ApplicationCalendarPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">ステータス</span>
+                          <span className="text-sm text-gray-900">ステータス</span>
                           <span className="font-medium">{getStatusLabel(selectedDay.application.status)}</span>
                         </div>
                         {selectedDay.application.priority && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">優先順位</span>
+                            <span className="text-sm text-gray-900">優先順位</span>
                             <span className="font-medium">{selectedDay.application.priority}</span>
                           </div>
                         )}
                         {selectedDay.application.remarks && (
                           <div>
-                            <span className="text-sm text-gray-600 block mb-1">備考</span>
+                            <span className="text-sm text-gray-900 block mb-1">備考</span>
                             <p className="text-sm bg-white p-2 rounded border border-gray-200">{selectedDay.application.remarks}</p>
                           </div>
                         )}
