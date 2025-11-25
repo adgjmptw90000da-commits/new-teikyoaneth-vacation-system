@@ -782,30 +782,41 @@ export default function ApplicationCalendarPage() {
                 <Icons.Info />
                 <p className="font-bold text-[10px] sm:text-xs text-gray-900">凡例</p>
               </div>
-              <div className="grid grid-cols-3 gap-1 sm:gap-2 text-[9px] sm:text-[10px] text-gray-900">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-[#ffb3c8] border border-red-300 rounded"></div>
-                  <span className="text-gray-900">L1申請中</span>
+              <div className="grid grid-cols-4 gap-1 sm:gap-2">
+                {/* レベル1 */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル1</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-[#ffb3c8] border border-red-300 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-red-900 font-medium">確定以外</div>
+                    <div className="h-5 bg-red-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-red-600 rounded"></div>
-                  <span className="text-gray-900">L1確定</span>
+
+                {/* レベル2 */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル2</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-blue-100 border border-blue-200 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-blue-800 font-medium">確定以外</div>
+                    <div className="h-5 bg-blue-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
-                  <span className="text-gray-900">L2申請中</span>
+
+                {/* レベル3(期間内) */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル3(期間内)</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-[#e0ffe0] border border-green-300 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-green-900 font-medium">確定以外</div>
+                    <div className="h-5 bg-green-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                  <span className="text-gray-900">L2確定</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-[#e0ffe0] border border-green-300 rounded"></div>
-                  <span className="text-gray-900">L3申請中</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-green-600 rounded"></div>
-                  <span className="text-gray-900">L3確定</span>
+
+                {/* レベル3(期間外) */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-medium text-gray-700 text-center">レベル3(期間外)</span>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-5 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-[8px] sm:text-[9px] text-gray-800 font-medium">確定以外</div>
+                    <div className="h-5 bg-gray-600 text-white rounded flex items-center justify-center text-[8px] sm:text-[9px] font-bold shadow-sm">確定</div>
+                  </div>
                 </div>
               </div>
             </div>
