@@ -52,7 +52,7 @@ export function ConfirmDialog({
       : "bg-blue-600 hover:bg-blue-700 text-white";
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
       <div
         ref={dialogRef}
         className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden"
