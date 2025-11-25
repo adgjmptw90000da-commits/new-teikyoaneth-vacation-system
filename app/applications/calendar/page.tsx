@@ -1109,7 +1109,7 @@ export default function ApplicationCalendarPage() {
                       <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-900">期間</span>
-                          <span className="font-medium">{getPeriodLabel(selectedDay.application.period)}</span>
+                          <span className="font-medium text-gray-900">{getPeriodLabel(selectedDay.application.period)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-900">レベル</span>
@@ -1123,12 +1123,12 @@ export default function ApplicationCalendarPage() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-sm text-gray-900">ステータス</span>
-                          <span className="font-medium">{getStatusLabel(selectedDay.application.status)}</span>
+                          <span className="font-medium text-gray-900">{getStatusLabel(selectedDay.application.status)}</span>
                         </div>
                         {selectedDay.application.priority && (
                           <div className="flex justify-between">
                             <span className="text-sm text-gray-900">優先順位</span>
-                            <span className="font-medium">{selectedDay.application.priority}</span>
+                            <span className="font-medium text-gray-900">{selectedDay.application.priority}</span>
                           </div>
                         )}
                         {selectedDay.application.remarks && (
