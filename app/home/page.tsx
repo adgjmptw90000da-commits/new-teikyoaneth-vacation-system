@@ -54,6 +54,9 @@ const Icons = {
   Info: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="16" y2="12" /><line x1="12" x2="12.01" y1="8" y2="8" /></svg>
   ),
+  Bot: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+  ),
 };
 
 export default function HomePage() {
@@ -420,6 +423,19 @@ export default function HomePage() {
                 <div className="text-left">
                   <h4 className="font-semibold text-gray-900 group-hover:text-red-700">ログ削除</h4>
                   <p className="text-xs text-gray-500">年度別データの削除</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/ai-assist")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
+              >
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
+                  <Icons.Bot />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">AIアシスト</h4>
+                  <p className="text-xs text-gray-500">自然言語でDB操作</p>
                 </div>
               </button>
             </div>
