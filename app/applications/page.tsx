@@ -7,6 +7,7 @@ import { getUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { isCurrentlyInLotteryPeriodForDate } from "@/lib/application";
 import { requestCancellation } from "@/lib/cancellation";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"];
@@ -37,6 +38,7 @@ export default function ApplicationsPage() {
   const [cancelingId, setCancelingId] = useState<number | null>(null);
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
     const user = getUser();
@@ -124,7 +126,7 @@ export default function ApplicationsPage() {
     // キャンセル不可条件:
     // - 確定済み
     // - キャンセル済み（すべての種類）
-    // - 取り下げ済み
+    // - 取り消し済み
     // - 承認待ち（レベル3の承認待ち）
     // - キャンセル承認待ち
     // - 今日を含む過去日の申請
@@ -168,13 +170,22 @@ export default function ApplicationsPage() {
       confirmMessage = "この申請をキャンセルしますか？";
     }
 
-    if (!window.confirm(confirmMessage)) {
+    const confirmed = await confirm({
+      title: "キャンセル確認",
+      message: confirmMessage,
+    });
+    if (!confirmed) {
       return;
     }
 
     // 抽選後キャンセルの場合は2段階確認
     if (app.status === "after_lottery") {
-      if (!window.confirm("本当にキャンセルしますか。年休得点は回復しません。")) {
+      const secondConfirmed = await confirm({
+        title: "最終確認",
+        message: "本当にキャンセルしますか。年休得点は回復しません。",
+        variant: "danger",
+      });
+      if (!secondConfirmed) {
         return;
       }
     }
@@ -218,7 +229,7 @@ export default function ApplicationsPage() {
       case "confirmed":
         return "確定";
       case "withdrawn":
-        return "取り下げ";
+        return "取り消し";
       case "cancelled":
         return "管理者キャンセル";
       case "pending_approval":
@@ -363,6 +374,7 @@ export default function ApplicationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
+      {ConfirmDialog}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">

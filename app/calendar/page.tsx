@@ -13,6 +13,7 @@ type Application = Database["public"]["Tables"]["application"]["Row"] & {
 };
 type CalendarManagement = Database["public"]["Tables"]["calendar_management"]["Row"];
 type Holiday = Database["public"]["Tables"]["holiday"]["Row"];
+type Conference = Database["public"]["Tables"]["conference"]["Row"];
 type Event = Database["public"]["Tables"]["event"]["Row"];
 
 interface DayData {
@@ -20,6 +21,8 @@ interface DayData {
   dayOfWeek: number;
   isHoliday: boolean;
   holidayName?: string;
+  isConference: boolean;
+  conferenceName?: string;
   isEvent: boolean;
   eventName?: string;
   calendar?: CalendarManagement;
@@ -61,6 +64,7 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [daysData, setDaysData] = useState<DayData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [conferences, setConferences] = useState<Conference[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [user, setUser] = useState<any>(null);
@@ -118,12 +122,14 @@ export default function CalendarPage() {
       // データを並列取得（パフォーマンス改善）
       const [
         { data: holidaysData },
+        { data: conferencesData },
         { data: eventsData },
         { data: calendarDataAll },
         { data: applicationsDataAll },
         { data: setting }
       ] = await Promise.all([
         supabase.from("holiday").select("*"),
+        supabase.from("conference").select("*"),
         supabase.from("event").select("*"),
         supabase.from("calendar_management").select("*").gte("vacation_date", startDate).lte("vacation_date", endDate),
         supabase.from("application").select("*, user:staff_id(name)").gte("vacation_date", startDate).lte("vacation_date", endDate).not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)").order("vacation_date", { ascending: true }).order("priority", { ascending: true }),
@@ -131,6 +137,7 @@ export default function CalendarPage() {
       ]);
 
       setHolidays(holidaysData || []);
+      setConferences(conferencesData || []);
       setEvents(eventsData || []);
 
       // 日付ごとにデータを整理
@@ -179,6 +186,7 @@ export default function CalendarPage() {
         const date = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const dayOfWeek = new Date(date).getDay();
         const holiday = holidaysData?.find((h) => h.holiday_date === date);
+        const conference = conferencesData?.find((c) => c.conference_date === date);
         const event = eventsData?.find((e) => e.event_date === date);
 
         days.push({
@@ -186,6 +194,8 @@ export default function CalendarPage() {
           dayOfWeek,
           isHoliday: !!holiday,
           holidayName: holiday?.name,
+          isConference: !!conference,
+          conferenceName: conference?.name,
           isEvent: !!event,
           eventName: event?.name,
           calendar: calendarMap.get(date),
@@ -211,6 +221,9 @@ export default function CalendarPage() {
     // 祝日・主要学会・曜日に応じた背景色のみ
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "bg-red-50/50";
+    }
+    if (day.isConference) {
+      return "bg-orange-50/50";
     }
     if (day.dayOfWeek === 6) {
       return "bg-blue-50/50";
@@ -243,9 +256,12 @@ export default function CalendarPage() {
   };
 
   const getDateTextColor = (day: DayData): string => {
-    // 日付の文字色（日曜・祝日・主要学会=赤、土曜=青）
+    // 日付の文字色（日曜・祝日=赤、主要学会=オレンジ、土曜=青）
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "text-red-600";
+    }
+    if (day.isConference) {
+      return "text-orange-600";
     }
     if (day.dayOfWeek === 6) {
       return "text-blue-600";
@@ -479,6 +495,7 @@ export default function CalendarPage() {
                             {["日", "月", "火", "水", "木", "金", "土"][day.dayOfWeek]}
                           </span>
                           {day.isHoliday && <span className="text-sm font-medium bg-[#ffb3c8] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
+                          {day.isConference && <span className="text-sm font-medium bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">{day.conferenceName}</span>}
                           {day.isEvent && <span className="text-sm font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">{day.eventName}</span>}
                         </h3>
                         <div className="flex gap-2">
@@ -515,7 +532,7 @@ export default function CalendarPage() {
                               {app.priority && ` [${app.priority}]`}
                             </span>
                             {app.status === "withdrawn" && (
-                              <span className="ml-1 text-[10px] opacity-80">(取り下げ)</span>
+                              <span className="ml-1 text-[10px] opacity-80">(取り消し)</span>
                             )}
                           </div>
                         ))}
@@ -577,10 +594,11 @@ export default function CalendarPage() {
                         </div>
                       </div>
 
-                      {/* 祝日・イベント */}
-                      {(day.isHoliday || day.isEvent) && (
+                      {/* 祝日・主要学会・イベント */}
+                      {(day.isHoliday || day.isConference || day.isEvent) && (
                         <div className="text-[8px] sm:text-[9px] md:text-[10px] font-medium mb-0.5 sm:mb-1 truncate">
                           {day.isHoliday && <span className="text-red-900">{day.holidayName}</span>}
+                          {day.isConference && <span className="text-orange-800">{day.conferenceName}</span>}
                           {day.isEvent && <span className="text-blue-700">{day.eventName}</span>}
                         </div>
                       )}
@@ -669,6 +687,11 @@ export default function CalendarPage() {
                     {selectedDay.holidayName}
                   </span>
                 )}
+                {selectedDay.isConference && (
+                  <span className="text-sm font-medium bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">
+                    {selectedDay.conferenceName}
+                  </span>
+                )}
                 {selectedDay.isEvent && (
                   <span className="text-sm font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">
                     {selectedDay.eventName}
@@ -722,7 +745,7 @@ export default function CalendarPage() {
                         {app.priority && ` [${app.priority}]`}
                       </span>
                       {app.status === "withdrawn" && (
-                        <span className="ml-1 text-[10px] opacity-80">(取り下げ)</span>
+                        <span className="ml-1 text-[10px] opacity-80">(取り消し)</span>
                       )}
                     </div>
                   ))}

@@ -16,6 +16,7 @@ import {
   isCurrentlyInLotteryPeriodForDate,
 } from "@/lib/application";
 import { exchangePriorityAndLevel } from "@/lib/priority-exchange";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
@@ -23,6 +24,7 @@ type Application = Database["public"]["Tables"]["application"]["Row"] & {
 };
 type CalendarManagement = Database["public"]["Tables"]["calendar_management"]["Row"];
 type Holiday = Database["public"]["Tables"]["holiday"]["Row"];
+type Conference = Database["public"]["Tables"]["conference"]["Row"];
 type Event = Database["public"]["Tables"]["event"]["Row"];
 
 interface DayData {
@@ -30,6 +32,8 @@ interface DayData {
   dayOfWeek: number;
   isHoliday: boolean;
   holidayName?: string;
+  isConference: boolean;
+  conferenceName?: string;
   isEvent: boolean;
   eventName?: string;
   calendar?: CalendarManagement;
@@ -64,6 +68,7 @@ const Icons = {
 function AdminCalendarPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
 
   // URLパラメータから年月を取得、なければ現在の年月を使用
@@ -72,6 +77,7 @@ function AdminCalendarPageContent() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [daysData, setDaysData] = useState<DayData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [conferences, setConferences] = useState<Conference[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [processing, setProcessing] = useState(false);
   const [capacities, setCapacities] = useState<Record<string, string>>({});
@@ -129,12 +135,14 @@ function AdminCalendarPageContent() {
       // データを並列取得（パフォーマンス改善）
       const [
         { data: holidaysData },
+        { data: conferencesData },
         { data: eventsData },
         { data: calendarDataAll },
         { data: applicationsDataAll },
         { data: setting }
       ] = await Promise.all([
         supabase.from("holiday").select("*"),
+        supabase.from("conference").select("*"),
         supabase.from("event").select("*"),
         supabase.from("calendar_management").select("*").gte("vacation_date", startDate).lte("vacation_date", endDate),
         supabase.from("application").select("*, user:staff_id(name)").gte("vacation_date", startDate).lte("vacation_date", endDate).not("status", "in", "(cancelled,cancelled_before_lottery,cancelled_after_lottery)").order("vacation_date", { ascending: true }).order("priority", { ascending: true }),
@@ -142,6 +150,7 @@ function AdminCalendarPageContent() {
       ]);
 
       setHolidays(holidaysData || []);
+      setConferences(conferencesData || []);
       setEvents(eventsData || []);
 
       // 日付ごとにデータを整理
@@ -190,6 +199,7 @@ function AdminCalendarPageContent() {
         const date = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const dayOfWeek = new Date(date).getDay();
         const holiday = holidaysData?.find((h) => h.holiday_date === date);
+        const conference = conferencesData?.find((c) => c.conference_date === date);
         const event = eventsData?.find((e) => e.event_date === date);
 
         days.push({
@@ -197,6 +207,8 @@ function AdminCalendarPageContent() {
           dayOfWeek,
           isHoliday: !!holiday,
           holidayName: holiday?.name,
+          isConference: !!conference,
+          conferenceName: conference?.name,
           isEvent: !!event,
           eventName: event?.name,
           calendar: calendarMap.get(date),
@@ -222,7 +234,11 @@ function AdminCalendarPageContent() {
   };
 
   const handleLottery = async () => {
-    if (!window.confirm(`${currentYear}年${currentMonth}月の抽選を実施しますか？`)) {
+    const confirmed = await confirm({
+      title: "抽選の確認",
+      message: `${currentYear}年${currentMonth}月の抽選を実施しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -247,7 +263,11 @@ function AdminCalendarPageContent() {
   };
 
   const handleLotteryForDate = async (date: string) => {
-    if (!window.confirm(`${date}の抽選を実施しますか？`)) {
+    const confirmed = await confirm({
+      title: "抽選の確認",
+      message: `${date}の抽選を実施しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -272,7 +292,11 @@ function AdminCalendarPageContent() {
   };
 
   const handleBatchConfirm = async () => {
-    if (!window.confirm(`${currentYear}年${currentMonth}月のマンパワー設定済み日程を一括確定しますか？`)) {
+    const confirmed = await confirm({
+      title: "一括確定の確認",
+      message: `${currentYear}年${currentMonth}月のマンパワー設定済み日程を一括確定しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -297,7 +321,11 @@ function AdminCalendarPageContent() {
   };
 
   const handleConfirmAll = async (date: string) => {
-    if (!window.confirm(`${date}の年休を確定しますか？`)) {
+    const confirmed = await confirm({
+      title: "確定の確認",
+      message: `${date}の年休を確定しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -322,7 +350,11 @@ function AdminCalendarPageContent() {
   };
 
   const handleConfirmSingle = async (applicationId: number) => {
-    if (!window.confirm("この申請を確定しますか？")) {
+    const confirmed = await confirm({
+      title: "確定の確認",
+      message: "この申請を確定しますか？",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -347,7 +379,12 @@ function AdminCalendarPageContent() {
   };
 
   const handleCancelConfirmation = async (applicationId: number) => {
-    if (!window.confirm("確定を解除しますか？")) {
+    const confirmed = await confirm({
+      title: "確定解除の確認",
+      message: "確定を解除しますか？",
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -372,7 +409,12 @@ function AdminCalendarPageContent() {
   };
 
   const handleCancelConfirmationAll = async (date: string) => {
-    if (!window.confirm(`${date}の確定を解除しますか？`)) {
+    const confirmed = await confirm({
+      title: "確定解除の確認",
+      message: `${date}の確定を解除しますか？`,
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -382,7 +424,7 @@ function AdminCalendarPageContent() {
     setProcessing(true);
 
     try {
-      // その日付の確定済みおよび取り下げ申請をすべて抽選済みに戻す
+      // その日付の確定済みおよび取り消し申請をすべて抽選済みに戻す
       const { error } = await supabase
         .from("application")
         .update({ status: "after_lottery" })
@@ -417,7 +459,12 @@ function AdminCalendarPageContent() {
   };
 
   const handleAdminCancel = async (app: Application) => {
-    if (!window.confirm(`${app.user.name}さんの申請をキャンセルしますか？`)) {
+    const confirmed = await confirm({
+      title: "キャンセルの確認",
+      message: `${app.user.name}さんの申請をキャンセルしますか？`,
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -588,6 +635,9 @@ function AdminCalendarPageContent() {
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "bg-red-50/50";
     }
+    if (day.isConference) {
+      return "bg-orange-50/50";
+    }
     if (day.dayOfWeek === 6) {
       return "bg-blue-50/50";
     }
@@ -619,9 +669,12 @@ function AdminCalendarPageContent() {
   };
 
   const getDateTextColor = (day: DayData): string => {
-    // 日付の文字色（日曜・祝日・主要学会=赤、土曜=青）
+    // 日付の文字色（日曜・祝日=赤、主要学会=オレンジ、土曜=青）
     if (day.isHoliday || day.dayOfWeek === 0) {
       return "text-red-600";
+    }
+    if (day.isConference) {
+      return "text-orange-600";
     }
     if (day.dayOfWeek === 6) {
       return "text-blue-600";
@@ -813,6 +866,7 @@ function AdminCalendarPageContent() {
                           {["日", "月", "火", "水", "木", "金", "土"][day.dayOfWeek]}
                         </span>
                         {day.isHoliday && <span className="text-sm font-medium bg-[#ffb3c8] text-red-900 px-2 py-0.5 rounded-md">{day.holidayName}</span>}
+                        {day.isConference && <span className="text-sm font-medium bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">{day.conferenceName}</span>}
                         {day.isEvent && <span className="text-sm font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md">{day.eventName}</span>}
                       </h3>
                       <div className="flex gap-2">
@@ -924,7 +978,7 @@ function AdminCalendarPageContent() {
                               </button>
                             )}
                             {app.status === "withdrawn" && (
-                              <span className="ml-1 text-[10px] opacity-80">(取り下げ)</span>
+                              <span className="ml-1 text-[10px] opacity-80">(取り消し)</span>
                             )}
                           </div>
                         );
@@ -1023,6 +1077,8 @@ function AdminCalendarPageContent() {
           </div>
         );
       })()}
+
+      {ConfirmDialog}
     </div>
   );
 }

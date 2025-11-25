@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { checkAnnualLeavePointsAvailable } from "@/lib/application";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
 type User = Database["public"]["Tables"]["user"]["Row"];
@@ -44,6 +45,7 @@ const Icons = {
 
 export default function MembersPage() {
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [users, setUsers] = useState<UserWithPoints[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -137,7 +139,11 @@ export default function MembersPage() {
     const newAdminStatus = !user.is_admin;
     const action = newAdminStatus ? "管理者権限を付与" : "管理者権限を解除";
 
-    if (!window.confirm(`${user.name}さんの${action}しますか？`)) {
+    const confirmed = await confirm({
+      title: "権限変更の確認",
+      message: `${user.name}さんの${action}しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -177,7 +183,12 @@ export default function MembersPage() {
       return;
     }
 
-    if (!window.confirm(`${user.name}さん（職員ID: ${user.staff_id}）を削除しますか？\n\nこの操作は取り消せません。過去の申請データは残りますが、ユーザー情報は完全に削除されます。`)) {
+    const confirmed = await confirm({
+      title: "削除の確認",
+      message: `${user.name}さん（職員ID: ${user.staff_id}）を削除しますか？\n\nこの操作は取り消せません。過去の申請データは残りますが、ユーザー情報は完全に削除されます。`,
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -549,6 +560,8 @@ export default function MembersPage() {
           </div>
         </div>
       </main>
+
+      {ConfirmDialog}
     </div>
   );
 }

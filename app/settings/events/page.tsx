@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
 type Event = Database["public"]["Tables"]["event"]["Row"];
@@ -27,6 +28,7 @@ const Icons = {
 
 export default function EventsPage() {
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -116,7 +118,12 @@ export default function EventsPage() {
   };
 
   const handleDelete = async (event: Event) => {
-    if (!window.confirm(`${event.name}（${event.event_date}）を削除しますか？`)) {
+    const confirmed = await confirm({
+      title: "削除の確認",
+      message: `${event.name}（${event.event_date}）を削除しますか？`,
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -296,6 +303,8 @@ export default function EventsPage() {
           </div>
         </div>
       </main>
+
+      {ConfirmDialog}
     </div>
   );
 }

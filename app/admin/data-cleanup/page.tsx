@@ -8,6 +8,7 @@ import {
   getRecordCountsByFiscalYear,
   deleteRecordsByFiscalYear,
 } from "@/lib/dataCleanup";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // Icons
 const Icons = {
@@ -27,11 +28,13 @@ const Icons = {
 
 export default function DataCleanupPage() {
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [fiscalYear, setFiscalYear] = useState<number>(2023);
   const [counts, setCounts] = useState<{
     applications: number;
     calendarRecords: number;
     holidays: number;
+    conferences: number;
     events: number;
   } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,7 +83,7 @@ export default function DataCleanupPage() {
     }
 
     const totalCount =
-      counts.applications + counts.calendarRecords + counts.holidays + counts.events;
+      counts.applications + counts.calendarRecords + counts.holidays + counts.conferences + counts.events;
 
     if (totalCount === 0) {
       alert("削除対象のデータがありません");
@@ -88,23 +91,22 @@ export default function DataCleanupPage() {
     }
 
     // 第1段階: レコード数を表示して確認
-    const firstConfirm = window.confirm(
-      `以下のデータを削除しますか？\n\n` +
-      `申請: ${counts.applications}件\n` +
-      `カレンダー: ${counts.calendarRecords}件\n` +
-      `祝日・主要学会: ${counts.holidays}件\n` +
-      `イベント: ${counts.events}件\n` +
-      `合計: ${totalCount}件`
-    );
+    const firstConfirm = await confirm({
+      title: "削除の確認",
+      message: `以下のデータを削除しますか？\n\n申請: ${counts.applications}件\nカレンダー: ${counts.calendarRecords}件\n祝日: ${counts.holidays}件\n主要学会: ${counts.conferences}件\nイベント: ${counts.events}件\n合計: ${totalCount}件`,
+      variant: "danger",
+    });
 
     if (!firstConfirm) {
       return;
     }
 
     // 第2段階: 最終確認
-    const secondConfirm = window.confirm(
-      `本当に削除しますか？\n\nこの操作は取り消せません。`
-    );
+    const secondConfirm = await confirm({
+      title: "最終確認",
+      message: "本当に削除しますか？\n\nこの操作は取り消せません。",
+      variant: "danger",
+    });
 
     if (!secondConfirm) {
       return;
@@ -160,7 +162,7 @@ export default function DataCleanupPage() {
               年度別データ削除
             </h2>
             <p className="text-sm text-gray-600">
-              指定した年度の申請ログ、カレンダーデータ、祝日・主要学会データを削除します。
+              指定した年度の申請ログ、カレンダーデータ、祝日、主要学会、イベントデータを削除します。
               <br />
               年度は4月1日〜翌年3月31日です（例: 2023年度 = 2023/4/1〜2024/3/31）
             </p>
@@ -236,9 +238,15 @@ export default function DataCleanupPage() {
                         </td>
                       </tr>
                       <tr>
-                        <td className="px-6 py-4 text-gray-900 font-medium">祝日・主要学会</td>
+                        <td className="px-6 py-4 text-gray-900 font-medium">祝日</td>
                         <td className="px-6 py-4 text-right text-gray-900 font-bold">
                           {counts.holidays}件
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-6 py-4 text-gray-900 font-medium">主要学会</td>
+                        <td className="px-6 py-4 text-right text-gray-900 font-bold">
+                          {counts.conferences}件
                         </td>
                       </tr>
                       <tr>
@@ -253,6 +261,7 @@ export default function DataCleanupPage() {
                           {counts.applications +
                             counts.calendarRecords +
                             counts.holidays +
+                            counts.conferences +
                             counts.events}
                           件
                         </td>
@@ -292,6 +301,8 @@ export default function DataCleanupPage() {
           </div>
         </div>
       </main>
+
+      {ConfirmDialog}
     </div>
   );
 }

@@ -57,7 +57,7 @@ export const isWithinLotteryPeriod = async (
 };
 
 /**
- * 祝日・主要学会かどうかを判定
+ * 祝日かどうかを判定
  */
 export const isHoliday = async (date: string): Promise<boolean> => {
   try {
@@ -68,7 +68,7 @@ export const isHoliday = async (date: string): Promise<boolean> => {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      // PGRST116 = データが見つからない（祝日・主要学会ではない）
+      // PGRST116 = データが見つからない（祝日ではない）
       console.error('Error checking holiday:', error);
       return false;
     }
@@ -77,6 +77,30 @@ export const isHoliday = async (date: string): Promise<boolean> => {
   } catch (error) {
     console.error('Error checking holiday:', error);
     return false;
+  }
+};
+
+/**
+ * 主要学会かどうかを判定
+ */
+export const isConference = async (date: string): Promise<{ name: string } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('conference')
+      .select('*')
+      .eq('conference_date', date)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      // PGRST116 = データが見つからない（主要学会ではない）
+      console.error('Error checking conference:', error);
+      return null;
+    }
+
+    return data ? { name: data.name } : null;
+  } catch (error) {
+    console.error('Error checking conference:', error);
+    return null;
   }
 };
 
@@ -372,7 +396,7 @@ export const confirmAllApplicationsForMonth = async (
       .from('calendar_management')
       .select('*')
       .gte('vacation_date', startDateStr)
-      .lte('holiday_date', endDateStr)
+      .lte('vacation_date', endDateStr)
       .not('max_people', 'is', null);
 
     if (calendarError) {
@@ -518,7 +542,7 @@ export const performLotteryForDate = async (
 
 /**
  * 年休確定処理（特定の日付）
- * 優先順位順に確定、マンパワーを超えたら取り下げ
+ * 優先順位順に確定、マンパワーを超えたら取り消し
  */
 export const confirmApplications = async (
   vacationDate: string
@@ -553,7 +577,7 @@ export const confirmApplications = async (
         };
       }
 
-      // 確定と取り下げの申請IDを分類
+      // 確定と取り消しの申請IDを分類
       const confirmedIds: number[] = [];
       const withdrawnIds: number[] = [];
 
@@ -577,7 +601,7 @@ export const confirmApplications = async (
         }
       }
 
-      // 取り下げ分を一括更新
+      // 取り消し分を一括更新
       if (withdrawnIds.length > 0) {
         const { error: withdrawError } = await supabase
           .from('application')

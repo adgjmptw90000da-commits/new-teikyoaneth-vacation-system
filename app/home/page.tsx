@@ -385,28 +385,15 @@ export default function HomePage() {
               </button>
 
               <button
-                onClick={() => router.push("/settings/holidays")}
+                onClick={() => router.push("/admin/calendar-settings")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
                 <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
-                  <Icons.Flag />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">祝日・主要学会管理</h4>
-                  <p className="text-xs text-gray-500">祝日・主要学会の登録・編集</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push("/settings/events")}
-                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all"
-              >
-                <div className="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-blue-600 mr-4">
                   <Icons.Calendar />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">イベント管理</h4>
-                  <p className="text-xs text-gray-500">イベントの登録・編集</p>
+                  <h4 className="font-semibold text-gray-900">カレンダー設定</h4>
+                  <p className="text-xs text-gray-500">祝日・主要学会・イベントの登録</p>
                 </div>
               </button>
 

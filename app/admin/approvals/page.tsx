@@ -7,6 +7,7 @@ import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { approveCancellation, rejectCancellation } from "@/lib/cancellation";
 import { recalculatePriorities } from "@/lib/application";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
 type Application = Database["public"]["Tables"]["application"]["Row"] & {
@@ -43,6 +44,7 @@ const Icons = {
 
 export default function ApprovalsPage() {
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [applications, setApplications] = useState<ApplicationWithCapacity[]>([]);
   const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +132,11 @@ export default function ApprovalsPage() {
   };
 
   const handleApprove = async (app: ApplicationWithCapacity) => {
-    if (!window.confirm(`${app.user.name}さんの申請を承認しますか？`)) {
+    const confirmed = await confirm({
+      title: "承認の確認",
+      message: `${app.user.name}さんの申請を承認しますか？`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -174,7 +180,12 @@ export default function ApprovalsPage() {
   };
 
   const handleReject = async (app: ApplicationWithCapacity) => {
-    if (!window.confirm(`${app.user.name}さんの申請を却下しますか？\n却下するとキャンセル扱いとなり、得点が回復します。`)) {
+    const confirmed = await confirm({
+      title: "却下の確認",
+      message: `${app.user.name}さんの申請を却下しますか？\n却下するとキャンセル扱いとなり、得点が回復します。`,
+      variant: "danger",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -210,7 +221,11 @@ export default function ApprovalsPage() {
   };
 
   const handleApproveCancellation = async (request: CancellationRequest) => {
-    if (!window.confirm(`${request.application.user.name}さんのキャンセル申請を承認しますか？\n得点が回復します。`)) {
+    const confirmed = await confirm({
+      title: "キャンセル承認の確認",
+      message: `${request.application.user.name}さんのキャンセル申請を承認しますか？\n得点が回復します。`,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -550,6 +565,8 @@ export default function ApprovalsPage() {
           </div>
         </div>
       </main>
+
+      {ConfirmDialog}
     </div>
   );
 }

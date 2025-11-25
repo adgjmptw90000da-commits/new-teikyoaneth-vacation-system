@@ -198,6 +198,29 @@ export interface Database {
           updated_at?: string
         }
       }
+      conference: {
+        Row: {
+          id: number
+          conference_date: string
+          name: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          conference_date: string
+          name: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          conference_date?: string
+          name?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       priority_exchange_log: {
         Row: {
           id: number

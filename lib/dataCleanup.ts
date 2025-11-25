@@ -5,6 +5,7 @@ interface RecordCounts {
   applications: number;
   calendarRecords: number;
   holidays: number;
+  conferences: number;
   events: number;
 }
 
@@ -44,7 +45,7 @@ export async function getRecordCountsByFiscalYear(
       return null;
     }
 
-    // 祝日・主要学会数をカウント
+    // 祝日数をカウント
     const { count: holidayCount, error: holError } = await supabase
       .from("holiday")
       .select("id", { count: "exact", head: true })
@@ -53,6 +54,18 @@ export async function getRecordCountsByFiscalYear(
 
     if (holError) {
       console.error("Error counting holidays:", holError);
+      return null;
+    }
+
+    // 主要学会数をカウント
+    const { count: conferenceCount, error: confError } = await supabase
+      .from("conference")
+      .select("id", { count: "exact", head: true })
+      .gte("conference_date", startDate)
+      .lte("conference_date", endDate);
+
+    if (confError) {
+      console.error("Error counting conferences:", confError);
       return null;
     }
 
@@ -72,6 +85,7 @@ export async function getRecordCountsByFiscalYear(
       applications: applicationCount || 0,
       calendarRecords: calendarCount || 0,
       holidays: holidayCount || 0,
+      conferences: conferenceCount || 0,
       events: eventCount || 0,
     };
   } catch (error) {
@@ -116,7 +130,7 @@ export async function deleteRecordsByFiscalYear(
       return false;
     }
 
-    // 祝日・主要学会を削除
+    // 祝日を削除
     const { error: holError } = await supabase
       .from("holiday")
       .delete()
@@ -125,6 +139,18 @@ export async function deleteRecordsByFiscalYear(
 
     if (holError) {
       console.error("Error deleting holidays:", holError);
+      return false;
+    }
+
+    // 主要学会を削除
+    const { error: confError } = await supabase
+      .from("conference")
+      .delete()
+      .gte("conference_date", startDate)
+      .lte("conference_date", endDate);
+
+    if (confError) {
+      console.error("Error deleting conferences:", confError);
       return false;
     }
 

@@ -13,6 +13,7 @@ import {
 import {
   isWithinLotteryPeriod,
   isHoliday,
+  isConference,
   isEvent,
   checkDuplicateApplication,
   calculateInitialPriority,
@@ -22,6 +23,7 @@ import {
   checkAnnualLeavePointsAvailable,
 } from "@/lib/application";
 import { PointsStatus } from "@/components/PointsStatus";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // Icons
 const Icons = {
@@ -44,6 +46,7 @@ const Icons = {
 
 export default function NewApplicationPage() {
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -177,10 +180,18 @@ export default function NewApplicationPage() {
         return;
       }
 
-      // バリデーション: 祝日・主要学会
+      // バリデーション: 祝日
       const holiday = await isHoliday(vacationDate);
       if (holiday) {
-        setError("祝日・主要学会の日は年休申請できません");
+        setError(`祝日（${holiday.name}）の日は年休申請できません`);
+        setLoading(false);
+        return;
+      }
+
+      // バリデーション: 主要学会
+      const conference = await isConference(vacationDate);
+      if (conference) {
+        setError(`主要学会（${conference.name}）の日は年休申請できません`);
         setLoading(false);
         return;
       }
@@ -188,10 +199,11 @@ export default function NewApplicationPage() {
       // イベントチェック: 警告のみ表示
       const event = await isEvent(vacationDate);
       if (event) {
-        const confirmed = window.confirm(
-          `イベント（${event.name}）が登録されている日です。通常より年休枠が少ない可能性が高いですが、このまま申請しますか。`
-        );
-        if (!confirmed) {
+        const eventConfirmed = await confirm({
+          title: "確認",
+          message: `イベント（${event.name}）が登録されている日です。通常より年休枠が少ない可能性が高いですが、このまま申請しますか。`,
+        });
+        if (!eventConfirmed) {
           setLoading(false);
           return;
         }
@@ -472,6 +484,8 @@ export default function NewApplicationPage() {
           </div>
         </div>
       </main>
+
+      {ConfirmDialog}
     </div>
   );
 }
