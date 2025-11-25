@@ -782,30 +782,30 @@ export default function ApplicationCalendarPage() {
                 <Icons.Info />
                 <p className="font-bold text-[10px] sm:text-xs text-gray-900">凡例</p>
               </div>
-              <div className="grid grid-cols-3 gap-1 sm:gap-2 text-[9px] sm:text-[10px]">
+              <div className="grid grid-cols-3 gap-1 sm:gap-2 text-[9px] sm:text-[10px] text-gray-900">
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-[#ffb3c8] border border-red-300 rounded"></div>
-                  <span>L1申請中</span>
+                  <span className="text-gray-900">L1申請中</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-red-600 rounded"></div>
-                  <span>L1確定</span>
+                  <span className="text-gray-900">L1確定</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
-                  <span>L2申請中</span>
+                  <span className="text-gray-900">L2申請中</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-blue-600 rounded"></div>
-                  <span>L2確定</span>
+                  <span className="text-gray-900">L2確定</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-[#e0ffe0] border border-green-300 rounded"></div>
-                  <span>L3申請中</span>
+                  <span className="text-gray-900">L3申請中</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-3 bg-green-600 rounded"></div>
-                  <span>L3確定</span>
+                  <span className="text-gray-900">L3確定</span>
                 </div>
               </div>
             </div>
