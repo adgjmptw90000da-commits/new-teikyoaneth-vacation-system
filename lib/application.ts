@@ -32,17 +32,26 @@ export const isWithinLotteryPeriod = async (
     const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の計算: Xヶ月前のx日〜x日
-    const targetMonth = new Date(vacation);
-    targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+    // 注意: setMonthを使うと月末日の問題が発生するため、年月を直接計算する
+    const vacationYear = vacation.getFullYear();
+    const vacationMonth = vacation.getMonth();
+
+    // Xヶ月前を計算（年をまたぐ場合も考慮）
+    let targetYear = vacationYear;
+    let targetMonth = vacationMonth - setting.lottery_period_months;
+    while (targetMonth < 0) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
 
     const startDate = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth(),
+      targetYear,
+      targetMonth,
       setting.lottery_period_start_day
     );
     const endDate = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth(),
+      targetYear,
+      targetMonth,
       setting.lottery_period_end_day,
       23,
       59,
@@ -771,17 +780,26 @@ export const isCurrentlyInLotteryPeriodForDate = async (
     const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の計算: Xヶ月前のx日〜x日
-    const targetMonth = new Date(vacation);
-    targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+    // 注意: setMonthを使うと月末日の問題が発生するため、年月を直接計算する
+    const vacationYear = vacation.getFullYear();
+    const vacationMonth = vacation.getMonth();
+
+    // Xヶ月前を計算（年をまたぐ場合も考慮）
+    let targetYear = vacationYear;
+    let targetMonth = vacationMonth - setting.lottery_period_months;
+    while (targetMonth < 0) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
 
     const startDate = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth(),
+      targetYear,
+      targetMonth,
       setting.lottery_period_start_day
     );
     const endDate = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth(),
+      targetYear,
+      targetMonth,
       setting.lottery_period_end_day,
       23,
       59,
@@ -819,12 +837,21 @@ export const isBeforeLotteryPeriod = async (
     const today = getJSTDate(); // 日本時間で取得
 
     // 抽選参加可能期間の開始日を計算: Xヶ月前のx日
-    const targetMonth = new Date(vacation);
-    targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+    // 注意: setMonthを使うと月末日の問題が発生するため、年月を直接計算する
+    const vacationYear = vacation.getFullYear();
+    const vacationMonth = vacation.getMonth();
+
+    // Xヶ月前を計算（年をまたぐ場合も考慮）
+    let targetYear = vacationYear;
+    let targetMonth = vacationMonth - setting.lottery_period_months;
+    while (targetMonth < 0) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
 
     const startDate = new Date(
-      targetMonth.getFullYear(),
-      targetMonth.getMonth(),
+      targetYear,
+      targetMonth,
       setting.lottery_period_start_day
     );
 
