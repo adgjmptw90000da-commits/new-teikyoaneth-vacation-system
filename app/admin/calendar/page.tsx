@@ -172,17 +172,26 @@ function AdminCalendarPageContent() {
         const today = new Date();
         for (const app of (applicationsDataAll || [])) {
           const vacation = new Date(app.vacation_date);
-          const targetMonth = new Date(vacation);
-          targetMonth.setMonth(targetMonth.getMonth() - setting.lottery_period_months);
+          // 注意: setMonthを使うと月末日の問題が発生するため、年月を直接計算する
+          const vacationYear = vacation.getFullYear();
+          const vacationMonth = vacation.getMonth();
+
+          // Xヶ月前を計算（年をまたぐ場合も考慮）
+          let targetYear = vacationYear;
+          let targetMonth = vacationMonth - setting.lottery_period_months;
+          while (targetMonth < 0) {
+            targetMonth += 12;
+            targetYear -= 1;
+          }
 
           const startDate = new Date(
-            targetMonth.getFullYear(),
-            targetMonth.getMonth(),
+            targetYear,
+            targetMonth,
             setting.lottery_period_start_day
           );
           const endDate = new Date(
-            targetMonth.getFullYear(),
-            targetMonth.getMonth(),
+            targetYear,
+            targetMonth,
             setting.lottery_period_end_day,
             23, 59, 59
           );

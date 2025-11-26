@@ -903,9 +903,17 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
       59
     );
 
-    // 現在の月の抽選期間の対象月（X ヶ月後）
-    const currentTargetMonth = new Date(today);
-    currentTargetMonth.setMonth(currentTargetMonth.getMonth() + setting.lottery_period_months);
+    // 現在の月の抽選期間の対象月（X ヶ月後）を計算
+    // 注意: setMonthを使うと月末日の問題が発生するため、年月を直接計算する
+    const todayYear = today.getFullYear();
+    const todayMonth = today.getMonth();
+    let currentTargetYear = todayYear;
+    let currentTargetMonthNum = todayMonth + setting.lottery_period_months;
+    while (currentTargetMonthNum > 11) {
+      currentTargetMonthNum -= 12;
+      currentTargetYear += 1;
+    }
+    const currentTargetMonth = new Date(currentTargetYear, currentTargetMonthNum, 1);
 
     // 現在が抽選期間内かチェック
     const isWithinPeriod = today >= currentPeriodStart && today <= currentPeriodEnd;
@@ -930,13 +938,26 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
         nextTargetMonth = currentTargetMonth;
       } else {
         // 今月の抽選期間終了後 → 来月の抽選期間が「次」
+        let nextPeriodYear = todayYear;
+        let nextPeriodMonthNum = todayMonth + 1;
+        if (nextPeriodMonthNum > 11) {
+          nextPeriodMonthNum -= 12;
+          nextPeriodYear += 1;
+        }
         nextPeriodStart = new Date(
-          today.getFullYear(),
-          today.getMonth() + 1,
+          nextPeriodYear,
+          nextPeriodMonthNum,
           setting.lottery_period_start_day
         );
-        nextTargetMonth = new Date(today);
-        nextTargetMonth.setMonth(nextTargetMonth.getMonth() + 1 + setting.lottery_period_months);
+
+        // 来月の抽選期間の対象月（X+1ヶ月後）
+        let nextTargetYear = todayYear;
+        let nextTargetMonthNum = todayMonth + 1 + setting.lottery_period_months;
+        while (nextTargetMonthNum > 11) {
+          nextTargetMonthNum -= 12;
+          nextTargetYear += 1;
+        }
+        nextTargetMonth = new Date(nextTargetYear, nextTargetMonthNum, 1);
       }
 
       const nextPeriodEnd = new Date(
