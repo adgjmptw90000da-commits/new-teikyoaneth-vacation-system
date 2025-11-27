@@ -97,6 +97,7 @@ export interface Database {
           status: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority: number | null
           remarks: string | null
+          user_notified: boolean
           created_at: string
           updated_at: string
         }
@@ -111,6 +112,7 @@ export interface Database {
           status?: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority?: number | null
           remarks?: string | null
+          user_notified?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -125,6 +127,7 @@ export interface Database {
           status?: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority?: number | null
           remarks?: string | null
+          user_notified?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -278,6 +281,7 @@ export interface Database {
           reviewed_by_staff_id: string | null
           reviewed_at: string | null
           review_comment: string | null
+          user_notified: boolean
         }
         Insert: {
           id?: number
@@ -288,6 +292,7 @@ export interface Database {
           reviewed_by_staff_id?: string | null
           reviewed_at?: string | null
           review_comment?: string | null
+          user_notified?: boolean
         }
         Update: {
           id?: number
@@ -298,6 +303,7 @@ export interface Database {
           reviewed_by_staff_id?: string | null
           reviewed_at?: string | null
           review_comment?: string | null
+          user_notified?: boolean
         }
       }
     }

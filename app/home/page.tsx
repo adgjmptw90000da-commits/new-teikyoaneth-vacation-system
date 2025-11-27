@@ -59,10 +59,20 @@ const Icons = {
   ),
 };
 
+// 通知の型定義
+type Notification = {
+  id: number;
+  type: 'application_approved' | 'application_rejected' | 'cancellation_approved' | 'cancellation_rejected';
+  vacation_date: string;
+  message: string;
+  sourceType: 'application' | 'cancellation_request';
+};
+
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
     targetMonth: string;
@@ -166,11 +176,116 @@ export default function HomePage() {
     };
 
     fetchPendingApprovals();
+
+    // 通知を取得（自分の申請で承認/却下されたが未確認のもの）
+    const fetchNotifications = async () => {
+      const notifs: Notification[] = [];
+
+      // 1. 確定後レベル3申請で承認されたもの（confirmed + user_notified=false）
+      const { data: approvedApps } = await supabase
+        .from("application")
+        .select("id, vacation_date")
+        .eq("staff_id", currentUser.staff_id)
+        .eq("status", "confirmed")
+        .eq("user_notified", false);
+
+      if (approvedApps) {
+        approvedApps.forEach(app => {
+          notifs.push({
+            id: app.id,
+            type: 'application_approved',
+            vacation_date: app.vacation_date,
+            message: `${app.vacation_date} の年休申請が承認されました`,
+            sourceType: 'application'
+          });
+        });
+      }
+
+      // 2. 確定後レベル3申請で却下されたもの（cancelled + user_notified=false）
+      const { data: rejectedApps } = await supabase
+        .from("application")
+        .select("id, vacation_date")
+        .eq("staff_id", currentUser.staff_id)
+        .eq("status", "cancelled")
+        .eq("user_notified", false);
+
+      if (rejectedApps) {
+        rejectedApps.forEach(app => {
+          notifs.push({
+            id: app.id,
+            type: 'application_rejected',
+            vacation_date: app.vacation_date,
+            message: `${app.vacation_date} の年休申請が却下されました`,
+            sourceType: 'application'
+          });
+        });
+      }
+
+      // 3. キャンセル申請で承認されたもの
+      const { data: approvedCancellations } = await supabase
+        .from("cancellation_request")
+        .select("id, status, application:application_id(vacation_date, staff_id)")
+        .eq("status", "approved")
+        .eq("user_notified", false);
+
+      if (approvedCancellations) {
+        approvedCancellations.forEach((req: any) => {
+          if (req.application?.staff_id === currentUser.staff_id) {
+            notifs.push({
+              id: req.id,
+              type: 'cancellation_approved',
+              vacation_date: req.application.vacation_date,
+              message: `${req.application.vacation_date} のキャンセル申請が承認されました`,
+              sourceType: 'cancellation_request'
+            });
+          }
+        });
+      }
+
+      // 4. キャンセル申請で却下されたもの
+      const { data: rejectedCancellations } = await supabase
+        .from("cancellation_request")
+        .select("id, status, application:application_id(vacation_date, staff_id)")
+        .eq("status", "rejected")
+        .eq("user_notified", false);
+
+      if (rejectedCancellations) {
+        rejectedCancellations.forEach((req: any) => {
+          if (req.application?.staff_id === currentUser.staff_id) {
+            notifs.push({
+              id: req.id,
+              type: 'cancellation_rejected',
+              vacation_date: req.application.vacation_date,
+              message: `${req.application.vacation_date} のキャンセル申請が却下されました`,
+              sourceType: 'cancellation_request'
+            });
+          }
+        });
+      }
+
+      setNotifications(notifs);
+    };
+
+    fetchNotifications();
   }, [router]);
 
   const handleLogout = () => {
     logout();
     router.push("/auth/login");
+  };
+
+  // 通知を既読にする
+  const handleDismissNotification = async (notification: Notification) => {
+    const table = notification.sourceType === 'application' ? 'application' : 'cancellation_request';
+
+    const { error } = await supabase
+      .from(table)
+      .update({ user_notified: true })
+      .eq('id', notification.id);
+
+    if (!error) {
+      setNotifications(prev => prev.filter(n => !(n.id === notification.id && n.sourceType === notification.sourceType)));
+    }
   };
 
   if (!user) {
@@ -220,6 +335,53 @@ export default function HomePage() {
       </nav>
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* Notifications */}
+        {notifications.length > 0 && (
+          <div className="space-y-3">
+            {notifications.map((notification) => (
+              <div
+                key={`${notification.sourceType}-${notification.id}`}
+                className={`rounded-xl border p-4 shadow-sm flex items-center justify-between ${
+                  notification.type.includes('approved')
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-red-50 border-red-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${
+                    notification.type.includes('approved')
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-red-100 text-red-600'
+                  }`}>
+                    {notification.type.includes('approved') ? (
+                      <Icons.CheckCircle />
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    )}
+                  </div>
+                  <p className={`font-medium ${
+                    notification.type.includes('approved')
+                      ? 'text-green-800'
+                      : 'text-red-800'
+                  }`}>
+                    {notification.message}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDismissNotification(notification)}
+                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                    notification.type.includes('approved')
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-red-600 hover:bg-red-700 text-white'
+                  }`}
+                >
+                  了解
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Welcome Section */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-8 shadow-lg text-white">
           <div className="relative z-10">
