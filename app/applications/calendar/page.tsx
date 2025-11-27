@@ -1127,7 +1127,7 @@ export default function ApplicationCalendarPage() {
                         </div>
                         {selectedDay.application.priority && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-900">優先順位</span>
+                            <span className="text-sm text-gray-900">順位</span>
                             <span className="font-medium text-gray-900">{selectedDay.application.priority}</span>
                           </div>
                         )}

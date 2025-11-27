@@ -47,7 +47,7 @@ export const exchangePriorityAndLevel = async (
         }
 
         if (app1.priority === null || app2.priority === null) {
-            return { success: false, error: '優先順位が設定されていない申請は交換できません' };
+            return { success: false, error: '順位が設定されていない申請は交換できません' };
         }
 
         // 3. 交換実行

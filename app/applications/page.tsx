@@ -486,7 +486,7 @@ export default function ApplicationsPage() {
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                 {!["cancelled", "cancelled_before_lottery", "cancelled_after_lottery"].includes(app.status) && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
                                   <span className="font-medium text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
-                                    優先順位: {app.priority}
+                                    順位: {app.priority}
                                   </span>
                                 )}
                                 <span className="flex items-center gap-1">

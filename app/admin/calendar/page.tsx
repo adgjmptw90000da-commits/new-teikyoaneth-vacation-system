@@ -571,7 +571,7 @@ function AdminCalendarPageContent() {
       );
 
       if (result.success) {
-        alert("優先順位とレベルを交換しました");
+        alert("順位とレベルを交換しました");
         setSelectedApplications([]);
         await fetchData();
         requestAnimationFrame(() => {
@@ -1015,7 +1015,7 @@ function AdminCalendarPageContent() {
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">優先順位・レベル交換の確認</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-4">順位・レベル交換の確認</h3>
 
               <div className="space-y-6">
                 <div>
@@ -1026,7 +1026,7 @@ function AdminCalendarPageContent() {
                       <div>
                         <p className="font-medium text-gray-900">{app1.user.name} (職員ID: {app1.staff_id})</p>
                         <p className="text-sm text-gray-600">レベル: {app1.level}</p>
-                        <p className="text-sm text-gray-600">優先順位: {app1.priority}</p>
+                        <p className="text-sm text-gray-600">順位: {app1.priority}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
@@ -1034,7 +1034,7 @@ function AdminCalendarPageContent() {
                       <div>
                         <p className="font-medium text-gray-900">{app2.user.name} (職員ID: {app2.staff_id})</p>
                         <p className="text-sm text-gray-600">レベル: {app2.level}</p>
-                        <p className="text-sm text-gray-600">優先順位: {app2.priority}</p>
+                        <p className="text-sm text-gray-600">順位: {app2.priority}</p>
                       </div>
                     </div>
                   </div>
@@ -1052,7 +1052,7 @@ function AdminCalendarPageContent() {
                       <div>
                         <p className="font-medium text-gray-900">{app1.user.name} (職員ID: {app1.staff_id})</p>
                         <p className="text-sm text-blue-700 font-bold">レベル: {app2.level}</p>
-                        <p className="text-sm text-blue-700 font-bold">優先順位: {app2.priority}</p>
+                        <p className="text-sm text-blue-700 font-bold">順位: {app2.priority}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
@@ -1060,7 +1060,7 @@ function AdminCalendarPageContent() {
                       <div>
                         <p className="font-medium text-gray-900">{app2.user.name} (職員ID: {app2.staff_id})</p>
                         <p className="text-sm text-blue-700 font-bold">レベル: {app1.level}</p>
-                        <p className="text-sm text-blue-700 font-bold">優先順位: {app1.priority}</p>
+                        <p className="text-sm text-blue-700 font-bold">順位: {app1.priority}</p>
                       </div>
                     </div>
                   </div>

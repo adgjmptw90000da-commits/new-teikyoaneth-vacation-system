@@ -331,7 +331,7 @@ export default function AdminSettingsPage() {
                       抽選参加期間内の申請を表示
                     </label>
                     <p className="text-xs text-gray-500 mt-1 font-medium">
-                      オフにすると、年休カレンダー・管理カレンダーで抽選参加期間内の申請が非表示になり、申請一覧では抽選参加期間内の申請の優先順位が非表示になります
+                      オフにすると、年休カレンダー・管理カレンダーで抽選参加期間内の申請が非表示になり、申請一覧では抽選参加期間内の申請の順位が非表示になります
                     </p>
                   </div>
                   <button
