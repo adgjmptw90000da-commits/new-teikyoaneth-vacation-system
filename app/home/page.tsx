@@ -337,6 +337,39 @@ export default function HomePage() {
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-gray-800 transition-colors">個人情報設定</h4>
               <p className="text-sm text-gray-500">氏名・パスワードの変更</p>
             </button>
+
+            <button
+              onClick={() => router.push("/schedule/submit")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+                <Icons.FileText />
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">予定提出</h4>
+              <p className="text-sm text-gray-500">当直表作成用の予定提出</p>
+            </button>
+
+            <button
+              onClick={() => router.push("/kensanbi")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-green-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-green-600 mb-4 group-hover:scale-110 transition-transform">
+                <Icons.CheckCircle />
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-green-600 transition-colors">研鑽日管理</h4>
+              <p className="text-sm text-gray-500">確定済み年休を研鑽日に変更</p>
+            </button>
+
+            <button
+              onClick={() => router.push("/schedule/view")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-teal-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-teal-600 mb-4 group-hover:scale-110 transition-transform">
+                <Icons.List />
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">予定表</h4>
+              <p className="text-sm text-gray-500">全体の予定表を閲覧</p>
+            </button>
           </div>
         </div>
 
@@ -399,6 +432,19 @@ export default function HomePage() {
               </button>
 
               <button
+                onClick={() => router.push("/admin/member-settings")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
+              >
+                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
+                  <Icons.Settings />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">メンバー属性</h4>
+                  <p className="text-xs text-gray-500">チーム・当直レベル・並び順</p>
+                </div>
+              </button>
+
+              <button
                 onClick={() => router.push("/admin/calendar-settings")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
               >
@@ -447,6 +493,71 @@ export default function HomePage() {
                 <div className="text-left">
                   <h4 className="font-semibold text-gray-900">AIアシスト</h4>
                   <p className="text-xs text-gray-500">自然言語でDB操作</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/schedule-settings")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
+              >
+                <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mr-4">
+                  <Icons.Settings />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">予定提出設定</h4>
+                  <p className="text-xs text-gray-500">予定タイプの管理</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/shift-settings")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all"
+              >
+                <div className="bg-indigo-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-indigo-600 mr-4">
+                  <Icons.Settings />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">シフト設定</h4>
+                  <p className="text-xs text-gray-500">当直・日直等の管理</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/kensanbi-approval")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-green-300 transition-all"
+              >
+                <div className="bg-green-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-green-600 mr-4">
+                  <Icons.CheckCircle />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">研鑽日承認</h4>
+                  <p className="text-xs text-gray-500">当直による研鑽日の承認</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/schedule-view")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-teal-300 transition-all"
+              >
+                <div className="bg-teal-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-teal-600 mr-4">
+                  <Icons.List />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">予定一覧</h4>
+                  <p className="text-xs text-gray-500">全メンバーの予定確認・編集</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/one-personnel")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all"
+              >
+                <div className="bg-blue-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-blue-600 mr-4">
+                  <Icons.CheckCircle />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">One人事申請確認</h4>
+                  <p className="text-xs text-gray-500">年休のOne人事申請状況確認</p>
                 </div>
               </button>
             </div>

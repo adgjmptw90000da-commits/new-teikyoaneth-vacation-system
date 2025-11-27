@@ -6,6 +6,42 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+// 予定表示設定の型定義
+export interface DisplaySettings {
+  research_day?: {
+    label: string
+    label_first_year: string
+    color: string
+    bg_color: string
+  }
+  vacation?: {
+    label_full: string
+    label_am: string
+    label_pm: string
+    color: string
+    bg_color: string
+  }
+  vacation_applied?: {
+    color: string
+    bg_color: string
+  }
+  kensanbi_used?: {
+    label: string
+    color: string
+    bg_color: string
+  }
+  secondment?: {
+    label: string
+    color: string
+    bg_color: string
+  }
+  leave_of_absence?: {
+    label: string
+    color: string
+    bg_color: string
+  }
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -15,6 +51,12 @@ export interface Database {
           name: string
           password: string
           is_admin: boolean
+          team: 'A' | 'B'
+          night_shift_level: 'なし' | '上' | '中' | '下'
+          can_cardiac: boolean
+          can_obstetric: boolean
+          can_icu: boolean
+          display_order: number
           created_at: string
           updated_at: string
         }
@@ -23,6 +65,12 @@ export interface Database {
           name: string
           password: string
           is_admin?: boolean
+          team?: 'A' | 'B'
+          night_shift_level?: '上' | '中' | '下'
+          can_cardiac?: boolean
+          can_obstetric?: boolean
+          can_icu?: boolean
+          display_order?: number
           created_at?: string
           updated_at?: string
         }
@@ -31,6 +79,12 @@ export interface Database {
           name?: string
           password?: string
           is_admin?: boolean
+          team?: 'A' | 'B'
+          night_shift_level?: '上' | '中' | '下'
+          can_cardiac?: boolean
+          can_obstetric?: boolean
+          can_icu?: boolean
+          display_order?: number
           created_at?: string
           updated_at?: string
         }
@@ -49,6 +103,7 @@ export interface Database {
           current_fiscal_year: number
           show_lottery_period_applications: boolean
           point_retention_rate: number
+          display_settings: DisplaySettings
           created_at: string
           updated_at: string
         }
@@ -65,6 +120,7 @@ export interface Database {
           current_fiscal_year?: number
           show_lottery_period_applications?: boolean
           point_retention_rate?: number
+          display_settings?: DisplaySettings
           created_at?: string
           updated_at?: string
         }
@@ -81,6 +137,7 @@ export interface Database {
           current_fiscal_year?: number
           show_lottery_period_applications?: boolean
           point_retention_rate?: number
+          display_settings?: DisplaySettings
           created_at?: string
           updated_at?: string
         }
@@ -97,6 +154,7 @@ export interface Database {
           status: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority: number | null
           remarks: string | null
+          one_personnel_status: 'not_applied' | 'applied' | 'kensanbi'
           created_at: string
           updated_at: string
         }
@@ -111,6 +169,7 @@ export interface Database {
           status?: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority?: number | null
           remarks?: string | null
+          one_personnel_status?: 'not_applied' | 'applied' | 'kensanbi'
           created_at?: string
           updated_at?: string
         }
@@ -125,6 +184,7 @@ export interface Database {
           status?: 'before_lottery' | 'after_lottery' | 'confirmed' | 'withdrawn' | 'cancelled' | 'pending_approval' | 'pending_cancellation' | 'cancelled_before_lottery' | 'cancelled_after_lottery'
           priority?: number | null
           remarks?: string | null
+          one_personnel_status?: 'not_applied' | 'applied' | 'kensanbi'
           created_at?: string
           updated_at?: string
         }
@@ -298,6 +358,335 @@ export interface Database {
           reviewed_by_staff_id?: string | null
           reviewed_at?: string | null
           review_comment?: string | null
+        }
+      }
+      schedule_type: {
+        Row: {
+          id: number
+          name: string
+          display_label: string | null
+          position_am: boolean
+          position_pm: boolean
+          position_night: boolean
+          prev_day_night_shift: boolean
+          same_day_night_shift: boolean
+          next_day_night_shift: boolean
+          display_order: number
+          color: string
+          text_color: string
+          monthly_limit: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label?: string | null
+          position_am?: boolean
+          position_pm?: boolean
+          position_night?: boolean
+          prev_day_night_shift?: boolean
+          same_day_night_shift?: boolean
+          next_day_night_shift?: boolean
+          display_order?: number
+          color?: string
+          text_color?: string
+          monthly_limit?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string | null
+          position_am?: boolean
+          position_pm?: boolean
+          position_night?: boolean
+          prev_day_night_shift?: boolean
+          same_day_night_shift?: boolean
+          next_day_night_shift?: boolean
+          display_order?: number
+          color?: string
+          text_color?: string
+          monthly_limit?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_schedule: {
+        Row: {
+          id: number
+          staff_id: string
+          schedule_date: string
+          schedule_type_id: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          schedule_date: string
+          schedule_type_id: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          schedule_date?: string
+          schedule_type_id?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_research_day: {
+        Row: {
+          id: number
+          staff_id: string
+          day_of_week: number
+          is_first_year: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          day_of_week: number
+          is_first_year?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          day_of_week?: number
+          is_first_year?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_secondment: {
+        Row: {
+          id: number
+          staff_id: string
+          year: number
+          month: number
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          year: number
+          month: number
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          year?: number
+          month?: number
+          created_at?: string
+        }
+      }
+      user_leave_of_absence: {
+        Row: {
+          id: number
+          staff_id: string
+          start_date: string
+          end_date: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          start_date: string
+          end_date: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          start_date?: string
+          end_date?: string
+          created_at?: string
+        }
+      }
+      shift_type: {
+        Row: {
+          id: number
+          name: string
+          display_label: string | null
+          position_am: boolean
+          position_pm: boolean
+          position_night: boolean
+          display_order: number
+          color: string
+          text_color: string
+          is_kensanbi_target: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label?: string | null
+          position_am?: boolean
+          position_pm?: boolean
+          position_night?: boolean
+          display_order?: number
+          color?: string
+          text_color?: string
+          is_kensanbi_target?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string | null
+          position_am?: boolean
+          position_pm?: boolean
+          position_night?: boolean
+          display_order?: number
+          color?: string
+          text_color?: string
+          is_kensanbi_target?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_shift: {
+        Row: {
+          id: number
+          staff_id: string
+          shift_date: string
+          shift_type_id: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          shift_date: string
+          shift_type_id: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          shift_date?: string
+          shift_type_id?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      kensanbi_grant_history: {
+        Row: {
+          id: number
+          staff_id: string
+          user_shift_id: number | null
+          shift_date: string
+          granted_days: number
+          status: 'pending' | 'approved' | 'rejected'
+          approved_by_staff_id: string | null
+          approved_at: string | null
+          rejection_reason: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          user_shift_id?: number | null
+          shift_date: string
+          granted_days: number
+          status?: 'pending' | 'approved' | 'rejected'
+          approved_by_staff_id?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          user_shift_id?: number | null
+          shift_date?: string
+          granted_days?: number
+          status?: 'pending' | 'approved' | 'rejected'
+          approved_by_staff_id?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      kensanbi_usage_history: {
+        Row: {
+          id: number
+          staff_id: string
+          usage_date: string
+          used_days: number
+          reason: string | null
+          application_id: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          usage_date: string
+          used_days: number
+          reason?: string | null
+          application_id?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          usage_date?: string
+          used_days?: number
+          reason?: string | null
+          application_id?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      schedule_publish: {
+        Row: {
+          id: number
+          year: number
+          month: number
+          is_published: boolean
+          published_at: string | null
+          published_by_staff_id: string | null
+          snapshot_data: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          year: number
+          month: number
+          is_published?: boolean
+          published_at?: string | null
+          published_by_staff_id?: string | null
+          snapshot_data?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          year?: number
+          month?: number
+          is_published?: boolean
+          published_at?: string | null
+          published_by_staff_id?: string | null
+          snapshot_data?: Json | null
+          created_at?: string
+          updated_at?: string
         }
       }
     }
