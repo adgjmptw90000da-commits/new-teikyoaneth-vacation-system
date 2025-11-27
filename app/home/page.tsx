@@ -295,17 +295,6 @@ export default function HomePage() {
             </button>
 
             <button
-              onClick={() => router.push("/applications/new")}
-              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
-            >
-              <div className="bg-indigo-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
-                <Icons.FileText />
-              </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">年休申請</h4>
-              <p className="text-sm text-gray-500">フォームから年休を申請</p>
-            </button>
-
-            <button
               onClick={() => router.push("/applications")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
