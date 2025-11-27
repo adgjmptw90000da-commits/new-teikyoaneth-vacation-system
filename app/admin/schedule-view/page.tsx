@@ -165,6 +165,7 @@ export default function ScheduleViewPage() {
         { data: applications },
         { data: settingData },
         { data: publishData },
+        { data: calendarManagement },
       ] = await Promise.all([
         supabase.from("user").select("staff_id, name, team, display_order, night_shift_level").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
@@ -191,7 +192,18 @@ export default function ScheduleViewPage() {
           .in("status", ["after_lottery", "confirmed"]),
         supabase.from("setting").select("display_settings").single(),
         supabase.from("schedule_publish").select("*").eq("year", currentYear).eq("month", currentMonth).maybeSingle(),
+        supabase.from("calendar_management")
+          .select("vacation_date, status")
+          .gte("vacation_date", startDate)
+          .lte("vacation_date", endDate),
       ]);
+
+      // 確定済み日付のSetを作成
+      const confirmedDateSet = new Set(
+        calendarManagement
+          ?.filter(cm => cm.status === 'confirmation_completed')
+          .map(cm => cm.vacation_date) || []
+      );
 
       setScheduleTypes(types || []);
       setShiftTypes(shiftTypesData || []);
@@ -235,8 +247,21 @@ export default function ScheduleViewPage() {
           shiftsByDate[s.shift_date].push(s);
         });
 
-        // 年休を日付でマッピング
-        const userVacations = applications?.filter(a => a.staff_id === user.staff_id) || [];
+        // 年休を日付でマッピング（確定状態に応じてフィルタ）
+        const userVacations = applications?.filter(a => {
+          if (a.staff_id !== user.staff_id) return false;
+
+          // その日付が確定済みかチェック
+          const isDateConfirmed = confirmedDateSet.has(a.vacation_date);
+
+          if (isDateConfirmed) {
+            // 確定済みの日付は confirmed のみ表示
+            return a.status === 'confirmed';
+          } else {
+            // 未確定の日付は after_lottery + confirmed を表示
+            return a.status === 'after_lottery' || a.status === 'confirmed';
+          }
+        }) || [];
         const vacationsByDate: { [date: string]: Application } = {};
         userVacations.forEach(v => {
           vacationsByDate[v.vacation_date] = v;
@@ -557,7 +582,11 @@ export default function ScheduleViewPage() {
 
   // 予定表をアップロード（公開）
   const handleUpload = async () => {
-    if (!confirm(`${currentYear}年${currentMonth}月の予定表をアップロードしますか？\n\n一般ユーザーがこの月の予定表を閲覧できるようになります。`)) {
+    const confirmMessage = isPublished
+      ? `${currentYear}年${currentMonth}月の予定表を再アップロードしますか？\n\n公開中の予定表が最新の内容で更新されます。`
+      : `${currentYear}年${currentMonth}月の予定表をアップロードしますか？\n\n一般ユーザーがこの月の予定表を閲覧できるようになります。`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -589,9 +618,12 @@ export default function ScheduleViewPage() {
       if (error) {
         alert("アップロードに失敗しました: " + error.message);
       } else {
+        const successMessage = isPublished
+          ? "予定表を再アップロードしました。"
+          : "予定表をアップロードしました。一般ユーザーが閲覧できるようになりました。";
         setIsPublished(true);
         setPublishedAt(new Date().toISOString());
-        alert("予定表をアップロードしました。一般ユーザーが閲覧できるようになりました。");
+        alert(successMessage);
       }
     } catch (err) {
       console.error("Error uploading:", err);
@@ -807,15 +839,24 @@ export default function ScheduleViewPage() {
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              {/* アップロード/非公開ボタン */}
+              {/* アップロード/再アップロード/非公開ボタン */}
               {isPublished ? (
-                <button
-                  onClick={handleUnpublish}
-                  disabled={isUploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {isUploading ? '処理中...' : '非公開にする'}
-                </button>
+                <>
+                  <button
+                    onClick={handleUpload}
+                    disabled={isUploading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {isUploading ? '処理中...' : '再アップロード'}
+                  </button>
+                  <button
+                    onClick={handleUnpublish}
+                    disabled={isUploading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {isUploading ? '処理中...' : '非公開にする'}
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={handleUpload}
@@ -855,20 +896,15 @@ export default function ScheduleViewPage() {
                 </h2>
                 {/* 公開状態バッジ */}
                 <div className="mt-1">
-                  {isPublished ? (
+                  {isPublished && publishedAt ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full">
                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                      公開中
-                      {publishedAt && (
-                        <span className="text-green-600 ml-1">
-                          ({new Date(publishedAt).toLocaleDateString('ja-JP')})
-                        </span>
-                      )}
+                      最終更新: {new Date(publishedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-full">
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                      未公開
+                      非公開
                     </span>
                   )}
                 </div>
