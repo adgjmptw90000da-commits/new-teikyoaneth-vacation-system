@@ -310,7 +310,11 @@ export default function ApplicationsPage() {
   };
 
   // レベルごとのボーダー色
-  const getBorderColor = (level: number): string => {
+  const getBorderColor = (level: number, isWithinLotteryPeriod?: boolean): string => {
+    // レベル3かつ期間外はグレー
+    if (level === 3 && isWithinLotteryPeriod === false) {
+      return "border-l-gray-400";
+    }
     switch (level) {
       case 1:
         return "border-l-red-500";
@@ -324,7 +328,11 @@ export default function ApplicationsPage() {
   };
 
   // レベルごとの背景色（左ボーダー用）
-  const getBorderBackgroundColor = (level: number): string => {
+  const getBorderBackgroundColor = (level: number, isWithinLotteryPeriod?: boolean): string => {
+    // レベル3かつ期間外はグレー
+    if (level === 3 && isWithinLotteryPeriod === false) {
+      return "bg-gray-400";
+    }
     switch (level) {
       case 1:
         return "bg-red-500";
@@ -451,7 +459,7 @@ export default function ApplicationsPage() {
                         key={app.id}
                         className={`relative overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md ${getBackgroundColor(app.status)}`}
                       >
-                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 ${getBorderBackgroundColor(app.level)}`}></div>
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 ${getBorderBackgroundColor(app.level, app.is_within_lottery_period)}`}></div>
 
                         <div className="p-5 pl-6">
                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
