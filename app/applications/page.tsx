@@ -409,7 +409,7 @@ export default function ApplicationsPage() {
             </div>
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push("/applications/new")}
+                onClick={() => router.push("/applications/calendar")}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all"
               >
                 <Icons.Plus />
