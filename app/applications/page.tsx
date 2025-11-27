@@ -428,6 +428,7 @@ export default function ApplicationsPage() {
       </nav>
 
       <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <p className="text-xs text-gray-500 mb-4">※期間外レベル3申請は抽選対象外のため抽選前から「抽選済み」と表示されます。</p>
         <div className="space-y-8">
           {applications.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
