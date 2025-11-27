@@ -310,7 +310,11 @@ export default function ApplicationsPage() {
   };
 
   // レベルごとのボーダー色
-  const getBorderColor = (level: number): string => {
+  const getBorderColor = (level: number, isWithinLotteryPeriod?: boolean): string => {
+    // レベル3かつ期間外はグレー
+    if (level === 3 && isWithinLotteryPeriod === false) {
+      return "border-l-gray-400";
+    }
     switch (level) {
       case 1:
         return "border-l-red-500";
@@ -324,7 +328,11 @@ export default function ApplicationsPage() {
   };
 
   // レベルごとの背景色（左ボーダー用）
-  const getBorderBackgroundColor = (level: number): string => {
+  const getBorderBackgroundColor = (level: number, isWithinLotteryPeriod?: boolean): string => {
+    // レベル3かつ期間外はグレー
+    if (level === 3 && isWithinLotteryPeriod === false) {
+      return "bg-gray-400";
+    }
     switch (level) {
       case 1:
         return "bg-red-500";
@@ -357,7 +365,11 @@ export default function ApplicationsPage() {
   };
 
   // レベルバッジの色
-  const getLevelBadgeColor = (level: number): string => {
+  const getLevelBadgeColor = (level: number, isWithinLotteryPeriod?: boolean): string => {
+    // レベル3かつ期間外はグレー
+    if (level === 3 && isWithinLotteryPeriod === false) {
+      return "bg-gray-200 text-gray-700";
+    }
     switch (level) {
       case 1:
         return "bg-[#ffb3c8] text-red-900";
@@ -397,7 +409,7 @@ export default function ApplicationsPage() {
             </div>
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push("/applications/new")}
+                onClick={() => router.push("/applications/calendar")}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all"
               >
                 <Icons.Plus />
@@ -451,7 +463,7 @@ export default function ApplicationsPage() {
                         key={app.id}
                         className={`relative overflow-hidden rounded-xl border border-gray-200 shadow-sm transition-all hover:shadow-md ${getBackgroundColor(app.status)}`}
                       >
-                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 ${getBorderBackgroundColor(app.level)}`}></div>
+                        <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 ${getBorderBackgroundColor(app.level, app.is_within_lottery_period)}`}></div>
 
                         <div className="p-5 pl-6">
                           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -473,8 +485,8 @@ export default function ApplicationsPage() {
 
                               {/* バッジ */}
                               <div className="flex flex-wrap gap-2 mb-3">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLevelBadgeColor(app.level)}`}>
-                                  レベル{app.level}
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLevelBadgeColor(app.level, app.is_within_lottery_period)}`}>
+                                  レベル{app.level}{app.level === 3 && (app.is_within_lottery_period ? '（期間内）' : '（期間外）')}
                                 </span>
 
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
@@ -486,7 +498,7 @@ export default function ApplicationsPage() {
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                 {!["cancelled", "cancelled_before_lottery", "cancelled_after_lottery"].includes(app.status) && (!(lotteryPeriodStatusMap.get(app.id) ?? false) || showLotteryPeriodApplications) && app.priority && (
                                   <span className="font-medium text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
-                                    優先順位: {app.priority}
+                                    順位: {app.priority}
                                   </span>
                                 )}
                                 <span className="flex items-center gap-1">

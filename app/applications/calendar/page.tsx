@@ -685,11 +685,11 @@ export default function ApplicationCalendarPage() {
               <div>
                 {lotteryPeriodInfo.isWithinPeriod ? (
                   <p className="text-sm font-medium">
-                    現在は<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間です（{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}）
+                    現在は<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間です（{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}23:59）
                   </p>
                 ) : (
                   <p className="text-sm font-medium">
-                    現在は抽選参加可能期間外です（<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間は{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}です）
+                    現在は抽選参加可能期間外です（<span className="font-bold">{lotteryPeriodInfo.targetMonth}</span>の抽選参加可能期間は{lotteryPeriodInfo.periodStart}〜{lotteryPeriodInfo.periodEnd}23:59です）
                   </p>
                 )}
               </div>
@@ -1127,7 +1127,7 @@ export default function ApplicationCalendarPage() {
                         </div>
                         {selectedDay.application.priority && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-900">優先順位</span>
+                            <span className="text-sm text-gray-900">順位</span>
                             <span className="font-medium text-gray-900">{selectedDay.application.priority}</span>
                           </div>
                         )}

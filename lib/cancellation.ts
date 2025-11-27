@@ -187,7 +187,8 @@ export const approveCancellation = async (
       .update({
         status: 'approved',
         reviewed_by_staff_id: adminStaffId,
-        reviewed_at: new Date().toISOString()
+        reviewed_at: new Date().toISOString(),
+        user_notified: false
       })
       .eq('id', cancellationRequestId);
 
@@ -257,7 +258,8 @@ export const rejectCancellation = async (
         status: 'rejected',
         reviewed_by_staff_id: adminStaffId,
         reviewed_at: new Date().toISOString(),
-        review_comment: comment || null
+        review_comment: comment || null,
+        user_notified: false
       })
       .eq('id', cancellationRequestId);
 

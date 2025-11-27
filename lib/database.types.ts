@@ -155,6 +155,7 @@ export interface Database {
           priority: number | null
           remarks: string | null
           one_personnel_status: 'not_applied' | 'applied' | 'kensanbi'
+          user_notified: boolean
           created_at: string
           updated_at: string
         }
@@ -170,6 +171,7 @@ export interface Database {
           priority?: number | null
           remarks?: string | null
           one_personnel_status?: 'not_applied' | 'applied' | 'kensanbi'
+          user_notified?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -185,6 +187,7 @@ export interface Database {
           priority?: number | null
           remarks?: string | null
           one_personnel_status?: 'not_applied' | 'applied' | 'kensanbi'
+          user_notified?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -338,6 +341,7 @@ export interface Database {
           reviewed_by_staff_id: string | null
           reviewed_at: string | null
           review_comment: string | null
+          user_notified: boolean
         }
         Insert: {
           id?: number
@@ -348,6 +352,7 @@ export interface Database {
           reviewed_by_staff_id?: string | null
           reviewed_at?: string | null
           review_comment?: string | null
+          user_notified?: boolean
         }
         Update: {
           id?: number
@@ -358,6 +363,7 @@ export interface Database {
           reviewed_by_staff_id?: string | null
           reviewed_at?: string | null
           review_comment?: string | null
+          user_notified?: boolean
         }
       }
       schedule_type: {

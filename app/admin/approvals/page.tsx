@@ -161,7 +161,7 @@ export default function ApprovalsPage() {
       // 優先順位は申請時に付与されたものをそのまま使用
       const { error } = await supabase
         .from("application")
-        .update({ status: "confirmed" } as any)
+        .update({ status: "confirmed", user_notified: false } as any)
         .eq("id", app.id);
 
       if (error) {
@@ -198,6 +198,7 @@ export default function ApprovalsPage() {
         .update({
           status: "cancelled",
           priority: null,
+          user_notified: false,
           updated_at: new Date().toISOString()
         } as any)
         .eq("id", app.id);
