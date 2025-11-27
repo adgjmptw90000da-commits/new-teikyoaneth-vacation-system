@@ -474,7 +474,7 @@ export default function ApplicationsPage() {
                               {/* バッジ */}
                               <div className="flex flex-wrap gap-2 mb-3">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLevelBadgeColor(app.level)}`}>
-                                  レベル{app.level}
+                                  レベル{app.level}{app.level === 3 && (app.is_within_lottery_period ? '（期間内）' : '（期間外）')}
                                 </span>
 
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
