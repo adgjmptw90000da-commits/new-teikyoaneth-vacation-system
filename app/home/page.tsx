@@ -504,21 +504,8 @@ export default function HomePage() {
                   <Icons.Settings />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">予定提出設定</h4>
-                  <p className="text-xs text-gray-500">予定タイプの管理</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push("/admin/shift-settings")}
-                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all"
-              >
-                <div className="bg-indigo-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-indigo-600 mr-4">
-                  <Icons.Settings />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">シフト設定</h4>
-                  <p className="text-xs text-gray-500">当直・日直等の管理</p>
+                  <h4 className="font-semibold text-gray-900">予定・シフト設定</h4>
+                  <p className="text-xs text-gray-500">予定タイプ・シフトの管理</p>
                 </div>
               </button>
 
