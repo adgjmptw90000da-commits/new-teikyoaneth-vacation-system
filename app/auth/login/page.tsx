@@ -82,15 +82,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-4">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-amber-50 p-4">
+      <div className="max-w-md w-full space-y-8 p-8 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-orange-100">
         <div className="text-center">
           <div className="mx-auto flex flex-row items-center justify-center gap-3 mb-4">
-            <div className="h-12 w-12 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 shrink-0">
+            <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 shrink-0">
               <Icons.Calendar />
             </div>
-            <span className="text-2xl text-gray-400 shrink-0">+</span>
-            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shrink-0">
+            <span className="text-2xl text-orange-300 shrink-0">+</span>
+            <div className="h-12 w-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shrink-0">
               <Icons.User />
             </div>
           </div>
@@ -115,7 +115,7 @@ export default function LoginPage() {
                 name="staffId"
                 type="text"
                 required
-                className="appearance-none rounded-xl relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all sm:text-sm bg-white/50"
+                className="appearance-none rounded-xl relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all sm:text-sm bg-white/50"
                 placeholder="職員ID"
                 value={staffId}
                 onChange={(e) => setStaffId(e.target.value)}
@@ -133,7 +133,7 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 required
-                className="appearance-none rounded-xl relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all sm:text-sm bg-white/50"
+                className="appearance-none rounded-xl relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all sm:text-sm bg-white/50"
                 placeholder="パスワード"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -151,7 +151,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
             >
               {loading ? "ログイン中..." : "ログイン"}
             </button>
@@ -161,7 +161,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => router.push("/auth/organization")}
-              className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors hover:underline"
+              className="text-sm font-medium text-orange-600 hover:text-orange-500 transition-colors hover:underline"
             >
               新規登録はこちら
             </button>
