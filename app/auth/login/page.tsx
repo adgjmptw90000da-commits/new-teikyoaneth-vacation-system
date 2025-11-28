@@ -89,7 +89,7 @@ export default function LoginPage() {
             ログイン
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            年休管理システム
+            予定年休管理システム
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
