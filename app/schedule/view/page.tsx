@@ -569,14 +569,14 @@ export default function ScheduleViewPage() {
                   <thead>
                     {/* メンバー名ヘッダー */}
                     <tr className="bg-gray-100">
-                      <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-xs font-bold text-gray-700 w-16">
+                      <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700 w-16">
                         日付
                       </th>
                       {filteredMembers.map(member => (
                         <th
                           key={member.staff_id}
                           colSpan={3}
-                          className="border border-black px-0 py-1 text-[10px] font-bold text-gray-700 text-center w-[78px] min-w-[78px] max-w-[78px]"
+                          className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-700 text-center w-[78px] min-w-[78px] max-w-[78px]"
                         >
                           <span className="truncate block">{member.name}</span>
                         </th>
@@ -584,12 +584,12 @@ export default function ScheduleViewPage() {
                     </tr>
                     {/* AM/PM/夜勤 サブヘッダー */}
                     <tr className="bg-gray-50">
-                      <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[10px] text-gray-500"></th>
-                      {filteredMembers.map(member => (
+                      <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-500"></th>
+                      {filteredMembers.map((member, idx) => (
                         <React.Fragment key={`sub-${member.staff_id}`}>
-                          <th className="border border-black px-0 py-0.5 text-[9px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">AM</th>
-                          <th className="border border-black px-0 py-0.5 text-[9px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
-                          <th className="border border-black px-0 py-0.5 text-[9px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
+                          <th className={`border-y border-black border-l ${idx === 0 ? 'border-l-black' : 'border-l-black'} border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]`}>AM</th>
+                          <th className="border-y border-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
+                          <th className="border-y border-black border-r border-r-black px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
                         </React.Fragment>
                       ))}
                     </tr>
@@ -598,13 +598,13 @@ export default function ScheduleViewPage() {
                     {daysData.map(day => (
                       <tr key={day.date} className={getRowBackgroundColor(day)}>
                         {/* 日付列 */}
-                        <td className={`sticky left-0 z-10 border border-black px-2 py-1 text-xs font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}>
+                        <td className={`sticky left-0 z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}>
                           <div className="flex items-center gap-1">
                             <span>{day.day}</span>
-                            <span className="text-[10px]">{WEEKDAYS[day.dayOfWeek]}</span>
+                            <span className="text-[9px]">{WEEKDAYS[day.dayOfWeek]}</span>
                           </div>
                           {day.isHoliday && (
-                            <div className="text-[8px] text-red-500 truncate max-w-[50px]">{day.holidayName}</div>
+                            <div className="text-[7px] text-red-500 truncate max-w-[50px]">{day.holidayName}</div>
                           )}
                         </td>
                         {/* メンバーごとのセル */}
@@ -624,11 +624,11 @@ export default function ScheduleViewPage() {
                               <td
                                 key={`${day.date}-${member.staff_id}`}
                                 colSpan={3}
-                                className="border border-black px-0.5 py-1 text-center"
+                                className="border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center"
                                 style={{ backgroundColor: bgColor }}
                               >
                                 <span
-                                  className="text-[10px] font-bold"
+                                  className="text-[9px] font-bold"
                                   style={{ color: textColor }}
                                 >
                                   {label}
@@ -643,11 +643,11 @@ export default function ScheduleViewPage() {
                               <td
                                 key={`${day.date}-${member.staff_id}`}
                                 colSpan={3}
-                                className="border border-black px-0.5 py-1 text-center"
+                                className="border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center"
                                 style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day) }}
                               >
                                 <span
-                                  className="text-[10px] font-bold"
+                                  className="text-[9px] font-bold"
                                   style={{ color: content.am.color }}
                                 >
                                   {content.am.label}
@@ -663,11 +663,11 @@ export default function ScheduleViewPage() {
                                 {/* AM+PM 結合セル */}
                                 <td
                                   colSpan={2}
-                                  className="border border-black px-0 py-1 text-center overflow-hidden"
+                                  className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center overflow-hidden"
                                   style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day) }}
                                 >
                                   <span
-                                    className="text-[10px] font-bold whitespace-nowrap"
+                                    className="text-[9px] font-bold whitespace-nowrap"
                                     style={{ color: content.am.color }}
                                   >
                                     {content.am.label}
@@ -675,12 +675,12 @@ export default function ScheduleViewPage() {
                                 </td>
                                 {/* 夜勤（◯×なし） */}
                                 <td
-                                  className="border border-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
+                                  className="border-y border-black border-r border-r-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
                                   style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day) : getCellDefaultBgColor(day) }}
                                 >
                                   {content.night && (
                                     <span
-                                      className="text-[10px] font-bold whitespace-nowrap"
+                                      className="text-[9px] font-bold whitespace-nowrap"
                                       style={{ color: content.night.color }}
                                     >
                                       {content.night.label}
@@ -696,12 +696,12 @@ export default function ScheduleViewPage() {
                             <React.Fragment key={`${day.date}-${member.staff_id}`}>
                               {/* AM セル */}
                               <td
-                                className="border border-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
+                                className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
                                 style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day) : getCellDefaultBgColor(day) }}
                               >
                                 {content.am && (
                                   <span
-                                    className="text-[10px] font-bold whitespace-nowrap"
+                                    className="text-[9px] font-bold whitespace-nowrap"
                                     style={{ color: content.am.color }}
                                   >
                                     {content.am.label}
@@ -710,12 +710,12 @@ export default function ScheduleViewPage() {
                               </td>
                               {/* PM セル */}
                               <td
-                                className="border border-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
+                                className="border-y border-black border-r border-r-gray-300 px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
                                 style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day) : getCellDefaultBgColor(day) }}
                               >
                                 {content.pm && (
                                   <span
-                                    className="text-[10px] font-bold whitespace-nowrap"
+                                    className="text-[9px] font-bold whitespace-nowrap"
                                     style={{ color: content.pm.color }}
                                   >
                                     {content.pm.label}
@@ -724,12 +724,12 @@ export default function ScheduleViewPage() {
                               </td>
                               {/* 夜勤（◯×なし） */}
                               <td
-                                className="border border-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
+                                className="border-y border-black border-r border-r-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
                                 style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day) : getCellDefaultBgColor(day) }}
                               >
                                 {content.night && (
                                   <span
-                                    className="text-[10px] font-bold whitespace-nowrap"
+                                    className="text-[9px] font-bold whitespace-nowrap"
                                     style={{ color: content.night.color }}
                                   >
                                     {content.night.label}
