@@ -85,12 +85,12 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-4">
       <div className="max-w-md w-full space-y-8 p-8 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20">
         <div className="text-center">
-          <div className="mx-auto flex items-center justify-center gap-2 mb-4">
-            <div className="h-12 w-12 bg-teal-100 rounded-full flex items-center justify-center text-teal-600">
+          <div className="mx-auto flex flex-row items-center justify-center gap-3 mb-4">
+            <div className="h-12 w-12 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 shrink-0">
               <Icons.Calendar />
             </div>
-            <span className="text-2xl text-gray-400">+</span>
-            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+            <span className="text-2xl text-gray-400 shrink-0">+</span>
+            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shrink-0">
               <Icons.User />
             </div>
           </div>
