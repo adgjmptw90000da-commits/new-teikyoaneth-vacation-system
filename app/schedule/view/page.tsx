@@ -56,6 +56,17 @@ interface MemberData {
   shifts: { [date: string]: any[] };
   vacations: { [date: string]: any };
   nightShiftLevel: string | null;
+  workLocations: { [date: string]: number };
+}
+
+interface WorkLocation {
+  id: number;
+  name: string;
+  display_label: string | null;
+  color: string;
+  text_color: string | null;
+  is_default_weekday: boolean;
+  is_default_holiday: boolean;
 }
 
 interface Holiday {
@@ -76,6 +87,7 @@ interface SnapshotData {
   members: MemberData[];
   holidays: Holiday[];
   displaySettings: DisplaySettings;
+  workLocationMaster?: WorkLocation[];
   generatedAt: string;
 }
 
@@ -115,6 +127,7 @@ export default function ScheduleViewPage() {
   const [members, setMembers] = useState<MemberData[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(DEFAULT_DISPLAY_SETTINGS);
+  const [workLocationMaster, setWorkLocationMaster] = useState<WorkLocation[]>([]);
   const [isPublished, setIsPublished] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
 
@@ -157,6 +170,7 @@ export default function ScheduleViewPage() {
           setMembers(snapshot.members || []);
           setHolidays(snapshot.holidays || []);
           setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...snapshot.displaySettings });
+          setWorkLocationMaster(snapshot.workLocationMaster || []);
         }
       }
     } catch (err) {
@@ -397,14 +411,37 @@ export default function ScheduleViewPage() {
     return "text-gray-900";
   };
 
-  const getCellDefaultBgColor = (day: DayData): string => {
-    if (day.isHoliday || day.dayOfWeek === 0) return "#C0C0C0";
-    return "#CCFFFF";
+  // セルのデフォルト背景色（予定がないとき）- 勤務場所マスタの色を使用
+  const getCellDefaultBgColor = (day: DayData, member?: MemberData): string => {
+    // メンバーが指定されている場合、その日の勤務場所をチェック
+    if (member && member.workLocations) {
+      const workLocationId = member.workLocations[day.date];
+      if (workLocationId) {
+        const workLocation = workLocationMaster.find(wl => wl.id === workLocationId);
+        if (workLocation) {
+          return workLocation.color;
+        }
+      }
+    }
+
+    // デフォルト勤務場所の色を取得
+    if (day.isHoliday || day.dayOfWeek === 0) {
+      // 休日デフォルト
+      const holidayDefault = workLocationMaster.find(wl => wl.is_default_holiday);
+      if (holidayDefault) return holidayDefault.color;
+      return "#C0C0C0"; // フォールバック
+    }
+
+    // 平日デフォルト
+    const weekdayDefault = workLocationMaster.find(wl => wl.is_default_weekday);
+    if (weekdayDefault) return weekdayDefault.color;
+    return "#CCFFFF"; // フォールバック
   };
 
-  const getEffectiveBgColor = (bgColor: string | undefined, day: DayData): string => {
+  // 背景色を取得（transparentの場合はデフォルト背景色を使用）
+  const getEffectiveBgColor = (bgColor: string | undefined, day: DayData, member?: MemberData): string => {
     if (!bgColor || bgColor === 'transparent') {
-      return getCellDefaultBgColor(day);
+      return getCellDefaultBgColor(day, member);
     }
     return bgColor;
   };
@@ -440,6 +477,13 @@ export default function ScheduleViewPage() {
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.back()}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="戻る"
+              >
+                <Icons.ChevronLeft />
+              </button>
               <div className="bg-teal-600 p-1.5 rounded-lg text-white">
                 <Icons.Calendar />
               </div>
@@ -447,13 +491,13 @@ export default function ScheduleViewPage() {
                 予定表
               </h1>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => router.push("/home")}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ホーム"
               >
                 <Icons.Home />
-                ホーム
               </button>
             </div>
           </div>
@@ -644,7 +688,7 @@ export default function ScheduleViewPage() {
                                 key={`${day.date}-${member.staff_id}`}
                                 colSpan={3}
                                 className="border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center"
-                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day) }}
+                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member) }}
                               >
                                 <span
                                   className="text-[9px] font-bold"
@@ -664,7 +708,7 @@ export default function ScheduleViewPage() {
                                 <td
                                   colSpan={2}
                                   className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center overflow-hidden"
-                                  style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day) }}
+                                  style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member) }}
                                 >
                                   <span
                                     className="text-[9px] font-bold whitespace-nowrap"
@@ -676,7 +720,7 @@ export default function ScheduleViewPage() {
                                 {/* 夜勤（◯×なし） */}
                                 <td
                                   className="border-y border-black border-r border-r-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                  style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day) : getCellDefaultBgColor(day) }}
+                                  style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
                                 >
                                   {content.night && (
                                     <span
@@ -697,7 +741,7 @@ export default function ScheduleViewPage() {
                               {/* AM セル */}
                               <td
                                 className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day) : getCellDefaultBgColor(day) }}
+                                style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
                               >
                                 {content.am && (
                                   <span
@@ -711,7 +755,7 @@ export default function ScheduleViewPage() {
                               {/* PM セル */}
                               <td
                                 className="border-y border-black border-r border-r-gray-300 px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day) : getCellDefaultBgColor(day) }}
+                                style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
                               >
                                 {content.pm && (
                                   <span
@@ -725,7 +769,7 @@ export default function ScheduleViewPage() {
                               {/* 夜勤（◯×なし） */}
                               <td
                                 className="border-y border-black border-r border-r-black px-0 py-1 text-center w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day) : getCellDefaultBgColor(day) }}
+                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
                               >
                                 {content.night && (
                                   <span

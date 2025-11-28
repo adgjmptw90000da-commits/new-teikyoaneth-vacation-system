@@ -56,6 +56,7 @@ interface ScheduleType {
   color: string;
   text_color: string;
   monthly_limit: number | null;
+  default_work_location_id: number | null;
 }
 
 interface ShiftType {
@@ -69,6 +70,7 @@ interface ShiftType {
   color: string;
   text_color: string;
   is_kensanbi_target: boolean;
+  default_work_location_id: number | null;
 }
 
 interface NewScheduleType {
@@ -83,6 +85,7 @@ interface NewScheduleType {
   color: string;
   text_color: string;
   monthly_limit: number | null;
+  default_work_location_id: number | null;
 }
 
 interface NewShiftType {
@@ -94,6 +97,27 @@ interface NewShiftType {
   color: string;
   text_color: string;
   is_kensanbi_target: boolean;
+  default_work_location_id: number | null;
+}
+
+interface WorkLocation {
+  id: number;
+  name: string;
+  display_label: string | null;
+  color: string;
+  text_color: string;
+  display_order: number;
+  is_default_weekday: boolean;
+  is_default_holiday: boolean;
+}
+
+interface NewWorkLocation {
+  name: string;
+  display_label: string;
+  color: string;
+  text_color: string;
+  is_default_weekday: boolean;
+  is_default_holiday: boolean;
 }
 
 type SystemSettingKey = 'research_day' | 'vacation' | 'vacation_applied' | 'kensanbi_used' | 'secondment' | 'leave_of_absence';
@@ -157,7 +181,7 @@ const ColorPicker = ({
 export default function ScheduleSettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ staff_id: string; name: string; is_admin: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<'schedule' | 'shift' | 'system'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'shift' | 'workLocation' | 'system'>('schedule');
 
   // 予定タイプ
   const [scheduleTypes, setScheduleTypes] = useState<ScheduleType[]>([]);
@@ -175,6 +199,7 @@ export default function ScheduleSettingsPage() {
     color: "#CCFFFF",
     text_color: "#000000",
     monthly_limit: null,
+    default_work_location_id: null,
   });
 
   // シフトタイプ
@@ -190,12 +215,27 @@ export default function ScheduleSettingsPage() {
     color: "#CCFFFF",
     text_color: "#000000",
     is_kensanbi_target: false,
+    default_work_location_id: null,
   });
 
   // 表示設定
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(DEFAULT_DISPLAY_SETTINGS);
   const [editingSystemSetting, setEditingSystemSetting] = useState<SystemSettingKey | null>(null);
   const [tempSystemSetting, setTempSystemSetting] = useState<any>(null);
+
+  // 勤務場所
+  const [workLocations, setWorkLocations] = useState<WorkLocation[]>([]);
+  const [showWorkLocationModal, setShowWorkLocationModal] = useState(false);
+  const [editingWorkLocation, setEditingWorkLocation] = useState<WorkLocation | null>(null);
+  const [newWorkLocation, setNewWorkLocation] = useState<NewWorkLocation>({
+    name: "",
+    display_label: "",
+    color: "#CCFFFF",
+    text_color: "#000000",
+    is_default_weekday: false,
+    is_default_holiday: false,
+  });
+  const [draggedWorkLocation, setDraggedWorkLocation] = useState<WorkLocation | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -223,10 +263,12 @@ export default function ScheduleSettingsPage() {
       { data: schedules },
       { data: shifts },
       { data: settings },
+      { data: locations },
     ] = await Promise.all([
       supabase.from("schedule_type").select("*").order("display_order"),
       supabase.from("shift_type").select("*").order("display_order"),
       supabase.from("setting").select("display_settings").single(),
+      supabase.from("work_location").select("*").order("display_order"),
     ]);
 
     if (schedules) setScheduleTypes(schedules);
@@ -234,6 +276,7 @@ export default function ScheduleSettingsPage() {
     if (settings?.display_settings) {
       setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...settings.display_settings });
     }
+    if (locations) setWorkLocations(locations);
     setLoading(false);
   };
 
@@ -257,7 +300,7 @@ export default function ScheduleSettingsPage() {
       setNewSchedule({
         name: "", display_label: "", position_am: true, position_pm: true, position_night: false,
         prev_day_night_shift: false, same_day_night_shift: true, next_day_night_shift: true,
-        color: "#CCFFFF", text_color: "#000000", monthly_limit: null,
+        color: "#CCFFFF", text_color: "#000000", monthly_limit: null, default_work_location_id: null,
       });
       fetchData();
     }
@@ -282,6 +325,7 @@ export default function ScheduleSettingsPage() {
       color: editingSchedule.color,
       text_color: editingSchedule.text_color,
       monthly_limit: editingSchedule.monthly_limit,
+      default_work_location_id: editingSchedule.default_work_location_id,
     }).eq("id", editingSchedule.id);
     if (error) {
       alert("更新に失敗しました: " + error.message);
@@ -339,7 +383,7 @@ export default function ScheduleSettingsPage() {
       setShowShiftModal(false);
       setNewShift({
         name: "", display_label: "", position_am: false, position_pm: false, position_night: true,
-        color: "#CCFFFF", text_color: "#000000", is_kensanbi_target: false,
+        color: "#CCFFFF", text_color: "#000000", is_kensanbi_target: false, default_work_location_id: null,
       });
       fetchData();
     }
@@ -361,6 +405,7 @@ export default function ScheduleSettingsPage() {
       color: editingShift.color,
       text_color: editingShift.text_color,
       is_kensanbi_target: editingShift.is_kensanbi_target,
+      default_work_location_id: editingShift.default_work_location_id,
     }).eq("id", editingShift.id);
     if (error) {
       alert("更新に失敗しました: " + error.message);
@@ -420,6 +465,101 @@ export default function ScheduleSettingsPage() {
     setSaving(false);
   };
 
+  // ===== 勤務場所関連 =====
+  const handleAddWorkLocation = async () => {
+    if (!newWorkLocation.name.trim()) {
+      alert("勤務場所名を入力してください");
+      return;
+    }
+    setSaving(true);
+    const maxOrder = workLocations.length > 0 ? Math.max(...workLocations.map(t => t.display_order)) : 0;
+
+    // デフォルト設定時、他のデフォルトをクリア
+    if (newWorkLocation.is_default_weekday) {
+      await supabase.from("work_location").update({ is_default_weekday: false }).eq("is_default_weekday", true);
+    }
+    if (newWorkLocation.is_default_holiday) {
+      await supabase.from("work_location").update({ is_default_holiday: false }).eq("is_default_holiday", true);
+    }
+
+    const { error } = await supabase.from("work_location").insert({
+      ...newWorkLocation,
+      display_label: newWorkLocation.display_label || null,
+      display_order: maxOrder + 1,
+    });
+    if (error) {
+      alert("追加に失敗しました: " + error.message);
+    } else {
+      setShowWorkLocationModal(false);
+      setNewWorkLocation({
+        name: "", display_label: "", color: "#CCFFFF", text_color: "#000000",
+        is_default_weekday: false, is_default_holiday: false,
+      });
+      fetchData();
+    }
+    setSaving(false);
+  };
+
+  const handleUpdateWorkLocation = async () => {
+    if (!editingWorkLocation || !editingWorkLocation.name.trim()) {
+      alert("勤務場所名を入力してください");
+      return;
+    }
+    setSaving(true);
+
+    // デフォルト設定時、他のデフォルトをクリア
+    if (editingWorkLocation.is_default_weekday) {
+      await supabase.from("work_location").update({ is_default_weekday: false }).neq("id", editingWorkLocation.id);
+    }
+    if (editingWorkLocation.is_default_holiday) {
+      await supabase.from("work_location").update({ is_default_holiday: false }).neq("id", editingWorkLocation.id);
+    }
+
+    const { error } = await supabase.from("work_location").update({
+      name: editingWorkLocation.name,
+      display_label: editingWorkLocation.display_label || null,
+      color: editingWorkLocation.color,
+      text_color: editingWorkLocation.text_color,
+      is_default_weekday: editingWorkLocation.is_default_weekday,
+      is_default_holiday: editingWorkLocation.is_default_holiday,
+    }).eq("id", editingWorkLocation.id);
+    if (error) {
+      alert("更新に失敗しました: " + error.message);
+    } else {
+      setEditingWorkLocation(null);
+      fetchData();
+    }
+    setSaving(false);
+  };
+
+  const handleDeleteWorkLocation = async (id: number) => {
+    if (!confirm("この勤務場所を削除しますか？")) return;
+    const { error } = await supabase.from("work_location").delete().eq("id", id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else fetchData();
+  };
+
+  const handleWorkLocationDragStart = (e: React.DragEvent, item: WorkLocation) => {
+    setDraggedWorkLocation(item);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleWorkLocationDrop = async (e: React.DragEvent, targetItem: WorkLocation) => {
+    e.preventDefault();
+    if (!draggedWorkLocation || draggedWorkLocation.id === targetItem.id) return;
+    const newTypes = [...workLocations];
+    const draggedIndex = newTypes.findIndex(t => t.id === draggedWorkLocation.id);
+    const targetIndex = newTypes.findIndex(t => t.id === targetItem.id);
+    newTypes.splice(draggedIndex, 1);
+    newTypes.splice(targetIndex, 0, draggedWorkLocation);
+    const updates = newTypes.map((t, index) => ({ id: t.id, display_order: index + 1 }));
+    setWorkLocations(newTypes.map((t, index) => ({ ...t, display_order: index + 1 })));
+    for (const update of updates) {
+      await supabase.from("work_location").update({ display_order: update.display_order }).eq("id", update.id);
+    }
+    setDraggedWorkLocation(null);
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
@@ -431,37 +571,61 @@ export default function ScheduleSettingsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button onClick={() => router.push("/home")} className="text-gray-600 hover:text-gray-900">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <h1 className="text-xl font-bold text-gray-900">予定・シフト設定</h1>
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.back()}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="戻る"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">予定・シフト設定</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push("/home")}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ホーム"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+              </button>
+              {activeTab === 'schedule' && (
+                <button
+                  onClick={() => setShowScheduleModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  予定タイプ追加
+                </button>
+              )}
+              {activeTab === 'shift' && (
+                <button
+                  onClick={() => setShowShiftModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  シフト追加
+                </button>
+              )}
+              {activeTab === 'workLocation' && (
+                <button
+                  onClick={() => setShowWorkLocationModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  勤務場所追加
+                </button>
+              )}
+            </div>
           </div>
-          {activeTab === 'schedule' && (
-            <button
-              onClick={() => setShowScheduleModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              予定タイプ追加
-            </button>
-          )}
-          {activeTab === 'shift' && (
-            <button
-              onClick={() => setShowShiftModal(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              シフト追加
-            </button>
-          )}
         </div>
       </header>
 
@@ -483,6 +647,14 @@ export default function ScheduleSettingsPage() {
             }`}
           >
             シフトタイプ
+          </button>
+          <button
+            onClick={() => setActiveTab('workLocation')}
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'workLocation' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            勤務場所
           </button>
           <button
             onClick={() => setActiveTab('system')}
@@ -616,6 +788,73 @@ export default function ScheduleSettingsPage() {
                             </svg>
                           </button>
                           <button onClick={() => handleDeleteShift(type.id)} className="text-gray-600 hover:text-red-600 p-2">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* 勤務場所タブ */}
+            {activeTab === 'workLocation' && (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div className="p-4 bg-gray-50 border-b border-gray-200">
+                  <p className="text-sm text-gray-600">
+                    勤務場所の設定を管理します。ドラッグして並び替えができます。予定表で予定がない時間帯の背景色として使用されます。
+                  </p>
+                </div>
+                {workLocations.length === 0 ? (
+                  <div className="p-12 text-center text-gray-500">
+                    勤務場所がありません。「勤務場所追加」から追加してください。
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {workLocations.map((loc) => (
+                      <li
+                        key={loc.id}
+                        draggable
+                        onDragStart={(e) => handleWorkLocationDragStart(e, loc)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleWorkLocationDrop(e, loc)}
+                        className="p-4 hover:bg-gray-50 cursor-move flex items-center gap-4"
+                      >
+                        <div className="text-gray-400">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                          </svg>
+                        </div>
+                        <div
+                          className="w-10 h-10 rounded flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: loc.color, color: loc.text_color }}
+                        >
+                          {loc.display_label || loc.name.slice(0, 2)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 flex items-center gap-2">
+                            {loc.name}
+                            {loc.is_default_weekday && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">平日デフォルト</span>
+                            )}
+                            {loc.is_default_holiday && (
+                              <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">休日デフォルト</span>
+                            )}
+                          </div>
+                          {loc.display_label && (
+                            <div className="text-sm text-gray-500">表示: {loc.display_label}</div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingWorkLocation(loc)} className="text-gray-600 hover:text-blue-600 p-2">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleDeleteWorkLocation(loc.id)} className="text-gray-600 hover:text-red-600 p-2">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
@@ -772,6 +1011,20 @@ export default function ScheduleSettingsPage() {
                   )}
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
+                <select
+                  value={newSchedule.default_work_location_id ?? ""}
+                  onChange={(e) => setNewSchedule({ ...newSchedule, default_work_location_id: e.target.value ? parseInt(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {workLocations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">この予定を追加したとき、自動的に設定される勤務場所</p>
+              </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button onClick={() => setShowScheduleModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
@@ -870,6 +1123,20 @@ export default function ScheduleSettingsPage() {
                   )}
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
+                <select
+                  value={editingSchedule.default_work_location_id ?? ""}
+                  onChange={(e) => setEditingSchedule({ ...editingSchedule, default_work_location_id: e.target.value ? parseInt(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {workLocations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">この予定を追加したとき、自動的に設定される勤務場所</p>
+              </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button onClick={() => setEditingSchedule(null)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
@@ -932,6 +1199,20 @@ export default function ScheduleSettingsPage() {
                 </label>
                 <p className="text-xs text-gray-500 mt-1 ml-6">このシフトで研鑽日が付与される場合にチェック</p>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
+                <select
+                  value={newShift.default_work_location_id ?? ""}
+                  onChange={(e) => setNewShift({ ...newShift, default_work_location_id: e.target.value ? parseInt(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {workLocations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">このシフトを追加したとき、自動的に設定される勤務場所</p>
+              </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button onClick={() => setShowShiftModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
@@ -993,6 +1274,20 @@ export default function ScheduleSettingsPage() {
                   <span className="text-sm font-medium text-gray-700">研鑽日付与対象</span>
                 </label>
                 <p className="text-xs text-gray-500 mt-1 ml-6">このシフトで研鑽日が付与される場合にチェック</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
+                <select
+                  value={editingShift.default_work_location_id ?? ""}
+                  onChange={(e) => setEditingShift({ ...editingShift, default_work_location_id: e.target.value ? parseInt(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">なし</option>
+                  {workLocations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">このシフトを追加したとき、自動的に設定される勤務場所</p>
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
@@ -1073,10 +1368,169 @@ export default function ScheduleSettingsPage() {
                    tempSystemSetting.label || SYSTEM_SETTING_LABELS[editingSystemSetting]}
                 </div>
               </div>
+              {editingSystemSetting !== 'vacation_applied' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
+                  <select
+                    value={tempSystemSetting.default_work_location_id ?? ""}
+                    onChange={(e) => setTempSystemSetting({ ...tempSystemSetting, default_work_location_id: e.target.value ? parseInt(e.target.value) : null })}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">なし</option>
+                    {workLocations.map(loc => (
+                      <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">この項目が適用されたとき、自動的に設定される勤務場所</p>
+                </div>
+              )}
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
               <button onClick={() => { setEditingSystemSetting(null); setTempSystemSetting(null); }} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
               <button onClick={handleSaveSystemSetting} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {saving ? "保存中..." : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 勤務場所追加モーダル */}
+      {showWorkLocationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">勤務場所追加</h2>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">勤務場所名 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newWorkLocation.name}
+                  onChange={(e) => setNewWorkLocation({ ...newWorkLocation, name: e.target.value })}
+                  placeholder="例: 手術室、ICU、院内、院外"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">表示ラベル</label>
+                <input
+                  type="text"
+                  value={newWorkLocation.display_label}
+                  onChange={(e) => setNewWorkLocation({ ...newWorkLocation, display_label: e.target.value })}
+                  placeholder="空欄の場合は勤務場所名を使用"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <ColorPicker label="背景色" color={newWorkLocation.color} onChange={(c) => setNewWorkLocation({ ...newWorkLocation, color: c })} allowTransparent={false} />
+              <ColorPicker label="文字色" color={newWorkLocation.text_color} onChange={(c) => setNewWorkLocation({ ...newWorkLocation, text_color: c })} allowTransparent={false} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">プレビュー</label>
+                <div
+                  className="inline-block w-12 h-12 rounded flex items-center justify-center text-xs font-bold"
+                  style={{ backgroundColor: newWorkLocation.color, color: newWorkLocation.text_color }}
+                >
+                  {newWorkLocation.display_label || newWorkLocation.name.slice(0, 2) || "場所"}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">デフォルト設定</label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newWorkLocation.is_default_weekday}
+                    onChange={(e) => setNewWorkLocation({ ...newWorkLocation, is_default_weekday: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">平日のデフォルト</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newWorkLocation.is_default_holiday}
+                    onChange={(e) => setNewWorkLocation({ ...newWorkLocation, is_default_holiday: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">休日のデフォルト（日曜・祝日）</span>
+                </label>
+                <p className="text-xs text-gray-500">※デフォルトは各1つまで。設定すると既存のデフォルトは解除されます。</p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button onClick={() => setShowWorkLocationModal(false)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
+              <button onClick={handleAddWorkLocation} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {saving ? "追加中..." : "追加"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 勤務場所編集モーダル */}
+      {editingWorkLocation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">勤務場所編集</h2>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">勤務場所名 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={editingWorkLocation.name}
+                  onChange={(e) => setEditingWorkLocation({ ...editingWorkLocation, name: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">表示ラベル</label>
+                <input
+                  type="text"
+                  value={editingWorkLocation.display_label || ""}
+                  onChange={(e) => setEditingWorkLocation({ ...editingWorkLocation, display_label: e.target.value })}
+                  placeholder="空欄の場合は勤務場所名を使用"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <ColorPicker label="背景色" color={editingWorkLocation.color} onChange={(c) => setEditingWorkLocation({ ...editingWorkLocation, color: c })} allowTransparent={false} />
+              <ColorPicker label="文字色" color={editingWorkLocation.text_color} onChange={(c) => setEditingWorkLocation({ ...editingWorkLocation, text_color: c })} allowTransparent={false} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">プレビュー</label>
+                <div
+                  className="inline-block w-12 h-12 rounded flex items-center justify-center text-xs font-bold"
+                  style={{ backgroundColor: editingWorkLocation.color, color: editingWorkLocation.text_color }}
+                >
+                  {editingWorkLocation.display_label || editingWorkLocation.name.slice(0, 2) || "場所"}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-700">デフォルト設定</label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editingWorkLocation.is_default_weekday}
+                    onChange={(e) => setEditingWorkLocation({ ...editingWorkLocation, is_default_weekday: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">平日のデフォルト</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editingWorkLocation.is_default_holiday}
+                    onChange={(e) => setEditingWorkLocation({ ...editingWorkLocation, is_default_holiday: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">休日のデフォルト（日曜・祝日）</span>
+                </label>
+                <p className="text-xs text-gray-500">※デフォルトは各1つまで。設定すると既存のデフォルトは解除されます。</p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button onClick={() => setEditingWorkLocation(null)} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">キャンセル</button>
+              <button onClick={handleUpdateWorkLocation} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 {saving ? "保存中..." : "保存"}
               </button>
             </div>

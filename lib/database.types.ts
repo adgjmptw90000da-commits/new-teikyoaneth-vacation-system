@@ -13,6 +13,7 @@ export interface DisplaySettings {
     label_first_year: string
     color: string
     bg_color: string
+    default_work_location_id?: number | null
   }
   vacation?: {
     label_full: string
@@ -20,6 +21,7 @@ export interface DisplaySettings {
     label_pm: string
     color: string
     bg_color: string
+    default_work_location_id?: number | null
   }
   vacation_applied?: {
     color: string
@@ -29,16 +31,19 @@ export interface DisplaySettings {
     label: string
     color: string
     bg_color: string
+    default_work_location_id?: number | null
   }
   secondment?: {
     label: string
     color: string
     bg_color: string
+    default_work_location_id?: number | null
   }
   leave_of_absence?: {
     label: string
     color: string
     bg_color: string
+    default_work_location_id?: number | null
   }
 }
 
@@ -381,6 +386,7 @@ export interface Database {
           color: string
           text_color: string
           monthly_limit: number | null
+          default_work_location_id: number | null
           created_at: string
           updated_at: string
         }
@@ -398,6 +404,7 @@ export interface Database {
           color?: string
           text_color?: string
           monthly_limit?: number | null
+          default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -415,6 +422,7 @@ export interface Database {
           color?: string
           text_color?: string
           monthly_limit?: number | null
+          default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -425,6 +433,7 @@ export interface Database {
           staff_id: string
           schedule_date: string
           schedule_type_id: number
+          work_location_id: number | null
           created_at: string
           updated_at: string
         }
@@ -433,6 +442,7 @@ export interface Database {
           staff_id: string
           schedule_date: string
           schedule_type_id: number
+          work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -441,6 +451,7 @@ export interface Database {
           staff_id?: string
           schedule_date?: string
           schedule_type_id?: number
+          work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -529,6 +540,7 @@ export interface Database {
           color: string
           text_color: string
           is_kensanbi_target: boolean
+          default_work_location_id: number | null
           created_at: string
           updated_at: string
         }
@@ -543,6 +555,7 @@ export interface Database {
           color?: string
           text_color?: string
           is_kensanbi_target?: boolean
+          default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -557,6 +570,7 @@ export interface Database {
           color?: string
           text_color?: string
           is_kensanbi_target?: boolean
+          default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -567,6 +581,7 @@ export interface Database {
           staff_id: string
           shift_date: string
           shift_type_id: number
+          work_location_id: number | null
           created_at: string
           updated_at: string
         }
@@ -575,6 +590,7 @@ export interface Database {
           staff_id: string
           shift_date: string
           shift_type_id: number
+          work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -583,6 +599,7 @@ export interface Database {
           staff_id?: string
           shift_date?: string
           shift_type_id?: number
+          work_location_id?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -691,6 +708,135 @@ export interface Database {
           published_at?: string | null
           published_by_staff_id?: string | null
           snapshot_data?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      work_location: {
+        Row: {
+          id: number
+          name: string
+          display_label: string | null
+          color: string
+          text_color: string
+          display_order: number
+          is_default_weekday: boolean
+          is_default_holiday: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label?: string | null
+          color?: string
+          text_color?: string
+          display_order?: number
+          is_default_weekday?: boolean
+          is_default_holiday?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string | null
+          color?: string
+          text_color?: string
+          display_order?: number
+          is_default_weekday?: boolean
+          is_default_holiday?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      user_work_location: {
+        Row: {
+          id: number
+          staff_id: string
+          work_date: string
+          work_location_id: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          work_date: string
+          work_location_id: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          work_date?: string
+          work_location_id?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      count_config: {
+        Row: {
+          id: number
+          name: string
+          display_label: string
+          is_active: boolean
+          display_order: number
+          target_schedule_type_ids: number[]
+          target_shift_type_ids: number[]
+          target_work_location_ids: number[]
+          target_special_types: string[]
+          target_period_am: boolean
+          target_period_pm: boolean
+          target_period_night: boolean
+          filter_teams: string[]
+          filter_night_shift_levels: string[]
+          filter_can_cardiac: boolean | null
+          filter_can_obstetric: boolean | null
+          filter_can_icu: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          target_work_location_ids?: number[]
+          target_special_types?: string[]
+          target_period_am?: boolean
+          target_period_pm?: boolean
+          target_period_night?: boolean
+          filter_teams?: string[]
+          filter_night_shift_levels?: string[]
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          target_work_location_ids?: number[]
+          target_special_types?: string[]
+          target_period_am?: boolean
+          target_period_pm?: boolean
+          target_period_night?: boolean
+          filter_teams?: string[]
+          filter_night_shift_levels?: string[]
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
           created_at?: string
           updated_at?: string
         }
