@@ -121,7 +121,7 @@ export default function MemberSettingsPage() {
     }
   };
 
-  const handleCapabilityChange = async (staffId: string, field: 'can_cardiac' | 'can_obstetric' | 'can_icu', value: boolean) => {
+  const handleCapabilityChange = async (staffId: string, field: 'can_cardiac' | 'can_obstetric' | 'can_icu' | 'can_remaining_duty', value: boolean) => {
     setSaving(true);
     try {
       const { error } = await supabase
@@ -331,6 +331,7 @@ export default function MemberSettingsPage() {
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">心外</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">産科</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">ICU</th>
+                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">残り番</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -452,6 +453,20 @@ export default function MemberSettingsPage() {
                           {user.can_icu && <Icons.Check />}
                         </button>
                       </td>
+                      {/* 残り番 */}
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <button
+                          onClick={() => handleCapabilityChange(user.staff_id, 'can_remaining_duty', !user.can_remaining_duty)}
+                          disabled={saving}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                            user.can_remaining_duty
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
+                          }`}
+                        >
+                          {user.can_remaining_duty && <Icons.Check />}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -498,6 +513,10 @@ export default function MemberSettingsPage() {
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 bg-teal-600 text-white rounded flex items-center justify-center"><Icons.Check /></span>
                 <span className="text-gray-600">ICU可</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-orange-600 text-white rounded flex items-center justify-center"><Icons.Check /></span>
+                <span className="text-gray-600">残り番可</span>
               </div>
             </div>
           </div>

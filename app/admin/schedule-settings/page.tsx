@@ -6,14 +6,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { DisplaySettings } from "@/lib/database.types";
 
-// デフォルトの表示設定
+// デフォルトの表示設定（研究日・出向・休職はschedule_typeに移行）
 const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
-  research_day: {
-    label: "研究日",
-    label_first_year: "外勤",
-    color: "#000000",
-    bg_color: "#FFFF99",
-  },
   vacation: {
     label_full: "年休",
     label_am: "AM",
@@ -29,16 +23,6 @@ const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
     label: "研鑽日",
     color: "#000000",
     bg_color: "#99FF99",
-  },
-  secondment: {
-    label: "出向",
-    color: "#000000",
-    bg_color: "#FFCC99",
-  },
-  leave_of_absence: {
-    label: "休職",
-    color: "#000000",
-    bg_color: "#C0C0C0",
   },
 };
 
@@ -56,7 +40,10 @@ interface ScheduleType {
   color: string;
   text_color: string;
   monthly_limit: number | null;
+  is_kensanbi_target: boolean;
   default_work_location_id: number | null;
+  is_system: boolean;
+  system_key: string | null;
 }
 
 interface ShiftType {
@@ -66,10 +53,14 @@ interface ShiftType {
   position_am: boolean;
   position_pm: boolean;
   position_night: boolean;
+  prev_day_night_shift: boolean;
+  same_day_night_shift: boolean;
+  next_day_night_shift: boolean;
   display_order: number;
   color: string;
   text_color: string;
   is_kensanbi_target: boolean;
+  monthly_limit: number | null;
   default_work_location_id: number | null;
 }
 
@@ -85,6 +76,7 @@ interface NewScheduleType {
   color: string;
   text_color: string;
   monthly_limit: number | null;
+  is_kensanbi_target: boolean;
   default_work_location_id: number | null;
 }
 
@@ -94,9 +86,13 @@ interface NewShiftType {
   position_am: boolean;
   position_pm: boolean;
   position_night: boolean;
+  prev_day_night_shift: boolean;
+  same_day_night_shift: boolean;
+  next_day_night_shift: boolean;
   color: string;
   text_color: string;
   is_kensanbi_target: boolean;
+  monthly_limit: number | null;
   default_work_location_id: number | null;
 }
 
@@ -120,15 +116,13 @@ interface NewWorkLocation {
   is_default_holiday: boolean;
 }
 
-type SystemSettingKey = 'research_day' | 'vacation' | 'vacation_applied' | 'kensanbi_used' | 'secondment' | 'leave_of_absence';
+// 研究日・出向・休職はschedule_typeに移行したため、systemタブは年休・研鑽日のみ
+type SystemSettingKey = 'vacation' | 'vacation_applied' | 'kensanbi_used';
 
 const SYSTEM_SETTING_LABELS: Record<SystemSettingKey, string> = {
-  research_day: '研究日/外勤',
   vacation: '年休（未申請）',
   vacation_applied: '年休（One人事申請済み）',
   kensanbi_used: '研鑽日',
-  secondment: '出向',
-  leave_of_absence: '休職',
 };
 
 // カラーピッカーコンポーネント
@@ -199,6 +193,7 @@ export default function ScheduleSettingsPage() {
     color: "#CCFFFF",
     text_color: "#000000",
     monthly_limit: null,
+    is_kensanbi_target: false,
     default_work_location_id: null,
   });
 
@@ -212,9 +207,13 @@ export default function ScheduleSettingsPage() {
     position_am: false,
     position_pm: false,
     position_night: true,
+    prev_day_night_shift: true,
+    same_day_night_shift: true,
+    next_day_night_shift: true,
     color: "#CCFFFF",
     text_color: "#000000",
     is_kensanbi_target: false,
+    monthly_limit: null,
     default_work_location_id: null,
   });
 
@@ -300,7 +299,7 @@ export default function ScheduleSettingsPage() {
       setNewSchedule({
         name: "", display_label: "", position_am: true, position_pm: true, position_night: false,
         prev_day_night_shift: false, same_day_night_shift: true, next_day_night_shift: true,
-        color: "#CCFFFF", text_color: "#000000", monthly_limit: null, default_work_location_id: null,
+        color: "#CCFFFF", text_color: "#000000", monthly_limit: null, is_kensanbi_target: false, default_work_location_id: null,
       });
       fetchData();
     }
@@ -325,6 +324,7 @@ export default function ScheduleSettingsPage() {
       color: editingSchedule.color,
       text_color: editingSchedule.text_color,
       monthly_limit: editingSchedule.monthly_limit,
+      is_kensanbi_target: editingSchedule.is_kensanbi_target,
       default_work_location_id: editingSchedule.default_work_location_id,
     }).eq("id", editingSchedule.id);
     if (error) {
@@ -383,7 +383,8 @@ export default function ScheduleSettingsPage() {
       setShowShiftModal(false);
       setNewShift({
         name: "", display_label: "", position_am: false, position_pm: false, position_night: true,
-        color: "#CCFFFF", text_color: "#000000", is_kensanbi_target: false, default_work_location_id: null,
+        prev_day_night_shift: true, same_day_night_shift: true, next_day_night_shift: true,
+        color: "#CCFFFF", text_color: "#000000", is_kensanbi_target: false, monthly_limit: null, default_work_location_id: null,
       });
       fetchData();
     }
@@ -402,9 +403,13 @@ export default function ScheduleSettingsPage() {
       position_am: editingShift.position_am,
       position_pm: editingShift.position_pm,
       position_night: editingShift.position_night,
+      prev_day_night_shift: editingShift.prev_day_night_shift,
+      same_day_night_shift: editingShift.same_day_night_shift,
+      next_day_night_shift: editingShift.next_day_night_shift,
       color: editingShift.color,
       text_color: editingShift.text_color,
       is_kensanbi_target: editingShift.is_kensanbi_target,
+      monthly_limit: editingShift.monthly_limit,
       default_work_location_id: editingShift.default_work_location_id,
     }).eq("id", editingShift.id);
     if (error) {
@@ -709,14 +714,22 @@ export default function ScheduleSettingsPage() {
                         <div className="flex-1">
                           <div className="font-medium text-gray-900 flex items-center gap-2">
                             {type.name}
+                            {type.is_system && (
+                              <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">システム</span>
+                            )}
                             {type.monthly_limit && (
                               <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">月{type.monthly_limit}回まで</span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-500 flex gap-2 mt-1">
+                          <div className="text-sm text-gray-500 flex gap-2 mt-1 flex-wrap">
                             <span className={type.position_am ? "text-blue-600" : "text-gray-400"}>AM</span>
                             <span className={type.position_pm ? "text-blue-600" : "text-gray-400"}>PM</span>
                             <span className={type.position_night ? "text-blue-600" : "text-gray-400"}>夜勤</span>
+                            {type.is_kensanbi_target && <span className="text-green-600 ml-2">研鑽日対象</span>}
+                            <span className="ml-2 text-gray-400">|</span>
+                            <span className={type.prev_day_night_shift ? "text-green-600" : "text-red-400"}>前日当直{type.prev_day_night_shift ? '○' : '×'}</span>
+                            <span className={type.same_day_night_shift ? "text-green-600" : "text-red-400"}>当日当直{type.same_day_night_shift ? '○' : '×'}</span>
+                            <span className={type.next_day_night_shift ? "text-green-600" : "text-red-400"}>翌日当直{type.next_day_night_shift ? '○' : '×'}</span>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -725,11 +738,13 @@ export default function ScheduleSettingsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
-                          <button onClick={() => handleDeleteSchedule(type.id)} className="text-gray-600 hover:text-red-600 p-2">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          {!type.is_system && (
+                            <button onClick={() => handleDeleteSchedule(type.id)} className="text-gray-600 hover:text-red-600 p-2">
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </li>
                     ))}
@@ -773,12 +788,21 @@ export default function ScheduleSettingsPage() {
                           {type.display_label || type.name}
                         </div>
                         <div className="flex-1">
-                          <div className="font-medium text-gray-900">{type.name}</div>
-                          <div className="text-sm text-gray-500 flex gap-2 mt-1">
+                          <div className="font-medium text-gray-900 flex items-center gap-2">
+                            {type.name}
+                            {type.monthly_limit && (
+                              <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">月{type.monthly_limit}回まで</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500 flex gap-2 mt-1 flex-wrap">
                             <span className={type.position_am ? "text-blue-600" : "text-gray-400"}>AM</span>
                             <span className={type.position_pm ? "text-blue-600" : "text-gray-400"}>PM</span>
                             <span className={type.position_night ? "text-blue-600" : "text-gray-400"}>夜勤</span>
                             {type.is_kensanbi_target && <span className="text-green-600 ml-2">研鑽日対象</span>}
+                            <span className="ml-2 text-gray-400">|</span>
+                            <span className={type.prev_day_night_shift ? "text-green-600" : "text-red-400"}>前日当直{type.prev_day_night_shift ? '○' : '×'}</span>
+                            <span className={type.same_day_night_shift ? "text-green-600" : "text-red-400"}>当日当直{type.same_day_night_shift ? '○' : '×'}</span>
+                            <span className={type.next_day_night_shift ? "text-green-600" : "text-red-400"}>翌日当直{type.next_day_night_shift ? '○' : '×'}</span>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -867,19 +891,18 @@ export default function ScheduleSettingsPage() {
               </div>
             )}
 
-            {/* 表示設定タブ */}
+            {/* 表示設定タブ（年休・研鑽日のみ。研究日・出向・休職はscheduleタブに移行） */}
             {activeTab === 'system' && (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="p-4 bg-gray-50 border-b border-gray-200">
                   <p className="text-sm text-gray-600">
-                    システム予定（研究日、年休など）の表示ラベルと色を設定できます。
+                    年休・研鑽日の表示ラベルと色を設定できます。研究日・出向・休職は「予定タイプ」タブで設定してください。
                   </p>
                 </div>
                 <ul className="divide-y divide-gray-200">
                   {(Object.keys(SYSTEM_SETTING_LABELS) as SystemSettingKey[]).map((key) => {
                     const setting = displaySettings[key];
-                    const label = key === 'research_day' ? (setting?.label || '研究日') :
-                                  key === 'vacation' ? (setting?.label_full || '年休') :
+                    const label = key === 'vacation' ? (setting?.label_full || '年休') :
                                   key === 'vacation_applied' ? (displaySettings.vacation?.label_full || '年休') :
                                   setting?.label || SYSTEM_SETTING_LABELS[key];
                     return (
@@ -1012,6 +1035,13 @@ export default function ScheduleSettingsPage() {
                 </div>
               </div>
               <div>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={newSchedule.is_kensanbi_target} onChange={(e) => setNewSchedule({ ...newSchedule, is_kensanbi_target: e.target.checked })} className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-gray-700">研鑽日付与対象</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">この予定で研鑽日が付与される場合にチェック</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
                 <select
                   value={newSchedule.default_work_location_id ?? ""}
@@ -1041,13 +1071,22 @@ export default function ScheduleSettingsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">予定タイプ編集</h2>
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                予定タイプ編集
+                {editingSchedule.is_system && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">システム予約</span>
+                )}
+              </h2>
             </div>
             <div className="p-6 space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">予定名 <span className="text-red-500">*</span></label>
                 <input type="text" value={editingSchedule.name} onChange={(e) => setEditingSchedule({ ...editingSchedule, name: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  disabled={editingSchedule.is_system}
+                  className={`w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${editingSchedule.is_system ? 'bg-gray-100 cursor-not-allowed' : ''}`} />
+                {editingSchedule.is_system && (
+                  <p className="text-xs text-gray-500 mt-1">システム予約タイプの名前は変更できません</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">表示ラベル</label>
@@ -1124,6 +1163,13 @@ export default function ScheduleSettingsPage() {
                 </div>
               </div>
               <div>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={editingSchedule.is_kensanbi_target} onChange={(e) => setEditingSchedule({ ...editingSchedule, is_kensanbi_target: e.target.checked })} className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-gray-700">研鑽日付与対象</span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">この予定で研鑽日が付与される場合にチェック</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">デフォルト勤務場所</label>
                 <select
                   value={editingSchedule.default_work_location_id ?? ""}
@@ -1190,6 +1236,49 @@ export default function ScheduleSettingsPage() {
                     <input type="checkbox" checked={newShift.position_night} onChange={(e) => setNewShift({ ...newShift, position_night: e.target.checked })} className="w-4 h-4" />
                     <span>夜勤帯</span>
                   </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">当直可否設定</label>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">前日当直</span>
+                    <button type="button" onClick={() => setNewShift({ ...newShift, prev_day_night_shift: !newShift.prev_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${newShift.prev_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {newShift.prev_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">当日当直</span>
+                    <button type="button" onClick={() => setNewShift({ ...newShift, same_day_night_shift: !newShift.same_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${newShift.same_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {newShift.same_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">翌日当直</span>
+                    <button type="button" onClick={() => setNewShift({ ...newShift, next_day_night_shift: !newShift.next_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${newShift.next_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {newShift.next_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">月あたりの回数制限</label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={newShift.monthly_limit !== null} onChange={(e) => setNewShift({ ...newShift, monthly_limit: e.target.checked ? 3 : null })} className="w-4 h-4" />
+                    <span className="text-sm">制限あり</span>
+                  </label>
+                  {newShift.monthly_limit !== null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">月</span>
+                      <input type="number" min="1" max="31" value={newShift.monthly_limit} onChange={(e) => setNewShift({ ...newShift, monthly_limit: parseInt(e.target.value) || 1 })}
+                        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-center" />
+                      <span className="text-sm">回まで</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
@@ -1269,6 +1358,49 @@ export default function ScheduleSettingsPage() {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">当直可否設定</label>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">前日当直</span>
+                    <button type="button" onClick={() => setEditingShift({ ...editingShift, prev_day_night_shift: !editingShift.prev_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${editingShift.prev_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {editingShift.prev_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">当日当直</span>
+                    <button type="button" onClick={() => setEditingShift({ ...editingShift, same_day_night_shift: !editingShift.same_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${editingShift.same_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {editingShift.same_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">翌日当直</span>
+                    <button type="button" onClick={() => setEditingShift({ ...editingShift, next_day_night_shift: !editingShift.next_day_night_shift })}
+                      className={`w-14 h-8 rounded-full flex items-center justify-center font-bold text-lg ${editingShift.next_day_night_shift ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                      {editingShift.next_day_night_shift ? '○' : '×'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">月あたりの回数制限</label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={editingShift.monthly_limit !== null} onChange={(e) => setEditingShift({ ...editingShift, monthly_limit: e.target.checked ? 3 : null })} className="w-4 h-4" />
+                    <span className="text-sm">制限あり</span>
+                  </label>
+                  {editingShift.monthly_limit !== null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">月</span>
+                      <input type="number" min="1" max="31" value={editingShift.monthly_limit} onChange={(e) => setEditingShift({ ...editingShift, monthly_limit: parseInt(e.target.value) || 1 })}
+                        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-center" />
+                      <span className="text-sm">回まで</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={editingShift.is_kensanbi_target} onChange={(e) => setEditingShift({ ...editingShift, is_kensanbi_target: e.target.checked })} className="w-4 h-4 text-green-600" />
                   <span className="text-sm font-medium text-gray-700">研鑽日付与対象</span>
@@ -1309,20 +1441,6 @@ export default function ScheduleSettingsPage() {
             </div>
             <div className="p-6 space-y-6">
               {/* ラベル設定（項目によって異なる） */}
-              {editingSystemSetting === 'research_day' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">ラベル（通常）</label>
-                    <input type="text" value={tempSystemSetting.label || ""} onChange={(e) => setTempSystemSetting({ ...tempSystemSetting, label: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">ラベル（1年目）</label>
-                    <input type="text" value={tempSystemSetting.label_first_year || ""} onChange={(e) => setTempSystemSetting({ ...tempSystemSetting, label_first_year: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                </>
-              )}
               {editingSystemSetting === 'vacation' && (
                 <>
                   <div>
@@ -1345,7 +1463,7 @@ export default function ScheduleSettingsPage() {
               {editingSystemSetting === 'vacation_applied' && (
                 <p className="text-sm text-gray-500">ラベルは「年休（未申請）」と同じものが使用されます。</p>
               )}
-              {(editingSystemSetting === 'kensanbi_used' || editingSystemSetting === 'secondment' || editingSystemSetting === 'leave_of_absence') && (
+              {editingSystemSetting === 'kensanbi_used' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">ラベル</label>
                   <input type="text" value={tempSystemSetting.label || ""} onChange={(e) => setTempSystemSetting({ ...tempSystemSetting, label: e.target.value })}
@@ -1362,8 +1480,7 @@ export default function ScheduleSettingsPage() {
                     color: tempSystemSetting.color || '#000',
                     border: tempSystemSetting.bg_color === 'transparent' ? '1px dashed #ccc' : 'none'
                   }}>
-                  {editingSystemSetting === 'research_day' ? (tempSystemSetting.label || '研究日') :
-                   editingSystemSetting === 'vacation' ? (tempSystemSetting.label_full || '年休') :
+                  {editingSystemSetting === 'vacation' ? (tempSystemSetting.label_full || '年休') :
                    editingSystemSetting === 'vacation_applied' ? (displaySettings.vacation?.label_full || '年休') :
                    tempSystemSetting.label || SYSTEM_SETTING_LABELS[editingSystemSetting]}
                 </div>

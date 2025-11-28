@@ -53,6 +53,30 @@ type UserShift = Database["public"]["Tables"]["user_shift"]["Row"];
 type WorkLocation = Database["public"]["Tables"]["work_location"]["Row"];
 type UserWorkLocation = Database["public"]["Tables"]["user_work_location"]["Row"];
 type CountConfig = Database["public"]["Tables"]["count_config"]["Row"];
+type ShiftAssignPreset = Database["public"]["Tables"]["shift_assign_preset"]["Row"];
+
+// 除外フィルターの型定義
+type TargetDay = 'same_day' | 'prev_day' | 'next_day';
+type VacationPeriod = 'full_day' | 'am' | 'pm';
+type TimePeriod = 'am' | 'pm' | 'night';
+
+interface DateBasedExclusionFilter {
+  type: 'date_based';
+  target_days: TargetDay[];
+  exclude_shift_type_ids: number[];
+  exclude_schedule_type_ids: number[];
+  exclude_vacation: boolean;
+  exclude_vacation_periods: VacationPeriod[];
+}
+
+interface WorkLocationBasedExclusionFilter {
+  type: 'work_location_based';
+  target_days: TargetDay[];
+  target_periods: TimePeriod[];
+  exclude_work_location_ids: number[];
+}
+
+type ExclusionFilter = DateBasedExclusionFilter | WorkLocationBasedExclusionFilter;
 
 interface MemberData {
   staff_id: string;
@@ -71,6 +95,7 @@ interface MemberData {
   can_cardiac: boolean;
   can_obstetric: boolean;
   can_icu: boolean;
+  can_remaining_duty: boolean;
 }
 
 interface DayData {
@@ -165,6 +190,13 @@ export default function ScheduleViewPage() {
     filter_can_icu: null,
   });
 
+  // プリセット関連
+  const [shiftAssignPresets, setShiftAssignPresets] = useState<ShiftAssignPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
+  const [showPresetSaveModal, setShowPresetSaveModal] = useState(false);
+  const [presetSaveName, setPresetSaveName] = useState('');
+  const [showPresetManageModal, setShowPresetManageModal] = useState(false);
+
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
 
@@ -192,6 +224,7 @@ export default function ScheduleViewPage() {
   const [autoAssignConfig, setAutoAssignConfig] = useState<{
     nightShiftTypeId: number | null;
     dayAfterShiftTypeId: number | null;
+    excludeNightShiftTypeIds: number[]; // 連続不可チェック対象の当直シフトタイプID群
     selectionMode: 'filter' | 'individual';
     filterTeams: ('A' | 'B')[];
     filterNightShiftLevels: string[];
@@ -220,6 +253,7 @@ export default function ScheduleViewPage() {
     return {
       nightShiftTypeId: null,
       dayAfterShiftTypeId: null,
+      excludeNightShiftTypeIds: [], // 空の場合は割り振る当直のみチェック
       selectionMode: 'filter',
       filterTeams: [],
       filterNightShiftLevels: [],
@@ -251,12 +285,15 @@ export default function ScheduleViewPage() {
     filterCanCardiac: boolean | null;
     filterCanObstetric: boolean | null;
     filterCanIcu: boolean | null;
+    filterCanRemainingDuty: boolean | null;
     selectedMemberIds: string[];
     dateSelectionMode: 'period' | 'weekday' | 'specific';
     startDate: string;
     endDate: string;
     targetWeekdays: number[];
     specificDates: string[];
+    exclusionFilters: ExclusionFilter[];
+    excludeNightShiftUnavailable: boolean; // 当直不可（×）の日は割り振らない
   }>(() => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -274,18 +311,46 @@ export default function ScheduleViewPage() {
       filterCanCardiac: null,
       filterCanObstetric: null,
       filterCanIcu: null,
+      filterCanRemainingDuty: null,
       selectedMemberIds: [],
       dateSelectionMode: 'period',
       startDate: firstDay,
       endDate: endDay,
       targetWeekdays: [],
       specificDates: [],
+      exclusionFilters: [],
+      excludeNightShiftUnavailable: false,
     };
   });
   const [generalShiftPreview, setGeneralShiftPreview] = useState<{
     assignments: { date: string; staffId: string; staffName: string }[];
     summary: Map<string, number>;
   } | null>(null);
+
+  // シフト一括削除用の設定
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeleteConfig, setBulkDeleteConfig] = useState<{
+    shiftTypeId: number | null;
+    startDate: string;
+    endDate: string;
+  }>(() => {
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const year = nextMonth.getFullYear();
+    const month = nextMonth.getMonth() + 1;
+    const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDate = new Date(year, month, 0);
+    const endDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+    return {
+      shiftTypeId: null,
+      startDate: firstDay,
+      endDate: endDay,
+    };
+  });
+  const [bulkDeletePreview, setBulkDeletePreview] = useState<{
+    shifts: { id: number; date: string; staffId: string; staffName: string; shiftName: string }[];
+  } | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // 月が変更された時にautoAssignConfigとgeneralShiftConfigのデフォルト期間を更新
   useEffect(() => {
@@ -303,6 +368,11 @@ export default function ScheduleViewPage() {
       startDate: firstDay,
       endDate: endDay,
       specificDates: [],
+    }));
+    setBulkDeleteConfig(prev => ({
+      ...prev,
+      startDate: firstDay,
+      endDate: endDay,
     }));
   }, [currentYear, currentMonth]);
 
@@ -344,8 +414,9 @@ export default function ScheduleViewPage() {
         { data: workLocationsData },
         { data: userWorkLocationsData },
         { data: countConfigsData },
+        { data: shiftAssignPresetsData },
       ] = await Promise.all([
-        supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu").order("team").order("display_order").order("staff_id"),
+        supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
         supabase.from("shift_type").select("*").order("display_order"),
         supabase.from("holiday").select("*"),
@@ -380,6 +451,7 @@ export default function ScheduleViewPage() {
           .gte("work_date", startDate)
           .lte("work_date", endDate),
         supabase.from("count_config").select("*").order("display_order"),
+        supabase.from("shift_assign_preset").select("*").order("display_order"),
       ]);
 
       // 確定済み日付のSetを作成
@@ -394,8 +466,44 @@ export default function ScheduleViewPage() {
       setHolidays(holidaysData || []);
       setWorkLocationMaster(workLocationsData || []);
       setCountConfigs(countConfigsData || []);
+      setShiftAssignPresets(shiftAssignPresetsData || []);
+
+      // システム予約タイプからdisplaySettingsを構築
+      const systemScheduleTypes = {
+        research_day: (types || []).find(t => t.system_key === 'research_day'),
+        secondment: (types || []).find(t => t.system_key === 'secondment'),
+        leave_of_absence: (types || []).find(t => t.system_key === 'leave_of_absence'),
+      };
+
+      const systemDisplaySettings: Partial<DisplaySettings> = {};
+      if (systemScheduleTypes.research_day) {
+        systemDisplaySettings.research_day = {
+          label: systemScheduleTypes.research_day.display_label || systemScheduleTypes.research_day.name || '研究日',
+          label_first_year: systemScheduleTypes.research_day.display_label || systemScheduleTypes.research_day.name || '研究日', // 外勤は廃止
+          color: systemScheduleTypes.research_day.text_color || '#000000',
+          bg_color: systemScheduleTypes.research_day.color || '#FFFF99',
+          default_work_location_id: systemScheduleTypes.research_day.default_work_location_id ?? undefined,
+        };
+      }
+      if (systemScheduleTypes.secondment) {
+        systemDisplaySettings.secondment = {
+          label: systemScheduleTypes.secondment.display_label || systemScheduleTypes.secondment.name || '出向',
+          color: systemScheduleTypes.secondment.text_color || '#000000',
+          bg_color: systemScheduleTypes.secondment.color || '#FFCC99',
+        };
+      }
+      if (systemScheduleTypes.leave_of_absence) {
+        systemDisplaySettings.leave_of_absence = {
+          label: systemScheduleTypes.leave_of_absence.display_label || systemScheduleTypes.leave_of_absence.name || '休職',
+          color: systemScheduleTypes.leave_of_absence.text_color || '#000000',
+          bg_color: systemScheduleTypes.leave_of_absence.color || '#C0C0C0',
+        };
+      }
+
       if (settingData?.display_settings) {
-        setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...settingData.display_settings });
+        setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...settingData.display_settings, ...systemDisplaySettings });
+      } else {
+        setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...systemDisplaySettings });
       }
 
       // 公開状態を設定
@@ -477,6 +585,7 @@ export default function ScheduleViewPage() {
           can_cardiac: user.can_cardiac || false,
           can_obstetric: user.can_obstetric || false,
           can_icu: user.can_icu || false,
+          can_remaining_duty: user.can_remaining_duty || false,
         };
       });
 
@@ -545,10 +654,39 @@ export default function ScheduleViewPage() {
       }
     }
 
+    // 前日の当直による制約（前日の当直がnext_day_night_shift=falseなら当直不可）
+    const prevDate = new Date(date);
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toISOString().split('T')[0];
+
+    // 前日のカスタム予定
+    const prevSchedules = member.schedules[prevDateStr] || [];
+    for (const s of prevSchedules) {
+      if (!s.schedule_type.next_day_night_shift) {
+        return false;
+      }
+    }
+
+    // 前日のシフト
+    const prevShifts = member.shifts[prevDateStr] || [];
+    for (const sh of prevShifts) {
+      if (!sh.shift_type.next_day_night_shift) {
+        return false;
+      }
+    }
+
     // カスタム予定の当日制約
     const schedules = member.schedules[date] || [];
     for (const s of schedules) {
       if (!s.schedule_type.same_day_night_shift) {
+        return false;
+      }
+    }
+
+    // シフトの当日制約
+    const shifts = member.shifts[date] || [];
+    for (const sh of shifts) {
+      if (!sh.shift_type.same_day_night_shift) {
         return false;
       }
     }
@@ -575,6 +713,14 @@ export default function ScheduleViewPage() {
     const nextSchedules = member.schedules[nextDateStr] || [];
     for (const s of nextSchedules) {
       if (!s.schedule_type.prev_day_night_shift) {
+        return false;
+      }
+    }
+
+    // 翌日のシフト
+    const nextShifts = member.shifts[nextDateStr] || [];
+    for (const sh of nextShifts) {
+      if (!sh.shift_type.prev_day_night_shift) {
         return false;
       }
     }
@@ -944,6 +1090,17 @@ export default function ScheduleViewPage() {
       const nextDayShifts = member.shifts?.[nextDateStr1] || [];
       const next2DayShifts = member.shifts?.[nextDateStr2] || [];
 
+      // === チェック対象の当直シフトタイプIDリスト ===
+      // excludeNightShiftTypeIdsが空の場合はnightShiftTypeIdのみ、設定されている場合はそれを使用
+      const checkTargetIds: number[] = autoAssignConfig.excludeNightShiftTypeIds.length > 0
+        ? autoAssignConfig.excludeNightShiftTypeIds
+        : (autoAssignConfig.nightShiftTypeId ? [autoAssignConfig.nightShiftTypeId] : []);
+
+      // シフトが対象当直かどうかをチェックするヘルパー
+      const isTargetNightShift = (shiftTypeId: number | null | undefined): boolean => {
+        return shiftTypeId != null && checkTargetIds.includes(shiftTypeId);
+      };
+
       // === 前方向チェック（過去の当直による制約）===
 
       // 2. 前日に当直があれば不可（今日は当直明けになる）- 新規割り振り分
@@ -954,7 +1111,7 @@ export default function ScheduleViewPage() {
 
       // 2. 前日に当直があれば不可 - DB既存
       const hasExistingNightShiftYesterday = prevDayShifts.some(
-        s => s.shift_type_id === autoAssignConfig.nightShiftTypeId
+        s => isTargetNightShift(s.shift_type_id)
       );
       if (hasExistingNightShiftYesterday) return false;
 
@@ -966,7 +1123,7 @@ export default function ScheduleViewPage() {
 
       // 3. 前々日に当直があれば不可 - DB既存
       const hasExistingNightShift2DaysAgo = prev2DayShifts.some(
-        s => s.shift_type_id === autoAssignConfig.nightShiftTypeId
+        s => isTargetNightShift(s.shift_type_id)
       );
       if (hasExistingNightShift2DaysAgo) return false;
 
@@ -980,7 +1137,7 @@ export default function ScheduleViewPage() {
 
       // 4. 翌日に当直があれば不可 - DB既存
       const hasExistingNightShiftTomorrow = nextDayShifts.some(
-        s => s.shift_type_id === autoAssignConfig.nightShiftTypeId
+        s => isTargetNightShift(s.shift_type_id)
       );
       if (hasExistingNightShiftTomorrow) return false;
 
@@ -992,7 +1149,7 @@ export default function ScheduleViewPage() {
 
       // 5. 翌々日に当直があれば不可 - DB既存
       const hasExistingNightShift2DaysLater = next2DayShifts.some(
-        s => s.shift_type_id === autoAssignConfig.nightShiftTypeId
+        s => isTargetNightShift(s.shift_type_id)
       );
       if (hasExistingNightShift2DaysLater) return false;
 
@@ -1016,8 +1173,8 @@ export default function ScheduleViewPage() {
       );
       if (alreadyAssigned) return false;
 
-      // 既にこの日に当直シフトが入っていないか（DB既存）
-      const hasNightShift = todayShifts.some(s => s.shift_type_id === autoAssignConfig.nightShiftTypeId);
+      // 既にこの日に対象当直シフトが入っていないか（DB既存）
+      const hasNightShift = todayShifts.some(s => isTargetNightShift(s.shift_type_id));
       if (hasNightShift) return false;
 
       return true;
@@ -1044,29 +1201,6 @@ export default function ScheduleViewPage() {
         setIsAutoAssigning(false);
         return;
       }
-
-      // 祝日・祝日前日・金土日を優先日として分類
-      const holidayDates = new Set(holidays.map(h => h.holiday_date));
-      const preHolidayDates = new Set<string>();
-      holidays.forEach(h => {
-        const date = new Date(h.holiday_date);
-        date.setDate(date.getDate() - 1);
-        preHolidayDates.add(date.toISOString().split('T')[0]);
-      });
-
-      const priorityDates: DayData[] = [];
-      const normalDates: DayData[] = [];
-
-      targetDates.forEach(day => {
-        const isHoliday = holidayDates.has(day.date);
-        const isPreHoliday = preHolidayDates.has(day.date);
-        const isWeekend = day.dayOfWeek === 0 || day.dayOfWeek === 5 || day.dayOfWeek === 6;
-        if (isHoliday || isPreHoliday || isWeekend) {
-          priorityDates.push(day);
-        } else {
-          normalDates.push(day);
-        }
-      });
 
       // 各メンバーの当直回数カウンタ初期化（既存の当直シフトをカウント）
       const assignmentCount = new Map<string, number>();
@@ -1129,9 +1263,9 @@ export default function ScheduleViewPage() {
         return assignments.some(a => a.date === date && a.type === 'night_shift');
       };
 
-      // 優先日を先に割り振り
-      const sortedPriorityDates = sortByAvailableCount(priorityDates);
-      for (const day of sortedPriorityDates) {
+      // 全日を難易度順（当直可能人数が少ない順）にソートして割り振り
+      const sortedDates = sortByAvailableCount(targetDates);
+      for (const day of sortedDates) {
         // その日に既に当直が入っていたらスキップ
         if (isDayAlreadyAssigned(day.date)) continue;
 
@@ -1147,26 +1281,6 @@ export default function ScheduleViewPage() {
             const nextDateStr = nextDate.toISOString().split('T')[0];
             assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
             // カウント更新
-            assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
-          }
-        }
-      }
-
-      // 平日を割り振り
-      const sortedNormalDates = sortByAvailableCount(normalDates);
-      for (const day of sortedNormalDates) {
-        // その日に既に当直が入っていたらスキップ
-        if (isDayAlreadyAssigned(day.date)) continue;
-
-        const availableMembers = targetMembers.filter(m => canAssignNightShift(day.date, m, assignments, day));
-        if (availableMembers.length > 0) {
-          const selected = selectLeastAssigned(availableMembers);
-          if (selected) {
-            assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
-            const nextDate = new Date(day.date);
-            nextDate.setDate(nextDate.getDate() + 1);
-            const nextDateStr = nextDate.toISOString().split('T')[0];
-            assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
             assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
           }
         }
@@ -1299,6 +1413,9 @@ export default function ScheduleViewPage() {
       if (generalShiftConfig.filterCanIcu !== null && m.can_icu !== generalShiftConfig.filterCanIcu) {
         return false;
       }
+      if (generalShiftConfig.filterCanRemainingDuty !== null && m.can_remaining_duty !== generalShiftConfig.filterCanRemainingDuty) {
+        return false;
+      }
       return true;
     });
   };
@@ -1352,6 +1469,13 @@ export default function ScheduleViewPage() {
     // 休職中は不可
     if (isDateInLeaveOfAbsence(date, member.leaveOfAbsence)) return false;
 
+    // 当直不可（×）の日は割り振らないオプション
+    if (generalShiftConfig.excludeNightShiftUnavailable) {
+      if (!checkNightShiftAvailability(date, member, dayOfWeek, isHoliday)) {
+        return false;
+      }
+    }
+
     // 研究日は不可（祝日・日曜は研究日にならない）
     const isResearchDay = member.researchDay !== null &&
       dayOfWeek === member.researchDay &&
@@ -1367,22 +1491,17 @@ export default function ScheduleViewPage() {
     const targetIsPM = targetShiftType?.position_pm ?? false;
     const targetIsCombined = targetIsAM && targetIsPM; // AM+PM両方のシフト
 
-    // 既存シフトとの競合チェック
+    // 既存シフトとの競合チェック：同じ時間帯にシフトがあれば不可
+    const targetIsNight = targetShiftType?.position_night ?? false;
     for (const existingShift of todayShifts) {
       const existingIsAM = existingShift.shift_type?.position_am ?? false;
       const existingIsPM = existingShift.shift_type?.position_pm ?? false;
+      const existingIsNight = existingShift.shift_type?.position_night ?? false;
 
-      if (targetIsCombined) {
-        // AM+PMシフトを割り振る場合：どちらかに予定があったら不可
-        if (existingIsAM || existingIsPM) return false;
-      } else if (targetIsAM && !targetIsPM) {
-        // AMのみのシフトを割り振る場合：既存のAMシフトと競合
-        if (existingIsAM) return false;
-      } else if (!targetIsAM && targetIsPM) {
-        // PMのみのシフトを割り振る場合：既存のPMシフトと競合
-        if (existingIsPM) return false;
+      // 時間帯が重複していれば不可
+      if ((targetIsAM && existingIsAM) || (targetIsPM && existingIsPM) || (targetIsNight && existingIsNight)) {
+        return false;
       }
-      // AM/PMどちらもfalseのシフト（夜勤など）は競合しない
     }
 
     // 既存スケジュール（カスタム予定）との競合チェック
@@ -1425,6 +1544,157 @@ export default function ScheduleViewPage() {
       a => a.staffId === member.staff_id && a.date === date
     );
     if (alreadyAssigned) return false;
+
+    // 除外フィルターチェック
+    const getPrevDate = (d: string) => {
+      const dateObj = new Date(d);
+      dateObj.setDate(dateObj.getDate() - 1);
+      return dateObj.toISOString().split('T')[0];
+    };
+    const getNextDate = (d: string) => {
+      const dateObj = new Date(d);
+      dateObj.setDate(dateObj.getDate() + 1);
+      return dateObj.toISOString().split('T')[0];
+    };
+
+    for (const filter of generalShiftConfig.exclusionFilters) {
+      if (filter.type === 'date_based') {
+        // 日付ベースの除外フィルター
+        for (const targetDay of filter.target_days) {
+          const checkDate = targetDay === 'same_day' ? date
+            : targetDay === 'prev_day' ? getPrevDate(date)
+            : getNextDate(date);
+
+          // シフト除外チェック
+          if (filter.exclude_shift_type_ids.length > 0) {
+            // DB既存データをチェック
+            const shifts = member.shifts?.[checkDate] || [];
+            if (shifts.some(s => filter.exclude_shift_type_ids.includes(s.shift_type_id))) {
+              return false;
+            }
+            // 今回の割り振り結果もチェック（現在割り振り中のシフトタイプが除外対象なら）
+            if (generalShiftConfig.shiftTypeId && filter.exclude_shift_type_ids.includes(generalShiftConfig.shiftTypeId)) {
+              if (existingAssignments.some(a => a.staffId === member.staff_id && a.date === checkDate)) {
+                return false;
+              }
+            }
+          }
+
+          // 予定除外チェック
+          if (filter.exclude_schedule_type_ids.length > 0) {
+            const schedules = member.schedules?.[checkDate] || [];
+            if (schedules.some(s => filter.exclude_schedule_type_ids.includes(s.schedule_type_id))) {
+              return false;
+            }
+          }
+
+          // 年休除外チェック
+          if (filter.exclude_vacation && filter.exclude_vacation_periods.length > 0) {
+            const vacationOnDay = member.vacations?.[checkDate];
+            if (vacationOnDay && filter.exclude_vacation_periods.includes(vacationOnDay.period as VacationPeriod)) {
+              return false;
+            }
+          }
+        }
+      } else if (filter.type === 'work_location_based') {
+        // 勤務場所ベースの除外フィルター（時間帯別対応）
+        // 表示ロジックと同じ優先順位で勤務場所を判定
+        for (const targetDay of filter.target_days) {
+          const checkDate = targetDay === 'same_day' ? date
+            : targetDay === 'prev_day' ? getPrevDate(date)
+            : getNextDate(date);
+
+          // 対象時間帯ごとにチェック（時間帯未指定の場合は全時間帯を対象）
+          const targetPeriods = filter.target_periods.length > 0
+            ? filter.target_periods
+            : ['am', 'pm', 'night'] as TimePeriod[];
+
+          // 対象日のデータを取得
+          const checkDayData = daysData.find(d => d.date === checkDate);
+          const schedules = member.schedules?.[checkDate] || [];
+          const shifts = member.shifts?.[checkDate] || [];
+          const vacation = member.vacations?.[checkDate];
+
+          // 研究日判定
+          const isResearchDay = member.researchDay !== null &&
+            checkDayData?.dayOfWeek === member.researchDay &&
+            !checkDayData?.isHoliday &&
+            checkDayData?.dayOfWeek !== 0;
+
+          for (const period of targetPeriods) {
+            // 表示ロジックと同じ優先順位で勤務場所を特定
+            let workLocationId: number | null = null;
+
+            // 1. スケジュールの直接設定
+            for (const s of schedules) {
+              const matchesPeriod = (
+                (period === 'am' && s.schedule_type?.position_am) ||
+                (period === 'pm' && s.schedule_type?.position_pm) ||
+                (period === 'night' && s.schedule_type?.position_night)
+              );
+              if (matchesPeriod && s.work_location_id) {
+                workLocationId = s.work_location_id;
+                break;
+              }
+            }
+
+            // 2. シフトの直接設定
+            if (!workLocationId) {
+              for (const s of shifts) {
+                const matchesPeriod = (
+                  (period === 'am' && s.shift_type?.position_am) ||
+                  (period === 'pm' && s.shift_type?.position_pm) ||
+                  (period === 'night' && s.shift_type?.position_night)
+                );
+                if (matchesPeriod && s.work_location_id) {
+                  workLocationId = s.work_location_id;
+                  break;
+                }
+              }
+            }
+
+            // 3. スケジュール/シフトタイプのデフォルト勤務場所
+            if (!workLocationId) {
+              for (const s of schedules) {
+                const matchesPeriod = (
+                  (period === 'am' && s.schedule_type?.position_am) ||
+                  (period === 'pm' && s.schedule_type?.position_pm) ||
+                  (period === 'night' && s.schedule_type?.position_night)
+                );
+                if (matchesPeriod && s.schedule_type?.default_work_location_id) {
+                  workLocationId = s.schedule_type.default_work_location_id;
+                  break;
+                }
+              }
+            }
+
+            if (!workLocationId) {
+              for (const s of shifts) {
+                const matchesPeriod = (
+                  (period === 'am' && s.shift_type?.position_am) ||
+                  (period === 'pm' && s.shift_type?.position_pm) ||
+                  (period === 'night' && s.shift_type?.position_night)
+                );
+                if (matchesPeriod && s.shift_type?.default_work_location_id) {
+                  workLocationId = s.shift_type.default_work_location_id;
+                  break;
+                }
+              }
+            }
+
+            // 4. user_work_location（日単位のフォールバック）
+            if (!workLocationId) {
+              workLocationId = member.workLocations?.[checkDate] || null;
+            }
+
+            // 勤務場所が除外リストに含まれていれば除外
+            if (workLocationId && filter.exclude_work_location_ids.includes(workLocationId)) {
+              return false;
+            }
+          }
+        }
+      }
+    }
 
     return true;
   };
@@ -1572,6 +1842,81 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // ========================================
+  // シフト一括削除
+  // ========================================
+
+  // シフト一括削除: プレビュー
+  const handleBulkDeletePreview = async () => {
+    if (!bulkDeleteConfig.shiftTypeId) {
+      alert('削除するシフトタイプを選択してください');
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    try {
+      // 期間内のシフトを取得
+      const { data: shifts, error } = await supabase
+        .from('user_shift')
+        .select('id, shift_date, staff_id, shift_type_id')
+        .eq('shift_type_id', bulkDeleteConfig.shiftTypeId)
+        .gte('shift_date', bulkDeleteConfig.startDate)
+        .lte('shift_date', bulkDeleteConfig.endDate);
+
+      if (error) throw error;
+
+      // メンバー情報とシフトタイプ情報を付与
+      const targetShiftType = shiftTypes.find(st => st.id === bulkDeleteConfig.shiftTypeId);
+      const previewShifts = (shifts || []).map(shift => {
+        const member = members.find(m => m.staff_id === shift.staff_id);
+        return {
+          id: shift.id,
+          date: shift.shift_date,
+          staffId: shift.staff_id,
+          staffName: member?.name || shift.staff_id,
+          shiftName: targetShiftType?.display_label || targetShiftType?.name || '不明',
+        };
+      }).sort((a, b) => a.date.localeCompare(b.date) || a.staffName.localeCompare(b.staffName));
+
+      setBulkDeletePreview({ shifts: previewShifts });
+    } catch (error) {
+      console.error('Preview error:', error);
+      alert('プレビューの生成に失敗しました');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  // シフト一括削除: 実行
+  const handleBulkDeleteApply = async () => {
+    if (!bulkDeletePreview || bulkDeletePreview.shifts.length === 0) return;
+
+    const confirmMessage = `${bulkDeletePreview.shifts.length}件のシフトを削除します。\n\nこの操作は元に戻せません。本当に削除しますか？`;
+    if (!confirm(confirmMessage)) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const shiftIds = bulkDeletePreview.shifts.map(s => s.id);
+
+      const { error } = await supabase
+        .from('user_shift')
+        .delete()
+        .in('id', shiftIds);
+
+      if (error) throw error;
+
+      alert(`${bulkDeletePreview.shifts.length}件のシフトを削除しました`);
+      setShowBulkDeleteModal(false);
+      setBulkDeletePreview(null);
+      fetchData(); // データ再取得
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('削除中にエラーが発生しました');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   // 予定表をアップロード（公開）
   const handleUpload = async () => {
     const confirmMessage = isPublished
@@ -1706,6 +2051,42 @@ export default function ScheduleViewPage() {
   };
 
   // 予定追加
+  // 月間の予定タイプ別カウントを計算
+  const getMonthlyScheduleTypeCount = (member: MemberData, scheduleTypeId: number): number => {
+    let count = 0;
+    const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-31`;
+
+    Object.entries(member.schedules).forEach(([date, schedules]) => {
+      if (date >= monthStart && date <= monthEnd) {
+        schedules.forEach(s => {
+          if (s.schedule_type_id === scheduleTypeId) {
+            count++;
+          }
+        });
+      }
+    });
+    return count;
+  };
+
+  // 月間のシフトタイプ別カウントを計算
+  const getMonthlyShiftTypeCount = (member: MemberData, shiftTypeId: number): number => {
+    let count = 0;
+    const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-31`;
+
+    Object.entries(member.shifts).forEach(([date, shifts]) => {
+      if (date >= monthStart && date <= monthEnd) {
+        shifts.forEach(s => {
+          if (s.shift_type_id === shiftTypeId) {
+            count++;
+          }
+        });
+      }
+    });
+    return count;
+  };
+
   const handleAddSchedule = async (typeId: number) => {
     if (!selectedCell) return;
 
@@ -1713,6 +2094,15 @@ export default function ScheduleViewPage() {
       // スケジュールタイプからデフォルト勤務場所を取得
       const scheduleType = scheduleTypes.find(t => t.id === typeId);
       const workLocationId = scheduleType?.default_work_location_id || null;
+
+      // 月間上限チェック
+      if (scheduleType?.monthly_limit) {
+        const currentCount = getMonthlyScheduleTypeCount(selectedCell.member, typeId);
+        if (currentCount >= scheduleType.monthly_limit) {
+          alert(`${scheduleType.name}の月間上限（${scheduleType.monthly_limit}回）に達しています。`);
+          return;
+        }
+      }
 
       const { data, error } = await supabase.from("user_schedule").insert({
         staff_id: selectedCell.member.staff_id,
@@ -1775,6 +2165,15 @@ export default function ScheduleViewPage() {
       // シフトタイプからデフォルト勤務場所を取得
       const shiftType = shiftTypes.find(t => t.id === typeId);
       const workLocationId = shiftType?.default_work_location_id || null;
+
+      // 月間上限チェック
+      if (shiftType?.monthly_limit) {
+        const currentCount = getMonthlyShiftTypeCount(selectedCell.member, typeId);
+        if (currentCount >= shiftType.monthly_limit) {
+          alert(`${shiftType.name}の月間上限（${shiftType.monthly_limit}回）に達しています。`);
+          return;
+        }
+      }
 
       const { data, error } = await supabase.from("user_shift").insert({
         staff_id: selectedCell.member.staff_id,
@@ -1894,17 +2293,28 @@ export default function ScheduleViewPage() {
     let x = rect.right + 8;
     let y = rect.top;
 
+    // ポップアップの最大高さ（80vh）を計算
+    const maxPopupHeight = window.innerHeight * 0.8;
+    const popupWidth = 288;
+
     // 画面右端を超える場合は左に表示
-    if (x + 280 > window.innerWidth) {
-      x = rect.left - 288;
+    if (x + popupWidth > window.innerWidth) {
+      x = rect.left - popupWidth - 8;
     }
+    // 左にも収まらない場合はセルの下に表示
+    if (x < 10) {
+      x = Math.max(10, rect.left);
+    }
+
     // 画面下端を超える場合は上に調整
-    if (y + 400 > window.innerHeight) {
-      y = window.innerHeight - 410;
+    // ポップアップが画面内に収まるように、セルの下端から上に向かって配置
+    if (y + maxPopupHeight > window.innerHeight - 20) {
+      // セルの下端を基準に上に向かって配置
+      y = Math.max(20, window.innerHeight - maxPopupHeight - 20);
     }
     // 画面上端を超える場合
-    if (y < 10) {
-      y = 10;
+    if (y < 20) {
+      y = 20;
     }
 
     setPopupPosition({ x, y });
@@ -2281,7 +2691,7 @@ export default function ScheduleViewPage() {
               >
                 <Icons.Home />
               </button>
-              {/* 当直自動割り振りボタン */}
+              {/* シフト自動割り振りボタン */}
               <button
                 onClick={() => {
                   // 現在表示月のデフォルト期間を計算
@@ -2292,6 +2702,7 @@ export default function ScheduleViewPage() {
                   setAutoAssignConfig({
                     nightShiftTypeId: null,
                     dayAfterShiftTypeId: null,
+                    excludeNightShiftTypeIds: [],
                     selectionMode: 'filter',
                     filterTeams: [],
                     filterNightShiftLevels: [],
@@ -2312,7 +2723,7 @@ export default function ScheduleViewPage() {
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors"
               >
-                当直自動割り振り
+                シフト自動割り振り
               </button>
               {/* 割り振り取り消しボタン */}
               <button
@@ -2321,6 +2732,24 @@ export default function ScheduleViewPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
               >
                 割り振り取消
+              </button>
+              {/* シフト一括削除ボタン */}
+              <button
+                onClick={() => {
+                  const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                  const lastDate = new Date(currentYear, currentMonth, 0);
+                  const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+                  setBulkDeleteConfig({
+                    shiftTypeId: null,
+                    startDate: firstDay,
+                    endDate: endDay,
+                  });
+                  setBulkDeletePreview(null);
+                  setShowBulkDeleteModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+              >
+                シフト一括削除
               </button>
               {/* カウント設定ボタン */}
               <button
@@ -3551,6 +3980,37 @@ export default function ScheduleViewPage() {
                       </select>
                     </div>
                   </div>
+
+                  {/* 連続不可チェック対象の当直 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      連続不可チェック対象の当直
+                      <span className="ml-1 text-gray-400 font-normal">（未選択時は割り振る当直のみ）</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50 max-h-32 overflow-y-auto">
+                      {shiftTypes.map(type => (
+                        <label key={type.id} className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={autoAssignConfig.excludeNightShiftTypeIds.includes(type.id)}
+                            onChange={(e) => {
+                              setAutoAssignConfig(prev => ({
+                                ...prev,
+                                excludeNightShiftTypeIds: e.target.checked
+                                  ? [...prev.excludeNightShiftTypeIds, type.id]
+                                  : prev.excludeNightShiftTypeIds.filter(id => id !== type.id)
+                              }));
+                            }}
+                            className="w-3.5 h-3.5 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                          />
+                          <span className="text-xs text-gray-700">{type.display_label || type.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      選択した当直が前後2日以内にある場合、割り振り不可になります
+                    </p>
+                  </div>
                 </div>
 
                 {/* 対象者選択 */}
@@ -4040,6 +4500,17 @@ export default function ScheduleViewPage() {
                       ))}
                     </select>
                   </div>
+
+                  {/* 当直不可の日は割り振らないオプション */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={generalShiftConfig.excludeNightShiftUnavailable}
+                      onChange={(e) => setGeneralShiftConfig(prev => ({ ...prev, excludeNightShiftUnavailable: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">当直不可（×）の日は割り振らない</span>
+                  </label>
                 </div>
 
                 {/* 対象者選択 */}
@@ -4096,7 +4567,7 @@ export default function ScheduleViewPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">当直レベル</label>
                         <div className="flex gap-2">
-                          {['上', '中', '下'].map(level => (
+                          {['上', '中', '下', 'なし'].map(level => (
                             <label key={level} className="flex items-center gap-1">
                               <input
                                 type="checkbox"
@@ -4113,6 +4584,40 @@ export default function ScheduleViewPage() {
                               />
                               <span className="text-sm text-gray-700">{level}</span>
                             </label>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 医療対応・残り番フィルター */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">医療対応・残り番</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[
+                            { key: 'filterCanCardiac' as const, label: '心外' },
+                            { key: 'filterCanObstetric' as const, label: '産科' },
+                            { key: 'filterCanIcu' as const, label: 'ICU' },
+                            { key: 'filterCanRemainingDuty' as const, label: '残り番' },
+                          ].map(item => (
+                            <div key={item.key} className="flex flex-col">
+                              <span className="text-xs text-gray-500 mb-0.5">{item.label}</span>
+                              <div className="flex gap-1">
+                                {[
+                                  { value: null, label: '全' },
+                                  { value: true, label: '可' },
+                                  { value: false, label: '不可' },
+                                ].map(opt => (
+                                  <label key={String(opt.value)} className="flex items-center gap-0.5">
+                                    <input
+                                      type="radio"
+                                      name={`general_${item.key}`}
+                                      checked={generalShiftConfig[item.key] === opt.value}
+                                      onChange={() => setGeneralShiftConfig(prev => ({ ...prev, [item.key]: opt.value }))}
+                                      className="w-3 h-3 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <span className="text-xs text-gray-600">{opt.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -4331,6 +4836,362 @@ export default function ScheduleViewPage() {
                   )}
                 </div>
 
+                {/* 除外フィルター */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-700">除外フィルター</h3>
+                    <div className="relative">
+                      <button
+                        onClick={() => {
+                          const menu = document.getElementById('exclusion-filter-menu');
+                          if (menu) menu.classList.toggle('hidden');
+                        }}
+                        className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+                      >
+                        + ルール追加
+                      </button>
+                      <div
+                        id="exclusion-filter-menu"
+                        className="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[180px]"
+                      >
+                        <button
+                          onClick={() => {
+                            setGeneralShiftConfig(prev => ({
+                              ...prev,
+                              exclusionFilters: [...prev.exclusionFilters, {
+                                type: 'date_based',
+                                target_days: ['same_day'],
+                                exclude_shift_type_ids: [],
+                                exclude_schedule_type_ids: [],
+                                exclude_vacation: false,
+                                exclude_vacation_periods: [],
+                              }]
+                            }));
+                            document.getElementById('exclusion-filter-menu')?.classList.add('hidden');
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 transition-colors"
+                        >
+                          日付ベース（シフト/予定/年休）
+                        </button>
+                        <button
+                          onClick={() => {
+                            setGeneralShiftConfig(prev => ({
+                              ...prev,
+                              exclusionFilters: [...prev.exclusionFilters, {
+                                type: 'work_location_based',
+                                target_days: ['same_day'],
+                                target_periods: [],
+                                exclude_work_location_ids: [],
+                              }]
+                            }));
+                            document.getElementById('exclusion-filter-menu')?.classList.add('hidden');
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 transition-colors"
+                        >
+                          勤務場所ベース
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {generalShiftConfig.exclusionFilters.length === 0 && (
+                    <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
+                      除外フィルターが設定されていません
+                    </div>
+                  )}
+
+                  {generalShiftConfig.exclusionFilters.map((filter, filterIdx) => (
+                    <div key={filterIdx} className="bg-gray-50 rounded-lg p-3 border border-gray-200 relative">
+                      <button
+                        onClick={() => {
+                          setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            exclusionFilters: prev.exclusionFilters.filter((_, i) => i !== filterIdx)
+                          }));
+                        }}
+                        className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                        title="削除"
+                      >
+                        ×
+                      </button>
+                      <div className="text-xs font-medium text-gray-600 mb-2">
+                        {filter.type === 'date_based' ? '日付ベース' : '勤務場所ベース'} ルール {filterIdx + 1}
+                      </div>
+
+                      {/* 対象日（共通） */}
+                      <div className="mb-2">
+                        <label className="block text-xs text-gray-500 mb-1">対象日</label>
+                        <div className="flex gap-2">
+                          {[
+                            { value: 'prev_day', label: '前日' },
+                            { value: 'same_day', label: '当日' },
+                            { value: 'next_day', label: '翌日' },
+                          ].map(opt => (
+                            <label key={opt.value} className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={filter.target_days.includes(opt.value as TargetDay)}
+                                onChange={(e) => {
+                                  setGeneralShiftConfig(prev => ({
+                                    ...prev,
+                                    exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                      i === filterIdx ? {
+                                        ...f,
+                                        target_days: e.target.checked
+                                          ? [...f.target_days, opt.value as TargetDay]
+                                          : f.target_days.filter(d => d !== opt.value)
+                                      } : f
+                                    )
+                                  }));
+                                }}
+                                className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-xs text-gray-700">{opt.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {filter.type === 'date_based' && (
+                        <>
+                          {/* シフトタイプ除外 */}
+                          <div className="mb-2">
+                            <label className="block text-xs text-gray-500 mb-1">除外シフト</label>
+                            <div className="flex flex-wrap gap-1">
+                              {shiftTypes.map(st => (
+                                <label key={st.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={filter.exclude_shift_type_ids.includes(st.id)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'date_based' ? {
+                                            ...f,
+                                            exclude_shift_type_ids: e.target.checked
+                                              ? [...f.exclude_shift_type_ids, st.id]
+                                              : f.exclude_shift_type_ids.filter(id => id !== st.id)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span>{st.display_label || st.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 予定タイプ除外 */}
+                          <div className="mb-2">
+                            <label className="block text-xs text-gray-500 mb-1">除外予定</label>
+                            <div className="flex flex-wrap gap-1">
+                              {scheduleTypes.map(st => (
+                                <label key={st.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={filter.exclude_schedule_type_ids.includes(st.id)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'date_based' ? {
+                                            ...f,
+                                            exclude_schedule_type_ids: e.target.checked
+                                              ? [...f.exclude_schedule_type_ids, st.id]
+                                              : f.exclude_schedule_type_ids.filter(id => id !== st.id)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span>{st.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 年休除外 */}
+                          <div>
+                            <label className="flex items-center gap-2 mb-1">
+                              <input
+                                type="checkbox"
+                                checked={filter.exclude_vacation}
+                                onChange={(e) => {
+                                  setGeneralShiftConfig(prev => ({
+                                    ...prev,
+                                    exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                      i === filterIdx && f.type === 'date_based' ? {
+                                        ...f,
+                                        exclude_vacation: e.target.checked,
+                                        exclude_vacation_periods: e.target.checked ? ['full_day', 'am', 'pm'] : []
+                                      } : f
+                                    )
+                                  }));
+                                }}
+                                className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-xs text-gray-500">年休を除外</span>
+                            </label>
+                            {filter.exclude_vacation && (
+                              <div className="flex gap-2 ml-5">
+                                {[
+                                  { value: 'full_day', label: '全日' },
+                                  { value: 'am', label: 'AM' },
+                                  { value: 'pm', label: 'PM' },
+                                ].map(opt => (
+                                  <label key={opt.value} className="flex items-center gap-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={filter.exclude_vacation_periods.includes(opt.value as VacationPeriod)}
+                                      onChange={(e) => {
+                                        setGeneralShiftConfig(prev => ({
+                                          ...prev,
+                                          exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                            i === filterIdx && f.type === 'date_based' ? {
+                                              ...f,
+                                              exclude_vacation_periods: e.target.checked
+                                                ? [...f.exclude_vacation_periods, opt.value as VacationPeriod]
+                                                : f.exclude_vacation_periods.filter(p => p !== opt.value)
+                                            } : f
+                                          )
+                                        }));
+                                      }}
+                                      className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="text-xs text-gray-700">{opt.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {filter.type === 'work_location_based' && (
+                        <>
+                          {/* 対象時間帯 */}
+                          <div className="mb-2">
+                            <label className="block text-xs text-gray-500 mb-1">対象時間帯</label>
+                            <div className="flex gap-2">
+                              {[
+                                { value: 'am', label: 'AM' },
+                                { value: 'pm', label: 'PM' },
+                                { value: 'night', label: '夜勤' },
+                              ].map(opt => (
+                                <label key={opt.value} className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={filter.target_periods.includes(opt.value as TimePeriod)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'work_location_based' ? {
+                                            ...f,
+                                            target_periods: e.target.checked
+                                              ? [...f.target_periods, opt.value as TimePeriod]
+                                              : f.target_periods.filter(p => p !== opt.value)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span className="text-xs text-gray-700">{opt.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 勤務場所除外 */}
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">除外勤務場所</label>
+                            <div className="flex flex-wrap gap-1">
+                              {workLocationMaster.map(loc => (
+                                <label key={loc.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={filter.exclude_work_location_ids.includes(loc.id)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'work_location_based' ? {
+                                            ...f,
+                                            exclude_work_location_ids: e.target.checked
+                                              ? [...f.exclude_work_location_ids, loc.id]
+                                              : f.exclude_work_location_ids.filter(id => id !== loc.id)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span>{loc.name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* プリセット */}
+                <div className="space-y-3 border-t border-gray-200 pt-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowPresetSaveModal(true)}
+                        className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => setShowPresetManageModal(true)}
+                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        管理
+                      </button>
+                    </div>
+                  </div>
+                  <select
+                    value={selectedPresetId || ''}
+                    onChange={(e) => {
+                      const presetId = e.target.value ? Number(e.target.value) : null;
+                      setSelectedPresetId(presetId);
+                      if (presetId) {
+                        const preset = shiftAssignPresets.find(p => p.id === presetId);
+                        if (preset) {
+                          setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            shiftTypeId: preset.shift_type_id,
+                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                            selectedMemberIds: preset.selected_member_ids || [],
+                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                            targetWeekdays: preset.target_weekdays || [],
+                            exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
+                          }));
+                        }
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">プリセットを選択...</option>
+                    {shiftAssignPresets.map(preset => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* プレビューボタン */}
                 <div className="flex justify-center">
                   <button
@@ -4406,6 +5267,296 @@ export default function ScheduleViewPage() {
               </div>
               )}
 
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* プリセット保存モーダル */}
+      {showPresetSaveModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowPresetSaveModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-96 max-w-[90vw]">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800">プリセットを保存</h3>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">プリセット名 *</label>
+                <input
+                  type="text"
+                  value={presetSaveName}
+                  onChange={(e) => setPresetSaveName(e.target.value)}
+                  placeholder="例: 当直明け割り振り"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                <p className="font-medium mb-1">保存される設定:</p>
+                <ul className="space-y-1">
+                  <li>・シフトタイプ: {shiftTypes.find(s => s.id === generalShiftConfig.shiftTypeId)?.name || '未選択'}</li>
+                  <li>・対象者設定: {generalShiftConfig.selectionMode === 'filter' ? 'フィルター' : '個別選択'}</li>
+                  <li>・除外フィルター: {generalShiftConfig.exclusionFilters.length}件</li>
+                </ul>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowPresetSaveModal(false);
+                  setPresetSaveName('');
+                }}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={async () => {
+                  if (!presetSaveName.trim()) {
+                    alert('プリセット名を入力してください');
+                    return;
+                  }
+                  try {
+                    const { error } = await supabase.from('shift_assign_preset').insert({
+                      name: presetSaveName.trim(),
+                      shift_type_id: generalShiftConfig.shiftTypeId,
+                      selection_mode: generalShiftConfig.selectionMode,
+                      filter_teams: generalShiftConfig.filterTeams,
+                      filter_night_shift_levels: generalShiftConfig.filterNightShiftLevels,
+                      selected_member_ids: generalShiftConfig.selectedMemberIds,
+                      date_selection_mode: generalShiftConfig.dateSelectionMode,
+                      target_weekdays: generalShiftConfig.targetWeekdays,
+                      exclusion_filters: generalShiftConfig.exclusionFilters,
+                    });
+                    if (error) throw error;
+
+                    // プリセット一覧を再取得
+                    const { data: presetsData } = await supabase
+                      .from('shift_assign_preset')
+                      .select('*')
+                      .order('display_order');
+                    setShiftAssignPresets(presetsData || []);
+
+                    setShowPresetSaveModal(false);
+                    setPresetSaveName('');
+                    alert('プリセットを保存しました');
+                  } catch (err) {
+                    console.error('プリセット保存エラー:', err);
+                    alert('プリセットの保存に失敗しました');
+                  }
+                }}
+                disabled={!presetSaveName.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* プリセット管理モーダル */}
+      {showPresetManageModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowPresetManageModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">プリセット管理</h3>
+            </div>
+            <div className="p-4 overflow-y-auto flex-grow">
+              {shiftAssignPresets.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  保存されたプリセットがありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {shiftAssignPresets.map(preset => (
+                    <div key={preset.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-grow">
+                        <div className="font-medium text-gray-800">{preset.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          シフト: {shiftTypes.find(s => s.id === preset.shift_type_id)?.name || '-'}
+                          {preset.exclusion_filters && Array.isArray(preset.exclusion_filters) && (
+                            <span className="ml-2">・除外フィルター: {preset.exclusion_filters.length}件</span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
+                          try {
+                            const { error } = await supabase
+                              .from('shift_assign_preset')
+                              .delete()
+                              .eq('id', preset.id);
+                            if (error) throw error;
+
+                            setShiftAssignPresets(prev => prev.filter(p => p.id !== preset.id));
+                            if (selectedPresetId === preset.id) {
+                              setSelectedPresetId(null);
+                            }
+                          } catch (err) {
+                            console.error('プリセット削除エラー:', err);
+                            alert('プリセットの削除に失敗しました');
+                          }
+                        }}
+                        className="ml-3 px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex-shrink-0">
+              <button
+                onClick={() => setShowPresetManageModal(false)}
+                className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* シフト一括削除モーダル */}
+      {showBulkDeleteModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => {
+              setShowBulkDeleteModal(false);
+              setBulkDeletePreview(null);
+            }}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                <h2 className="text-lg font-bold text-gray-900">シフト一括削除</h2>
+                <button
+                  onClick={() => {
+                    setShowBulkDeleteModal(false);
+                    setBulkDeletePreview(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 p-1"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4 overflow-y-auto flex-grow">
+                {/* シフトタイプ選択 */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">削除するシフト *</label>
+                  <select
+                    value={bulkDeleteConfig.shiftTypeId || ''}
+                    onChange={(e) => {
+                      setBulkDeleteConfig(prev => ({ ...prev, shiftTypeId: e.target.value ? Number(e.target.value) : null }));
+                      setBulkDeletePreview(null);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  >
+                    <option value="">選択してください</option>
+                    {shiftTypes.map(type => (
+                      <option key={type.id} value={type.id}>{type.display_label || type.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 期間選択 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">開始日</label>
+                    <input
+                      type="date"
+                      value={bulkDeleteConfig.startDate}
+                      onChange={(e) => {
+                        setBulkDeleteConfig(prev => ({ ...prev, startDate: e.target.value }));
+                        setBulkDeletePreview(null);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">終了日</label>
+                    <input
+                      type="date"
+                      value={bulkDeleteConfig.endDate}
+                      onChange={(e) => {
+                        setBulkDeleteConfig(prev => ({ ...prev, endDate: e.target.value }));
+                        setBulkDeletePreview(null);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    />
+                  </div>
+                </div>
+
+                {/* プレビューボタン */}
+                <button
+                  onClick={handleBulkDeletePreview}
+                  disabled={!bulkDeleteConfig.shiftTypeId || isBulkDeleting}
+                  className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBulkDeleting ? '検索中...' : '削除対象を検索'}
+                </button>
+
+                {/* プレビュー結果 */}
+                {bulkDeletePreview && (
+                  <div className="border border-gray-200 rounded-lg">
+                    <div className="p-3 bg-gray-50 border-b border-gray-200">
+                      <span className="font-medium text-gray-700">
+                        削除対象: {bulkDeletePreview.shifts.length}件
+                      </span>
+                    </div>
+                    {bulkDeletePreview.shifts.length > 0 ? (
+                      <div className="max-h-48 overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-gray-600">日付</th>
+                              <th className="px-3 py-2 text-left text-gray-600">職員</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {bulkDeletePreview.shifts.map((shift, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-900">{shift.date}</td>
+                                <td className="px-3 py-2 text-gray-900">{shift.staffName}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-gray-500">
+                        削除対象のシフトが見つかりませんでした
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* フッター */}
+              <div className="p-4 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    setShowBulkDeleteModal(false);
+                    setBulkDeletePreview(null);
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleBulkDeleteApply}
+                  disabled={!bulkDeletePreview || bulkDeletePreview.shifts.length === 0 || isBulkDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBulkDeleting ? '削除中...' : '削除実行'}
+                </button>
+              </div>
             </div>
           </div>
         </>

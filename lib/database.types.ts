@@ -6,15 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-// 予定表示設定の型定義
+// 予定表示設定の型定義（研究日・出向・休職はschedule_typeに移行）
 export interface DisplaySettings {
-  research_day?: {
-    label: string
-    label_first_year: string
-    color: string
-    bg_color: string
-    default_work_location_id?: number | null
-  }
   vacation?: {
     label_full: string
     label_am: string
@@ -28,18 +21,6 @@ export interface DisplaySettings {
     bg_color: string
   }
   kensanbi_used?: {
-    label: string
-    color: string
-    bg_color: string
-    default_work_location_id?: number | null
-  }
-  secondment?: {
-    label: string
-    color: string
-    bg_color: string
-    default_work_location_id?: number | null
-  }
-  leave_of_absence?: {
     label: string
     color: string
     bg_color: string
@@ -61,6 +42,7 @@ export interface Database {
           can_cardiac: boolean
           can_obstetric: boolean
           can_icu: boolean
+          can_remaining_duty: boolean
           display_order: number
           created_at: string
           updated_at: string
@@ -75,6 +57,7 @@ export interface Database {
           can_cardiac?: boolean
           can_obstetric?: boolean
           can_icu?: boolean
+          can_remaining_duty?: boolean
           display_order?: number
           created_at?: string
           updated_at?: string
@@ -89,6 +72,7 @@ export interface Database {
           can_cardiac?: boolean
           can_obstetric?: boolean
           can_icu?: boolean
+          can_remaining_duty?: boolean
           display_order?: number
           created_at?: string
           updated_at?: string
@@ -386,7 +370,10 @@ export interface Database {
           color: string
           text_color: string
           monthly_limit: number | null
+          is_kensanbi_target: boolean
           default_work_location_id: number | null
+          is_system: boolean
+          system_key: string | null
           created_at: string
           updated_at: string
         }
@@ -404,7 +391,10 @@ export interface Database {
           color?: string
           text_color?: string
           monthly_limit?: number | null
+          is_kensanbi_target?: boolean
           default_work_location_id?: number | null
+          is_system?: boolean
+          system_key?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -422,7 +412,10 @@ export interface Database {
           color?: string
           text_color?: string
           monthly_limit?: number | null
+          is_kensanbi_target?: boolean
           default_work_location_id?: number | null
+          is_system?: boolean
+          system_key?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -536,10 +529,14 @@ export interface Database {
           position_am: boolean
           position_pm: boolean
           position_night: boolean
+          prev_day_night_shift: boolean
+          same_day_night_shift: boolean
+          next_day_night_shift: boolean
           display_order: number
           color: string
           text_color: string
           is_kensanbi_target: boolean
+          monthly_limit: number | null
           default_work_location_id: number | null
           created_at: string
           updated_at: string
@@ -551,10 +548,14 @@ export interface Database {
           position_am?: boolean
           position_pm?: boolean
           position_night?: boolean
+          prev_day_night_shift?: boolean
+          same_day_night_shift?: boolean
+          next_day_night_shift?: boolean
           display_order?: number
           color?: string
           text_color?: string
           is_kensanbi_target?: boolean
+          monthly_limit?: number | null
           default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
@@ -566,10 +567,14 @@ export interface Database {
           position_am?: boolean
           position_pm?: boolean
           position_night?: boolean
+          prev_day_night_shift?: boolean
+          same_day_night_shift?: boolean
+          next_day_night_shift?: boolean
           display_order?: number
           color?: string
           text_color?: string
           is_kensanbi_target?: boolean
+          monthly_limit?: number | null
           default_work_location_id?: number | null
           created_at?: string
           updated_at?: string
@@ -837,6 +842,68 @@ export interface Database {
           filter_can_cardiac?: boolean | null
           filter_can_obstetric?: boolean | null
           filter_can_icu?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      shift_assign_preset: {
+        Row: {
+          id: number
+          name: string
+          description: string | null
+          shift_type_id: number | null
+          selection_mode: string
+          filter_teams: string[] | null
+          filter_night_shift_levels: string[] | null
+          filter_can_cardiac: boolean | null
+          filter_can_obstetric: boolean | null
+          filter_can_icu: boolean | null
+          selected_member_ids: string[] | null
+          date_selection_mode: string
+          target_weekdays: number[] | null
+          include_holidays: boolean
+          exclusion_filters: Json
+          display_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          description?: string | null
+          shift_type_id?: number | null
+          selection_mode?: string
+          filter_teams?: string[] | null
+          filter_night_shift_levels?: string[] | null
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
+          selected_member_ids?: string[] | null
+          date_selection_mode?: string
+          target_weekdays?: number[] | null
+          include_holidays?: boolean
+          exclusion_filters?: Json
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          description?: string | null
+          shift_type_id?: number | null
+          selection_mode?: string
+          filter_teams?: string[] | null
+          filter_night_shift_levels?: string[] | null
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
+          selected_member_ids?: string[] | null
+          date_selection_mode?: string
+          target_weekdays?: number[] | null
+          include_holidays?: boolean
+          exclusion_filters?: Json
+          display_order?: number
           created_at?: string
           updated_at?: string
         }
