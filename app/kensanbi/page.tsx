@@ -275,10 +275,10 @@ export default function KensanbiManagementPage() {
             {/* 直近5ヶ月タブ */}
             <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2">
               {[0, 1, 2, 3, 4].map(offset => {
-                const tabDate = new Date();
-                tabDate.setMonth(tabDate.getMonth() + offset);
-                const tabYear = tabDate.getFullYear();
-                const tabMonth = tabDate.getMonth() + 1;
+                const now = new Date();
+                const targetMonth = now.getMonth() + offset;
+                const tabYear = now.getFullYear() + Math.floor(targetMonth / 12);
+                const tabMonth = (targetMonth % 12) + 1;
                 const isActive = tabYear === targetYear && tabMonth === targetMonth;
 
                 return (
