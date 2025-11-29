@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { isAdmin } from "@/lib/auth";
 import {
   getKensanbiBalance,
   convertVacationToKensanbi,
@@ -58,6 +59,11 @@ export default function KensanbiManagementPage() {
     const userStr = localStorage.getItem("user");
     if (!userStr) {
       router.push("/auth/login");
+      return;
+    }
+    // 管理者チェック - 管理者でなければホームへリダイレクト
+    if (!isAdmin()) {
+      router.push("/home");
       return;
     }
     const userData = JSON.parse(userStr);

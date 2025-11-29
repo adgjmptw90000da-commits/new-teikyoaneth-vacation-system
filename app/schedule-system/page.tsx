@@ -41,6 +41,11 @@ export default function ScheduleSystemPage() {
       router.push("/auth/login");
       return;
     }
+    // 管理者チェック - 管理者でなければホームへリダイレクト
+    if (!isAdmin()) {
+      router.push("/home");
+      return;
+    }
     setUser(currentUser);
   }, [router]);
 
