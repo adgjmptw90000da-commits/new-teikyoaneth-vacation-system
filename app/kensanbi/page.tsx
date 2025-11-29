@@ -4,10 +4,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { isAdmin } from "@/lib/auth";
 import {
   getKensanbiBalance,
   convertVacationToKensanbi,
   getDayOfWeekName,
+  getCurrentFiscalYear,
+  getFiscalYearFromUsageDate,
 } from "@/lib/kensanbi";
 
 interface ConfirmedVacation {
@@ -22,14 +25,14 @@ const Icons = {
   Home: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
   ),
+  ChevronLeft: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+  ),
   Book: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
   ),
   Calendar: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></svg>
-  ),
-  ChevronLeft: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
   ),
   ChevronRight: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -41,11 +44,13 @@ export default function KensanbiManagementPage() {
   const [user, setUser] = useState<{ staff_id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [vacations, setVacations] = useState<ConfirmedVacation[]>([]);
-  const [balance, setBalance] = useState<{ granted: number; used: number; balance: number }>({
+  const [balance, setBalance] = useState<{ granted: number; used: number; balance: number; fiscalYear: number }>({
     granted: 0,
     used: 0,
     balance: 0,
+    fiscalYear: getCurrentFiscalYear(),
   });
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [targetYear, setTargetYear] = useState<number>(new Date().getFullYear());
   const [targetMonth, setTargetMonth] = useState<number>(new Date().getMonth() + 1);
   const [processing, setProcessing] = useState<number | null>(null);
@@ -56,6 +61,11 @@ export default function KensanbiManagementPage() {
       router.push("/auth/login");
       return;
     }
+    // 管理者チェック - 管理者でなければホームへリダイレクト
+    if (!isAdmin()) {
+      router.push("/home");
+      return;
+    }
     const userData = JSON.parse(userStr);
     setUser(userData);
   }, [router]);
@@ -64,14 +74,14 @@ export default function KensanbiManagementPage() {
     if (user && targetYear && targetMonth) {
       fetchData();
     }
-  }, [user, targetYear, targetMonth]);
+  }, [user, targetYear, targetMonth, selectedFiscalYear]);
 
   const fetchData = async () => {
     if (!user) return;
     setLoading(true);
 
-    // 研鑽日残高を取得
-    const balanceData = await getKensanbiBalance(user.staff_id);
+    // 選択した年度の研鑽日残高を取得
+    const balanceData = await getKensanbiBalance(user.staff_id, selectedFiscalYear);
     setBalance(balanceData);
 
     // 確定済み年休を取得
@@ -96,12 +106,16 @@ export default function KensanbiManagementPage() {
     if (!user) return;
 
     const usedDays = vacation.period === "full_day" ? 1.0 : 0.5;
-    if (balance.balance < usedDays) {
-      alert("研鑽日の残高が不足しています");
+    const vacationFiscalYear = getFiscalYearFromUsageDate(vacation.vacation_date);
+
+    // その年休日が属する年度の残高を取得
+    const vacationYearBalance = await getKensanbiBalance(user.staff_id, vacationFiscalYear);
+    if (vacationYearBalance.balance < usedDays) {
+      alert(`${vacationFiscalYear}年度の研鑽日残高が不足しています（残高: ${vacationYearBalance.balance}日）`);
       return;
     }
 
-    if (!confirm(`この年休を研鑽日に変更しますか？\n消費される研鑽日: ${usedDays}日`)) return;
+    if (!confirm(`この年休を研鑽日に変更しますか？\n対象年度: ${vacationFiscalYear}年度\n消費される研鑽日: ${usedDays}日`)) return;
 
     setProcessing(vacation.id);
     const result = await convertVacationToKensanbi(
@@ -202,6 +216,13 @@ export default function KensanbiManagementPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.back()}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="戻る"
+              >
+                <Icons.ChevronLeft />
+              </button>
               <div className="bg-green-600 p-1.5 rounded-lg text-white">
                 <Icons.Book />
               </div>
@@ -209,13 +230,13 @@ export default function KensanbiManagementPage() {
                 研鑽日管理
               </h1>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => router.push("/home")}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ホーム"
               >
                 <Icons.Home />
-                ホーム
               </button>
             </div>
           </div>
@@ -226,7 +247,31 @@ export default function KensanbiManagementPage() {
         <div className="space-y-8">
           {/* 研鑽日残高 */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">研鑽日残高</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">研鑽日残高</h2>
+              {/* 年度セレクター */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedFiscalYear}
+                  onChange={(e) => setSelectedFiscalYear(Number(e.target.value))}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  {[1, 0, -1].map(offset => {
+                    const year = getCurrentFiscalYear() + offset;
+                    return (
+                      <option key={year} value={year}>
+                        {year}年度
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-green-800 font-medium">
+                {selectedFiscalYear}年度（{selectedFiscalYear}年4月〜{selectedFiscalYear + 1}年3月）
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
                 <div className="text-sm text-blue-600 mb-1 font-medium">付与</div>
@@ -241,6 +286,13 @@ export default function KensanbiManagementPage() {
                 <div className="text-2xl font-bold text-green-700">{balance.balance}日</div>
               </div>
             </div>
+            {balance.balance <= 0 && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 font-medium">
+                  {selectedFiscalYear}年度の研鑽日残高がありません
+                </p>
+              </div>
+            )}
           </div>
 
           {/* 月選択 */}
@@ -268,10 +320,10 @@ export default function KensanbiManagementPage() {
             {/* 直近5ヶ月タブ */}
             <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2">
               {[0, 1, 2, 3, 4].map(offset => {
-                const tabDate = new Date();
-                tabDate.setMonth(tabDate.getMonth() + offset);
-                const tabYear = tabDate.getFullYear();
-                const tabMonth = tabDate.getMonth() + 1;
+                const now = new Date();
+                const targetMonth = now.getMonth() + offset;
+                const tabYear = now.getFullYear() + Math.floor(targetMonth / 12);
+                const tabMonth = (targetMonth % 12) + 1;
                 const isActive = tabYear === targetYear && tabMonth === targetMonth;
 
                 return (
@@ -319,7 +371,9 @@ export default function KensanbiManagementPage() {
                   const status = vacation.one_personnel_status || "not_applied";
                   const statusInfo = getStatusInfo(status);
                   const usedDays = vacation.period === "full_day" ? 1.0 : 0.5;
-                  const canConvert = status === "not_applied" && balance.balance >= usedDays;
+                  const vacationFiscalYear = getFiscalYearFromUsageDate(vacation.vacation_date);
+                  // 選択した年度と年休日の年度が一致する場合のみ残高チェック
+                  const canConvert = status === "not_applied" && (selectedFiscalYear === vacationFiscalYear ? balance.balance >= usedDays : true);
                   const dayOfWeek = getDayOfWeekName(vacation.vacation_date);
                   const isSunday = dayOfWeek === "日";
                   const isSaturday = dayOfWeek === "土";
@@ -353,6 +407,9 @@ export default function KensanbiManagementPage() {
                             <div className="flex flex-wrap gap-2 mb-3">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.bgColor} ${statusInfo.textColor}`}>
                                 {statusInfo.label}
+                              </span>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                                {vacationFiscalYear}年度
                               </span>
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                                 消費: {usedDays}日

@@ -850,6 +850,55 @@ TypeScript型定義が古い場合、最新のマイグレーションに合わ�
 - [ ] マイグレーションファイルの順序確認
 - [ ] 変更履歴の更新
 
+### 2024-11-29 - バージョン 2.0
+
+**予定表管理システムの大幅拡張**
+
+- **当直・シフト管理機能**
+  - 当直自動割り振り機能（条件に基づく候補者選択）
+  - 一般シフト自動割り振り機能
+  - プリセット機能（割り振り設定の保存・読み込み）
+  - 祝日・祝前日オプション対応
+  - 提出ロック機能（月別）
+
+- **得点ベース割り振り機能**
+  - 得点設定マスタ（score_config）の追加
+  - 回数ベース/得点ベースの切り替え可能
+  - 割り振りごとに得点を再計算（偏り防止）
+  - プリセットへの優先モード保存
+
+- **研鑽日システム年度管理**
+  - 年度計算ロジック（当直日: 2月〜1月 → 4月〜3月年度）
+  - 年度別残高管理（付与/消費/残高）
+  - 年度末消滅（繰越なし）
+  - 承認後すぐに使用可能
+  - UIに年度セレクター追加
+
+- **メンバー設定拡張**
+  - 職位（position）カラム追加
+  - メンバー回数カウント設定（member_count_config）
+  - 表示順序管理
+
+**新規マイグレーション**
+- `20241129000002_create_member_count_config.sql` - メンバー回数カウント設定
+- `20241129000003_create_score_config.sql` - 得点設定
+- `20241129000004_add_user_position.sql` - ユーザー職位
+- `20241129000005_add_count_config_filter_positions.sql` - カウント設定職位フィルター
+- `20241129000006_create_duty_assign_preset.sql` - 当直割り振りプリセット
+- `20241129000007_add_shift_preset_pre_holidays.sql` - シフトプリセット祝前日
+- `20241129000008_add_submission_lock.sql` - 提出ロック
+- `20241129000009_add_priority_mode_to_presets.sql` - 優先モード
+- `20241129000010_add_fiscal_year_to_kensanbi.sql` - 研鑽日年度管理
+
+**データベース構造の拡張**
+- `user` テーブル: `position` カラム追加
+- `kensanbi_grant_history` テーブル: `fiscal_year` カラム追加
+- `kensanbi_usage_history` テーブル: `fiscal_year` カラム追加
+- `duty_assign_preset` テーブル: `priority_mode` カラム追加
+- `shift_assign_preset` テーブル: `priority_mode` カラム追加
+- `schedule_publish` テーブル: `is_submission_locked` カラム追加
+- 新規テーブル: `member_count_config`, `score_config`
+
 ## 既知の問題・今後の改善点
 
 ### セキュリティ

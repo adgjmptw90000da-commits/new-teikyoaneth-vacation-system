@@ -5,6 +5,37 @@ import { Database } from '@/lib/database.types'
 type Holiday = Database['public']['Tables']['holiday']['Row']
 type KensanbiGrantHistory = Database['public']['Tables']['kensanbi_grant_history']['Row']
 
+// =====================
+// 年度計算関数
+// =====================
+
+// shift_date（当直日）から年度を計算
+// 2月〜12月はその年、1月は前年の年度
+export const getFiscalYearFromShiftDate = (shiftDate: string): number => {
+  const date = new Date(shiftDate)
+  const month = date.getMonth() + 1 // 1-12
+  const year = date.getFullYear()
+  return month >= 2 ? year : year - 1
+}
+
+// usage_date（消費日）から年度を計算
+// 4月〜12月はその年、1月〜3月は前年の年度
+export const getFiscalYearFromUsageDate = (usageDate: string): number => {
+  const date = new Date(usageDate)
+  const month = date.getMonth() + 1 // 1-12
+  const year = date.getFullYear()
+  return month >= 4 ? year : year - 1
+}
+
+// 現在の年度を取得
+export const getCurrentFiscalYear = (): number => {
+  return getFiscalYearFromUsageDate(new Date().toISOString().split('T')[0])
+}
+
+// =====================
+// ユーティリティ関数
+// =====================
+
 // 翌日の日付を取得
 export const getNextDay = (dateStr: string): string => {
   const date = new Date(dateStr)
@@ -146,6 +177,9 @@ export const generateKensanbiCandidates = async (
 export const createKensanbiHistory = async (
   candidate: KensanbiCandidate
 ): Promise<{ success: boolean; error?: string }> => {
+  // shift_dateから年度を自動計算
+  const fiscalYear = getFiscalYearFromShiftDate(candidate.shiftDate)
+
   const { error } = await supabase
     .from('kensanbi_grant_history')
     .insert({
@@ -153,7 +187,8 @@ export const createKensanbiHistory = async (
       user_shift_id: candidate.userShiftId,
       shift_date: candidate.shiftDate,
       granted_days: candidate.grantedDays,
-      status: 'pending'
+      status: 'pending',
+      fiscal_year: fiscalYear
     })
 
   if (error) {
@@ -182,7 +217,8 @@ export const createKensanbiHistoryBulk = async (
         user_shift_id: c.userShiftId,
         shift_date: c.shiftDate,
         granted_days: c.grantedDays,
-        status: 'pending' as const
+        status: 'pending' as const,
+        fiscal_year: getFiscalYearFromShiftDate(c.shiftDate)
       }))
     )
 
@@ -262,31 +298,41 @@ export const approveKensanbiBulk = async (
   return { success: true, count: historyIds.length }
 }
 
-// メンバーの研鑽日残高を取得
+// メンバーの研鑽日残高を取得（年度対応）
 export const getKensanbiBalance = async (
-  staffId: string
-): Promise<{ granted: number; used: number; balance: number }> => {
-  // 付与合計（approved のみ）
-  const { data: grantHistory } = await supabase
+  staffId: string,
+  fiscalYear?: number // 省略時は現在の年度
+): Promise<{ granted: number; used: number; balance: number; fiscalYear: number }> => {
+  const targetYear = fiscalYear ?? getCurrentFiscalYear()
+
+  // 付与合計（approved のみ、指定年度）
+  let grantQuery = supabase
     .from('kensanbi_grant_history')
     .select('granted_days')
     .eq('staff_id', staffId)
     .eq('status', 'approved')
 
+  // fiscal_yearがnullのレコードも含める（既存データ対応）
+  // 指定年度 OR fiscal_year is null
+  const { data: grantHistory } = await grantQuery
+    .or(`fiscal_year.eq.${targetYear},fiscal_year.is.null`)
+
   const granted = grantHistory?.reduce((sum, h) => sum + Number(h.granted_days), 0) || 0
 
-  // 使用合計
+  // 使用合計（指定年度）
   const { data: usageHistory } = await supabase
     .from('kensanbi_usage_history')
     .select('used_days')
     .eq('staff_id', staffId)
+    .or(`fiscal_year.eq.${targetYear},fiscal_year.is.null`)
 
   const used = usageHistory?.reduce((sum, h) => sum + Number(h.used_days), 0) || 0
 
   return {
     granted,
     used,
-    balance: granted - used
+    balance: granted - used,
+    fiscalYear: targetYear
   }
 }
 
@@ -358,6 +404,9 @@ export const createManualKensanbiHistory = async (
   shiftDate: string,
   grantedDays: number
 ): Promise<{ success: boolean; error?: string }> => {
+  // shift_dateから年度を自動計算
+  const fiscalYear = getFiscalYearFromShiftDate(shiftDate)
+
   const { error } = await supabase
     .from('kensanbi_grant_history')
     .insert({
@@ -365,7 +414,8 @@ export const createManualKensanbiHistory = async (
       user_shift_id: null, // 手動追加はuser_shift_idなし
       shift_date: shiftDate,
       granted_days: grantedDays,
-      status: 'pending'
+      status: 'pending',
+      fiscal_year: fiscalYear
     })
 
   if (error) {
@@ -385,13 +435,16 @@ export const convertVacationToKensanbi = async (
   // 消費日数を計算
   const usedDays = period === 'full_day' ? 1.0 : 0.5
 
-  // 残高確認
-  const balance = await getKensanbiBalance(staffId)
+  // 消費日の年度を計算
+  const usageFiscalYear = getFiscalYearFromUsageDate(vacationDate)
+
+  // その年度の残高確認
+  const balance = await getKensanbiBalance(staffId, usageFiscalYear)
   if (balance.balance < usedDays) {
-    return { success: false, error: '研鑽日の残高が不足しています' }
+    return { success: false, error: `${usageFiscalYear}年度の研鑽日残高が不足しています（残高: ${balance.balance}日）` }
   }
 
-  // 使用履歴を追加
+  // 使用履歴を追加（年度付き）
   const { error: usageError } = await supabase
     .from('kensanbi_usage_history')
     .insert({
@@ -399,7 +452,8 @@ export const convertVacationToKensanbi = async (
       usage_date: vacationDate,
       used_days: usedDays,
       reason: '確定済み年休からの変換',
-      application_id: applicationId
+      application_id: applicationId,
+      fiscal_year: usageFiscalYear
     })
 
   if (usageError) {
