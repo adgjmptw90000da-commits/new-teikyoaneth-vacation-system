@@ -545,12 +545,15 @@ export default function ScheduleSubmitPage() {
     }
     // 2. 年休:
     //    - 終日/PM: 当日当直不可
-    //    - AM: 当日当直可
+    //    - AM: 土曜日のみ当日当直不可
     if (vacation) {
       if (vacation.period === 'full_day' || vacation.period === 'pm') {
         return false;
       }
-      // AM年休: 当直可
+      // AM年休: 土曜日のみ当直不可
+      if (vacation.period === 'am' && dayOfWeek === 6) {
+        return false;
+      }
     }
 
     // カスタム予定の当日制約

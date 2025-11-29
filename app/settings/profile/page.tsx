@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getUser, setUser } from "@/lib/auth";
+import { getUser, setUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import {
   validateName,
@@ -182,7 +182,7 @@ export default function ProfileSettingsPage() {
             </div>
             <div className="flex items-center">
               <button
-                onClick={() => router.push("/home")}
+                onClick={() => router.push(isAdmin() ? "/admin/home" : "/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ホーム"
               >

@@ -825,6 +825,10 @@ export default function ScheduleViewPage() {
       if (vacation.period === 'full_day' || vacation.period === 'pm') {
         return false;
       }
+      // AM年休: 土曜日のみ当直不可
+      if (vacation.period === 'am' && dayOfWeek === 6) {
+        return false;
+      }
     }
 
     // 前日の当直による制約（前日の当直がnext_day_night_shift=falseなら当直不可）

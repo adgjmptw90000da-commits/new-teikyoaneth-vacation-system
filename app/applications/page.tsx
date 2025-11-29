@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { isCurrentlyInLotteryPeriodForDate } from "@/lib/application";
 import { requestCancellation } from "@/lib/cancellation";
@@ -426,7 +426,7 @@ export default function ApplicationsPage() {
                 新規申請
               </button>
               <button
-                onClick={() => router.push("/home")}
+                onClick={() => router.push(isAdmin() ? "/admin/home" : "/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ホーム"
               >
