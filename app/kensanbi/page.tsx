@@ -8,6 +8,8 @@ import {
   getKensanbiBalance,
   convertVacationToKensanbi,
   getDayOfWeekName,
+  getCurrentFiscalYear,
+  getFiscalYearFromUsageDate,
 } from "@/lib/kensanbi";
 
 interface ConfirmedVacation {
@@ -41,11 +43,13 @@ export default function KensanbiManagementPage() {
   const [user, setUser] = useState<{ staff_id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [vacations, setVacations] = useState<ConfirmedVacation[]>([]);
-  const [balance, setBalance] = useState<{ granted: number; used: number; balance: number }>({
+  const [balance, setBalance] = useState<{ granted: number; used: number; balance: number; fiscalYear: number }>({
     granted: 0,
     used: 0,
     balance: 0,
+    fiscalYear: getCurrentFiscalYear(),
   });
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(getCurrentFiscalYear());
   const [targetYear, setTargetYear] = useState<number>(new Date().getFullYear());
   const [targetMonth, setTargetMonth] = useState<number>(new Date().getMonth() + 1);
   const [processing, setProcessing] = useState<number | null>(null);
@@ -64,14 +68,14 @@ export default function KensanbiManagementPage() {
     if (user && targetYear && targetMonth) {
       fetchData();
     }
-  }, [user, targetYear, targetMonth]);
+  }, [user, targetYear, targetMonth, selectedFiscalYear]);
 
   const fetchData = async () => {
     if (!user) return;
     setLoading(true);
 
-    // 研鑽日残高を取得
-    const balanceData = await getKensanbiBalance(user.staff_id);
+    // 選択した年度の研鑽日残高を取得
+    const balanceData = await getKensanbiBalance(user.staff_id, selectedFiscalYear);
     setBalance(balanceData);
 
     // 確定済み年休を取得
@@ -96,12 +100,16 @@ export default function KensanbiManagementPage() {
     if (!user) return;
 
     const usedDays = vacation.period === "full_day" ? 1.0 : 0.5;
-    if (balance.balance < usedDays) {
-      alert("研鑽日の残高が不足しています");
+    const vacationFiscalYear = getFiscalYearFromUsageDate(vacation.vacation_date);
+
+    // その年休日が属する年度の残高を取得
+    const vacationYearBalance = await getKensanbiBalance(user.staff_id, vacationFiscalYear);
+    if (vacationYearBalance.balance < usedDays) {
+      alert(`${vacationFiscalYear}年度の研鑽日残高が不足しています（残高: ${vacationYearBalance.balance}日）`);
       return;
     }
 
-    if (!confirm(`この年休を研鑽日に変更しますか？\n消費される研鑽日: ${usedDays}日`)) return;
+    if (!confirm(`この年休を研鑽日に変更しますか？\n対象年度: ${vacationFiscalYear}年度\n消費される研鑽日: ${usedDays}日`)) return;
 
     setProcessing(vacation.id);
     const result = await convertVacationToKensanbi(
@@ -233,7 +241,31 @@ export default function KensanbiManagementPage() {
         <div className="space-y-8">
           {/* 研鑽日残高 */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">研鑽日残高</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">研鑽日残高</h2>
+              {/* 年度セレクター */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedFiscalYear}
+                  onChange={(e) => setSelectedFiscalYear(Number(e.target.value))}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  {[1, 0, -1].map(offset => {
+                    const year = getCurrentFiscalYear() + offset;
+                    return (
+                      <option key={year} value={year}>
+                        {year}年度
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-green-800 font-medium">
+                {selectedFiscalYear}年度（{selectedFiscalYear}年4月〜{selectedFiscalYear + 1}年3月）
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-100">
                 <div className="text-sm text-blue-600 mb-1 font-medium">付与</div>
@@ -248,6 +280,13 @@ export default function KensanbiManagementPage() {
                 <div className="text-2xl font-bold text-green-700">{balance.balance}日</div>
               </div>
             </div>
+            {balance.balance <= 0 && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 font-medium">
+                  {selectedFiscalYear}年度の研鑽日残高がありません
+                </p>
+              </div>
+            )}
           </div>
 
           {/* 月選択 */}
@@ -326,7 +365,9 @@ export default function KensanbiManagementPage() {
                   const status = vacation.one_personnel_status || "not_applied";
                   const statusInfo = getStatusInfo(status);
                   const usedDays = vacation.period === "full_day" ? 1.0 : 0.5;
-                  const canConvert = status === "not_applied" && balance.balance >= usedDays;
+                  const vacationFiscalYear = getFiscalYearFromUsageDate(vacation.vacation_date);
+                  // 選択した年度と年休日の年度が一致する場合のみ残高チェック
+                  const canConvert = status === "not_applied" && (selectedFiscalYear === vacationFiscalYear ? balance.balance >= usedDays : true);
                   const dayOfWeek = getDayOfWeekName(vacation.vacation_date);
                   const isSunday = dayOfWeek === "日";
                   const isSaturday = dayOfWeek === "土";
@@ -360,6 +401,9 @@ export default function KensanbiManagementPage() {
                             <div className="flex flex-wrap gap-2 mb-3">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.bgColor} ${statusInfo.textColor}`}>
                                 {statusInfo.label}
+                              </span>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                                {vacationFiscalYear}年度
                               </span>
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                                 消費: {usedDays}日

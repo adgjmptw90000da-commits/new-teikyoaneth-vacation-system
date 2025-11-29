@@ -149,7 +149,7 @@ export default function ScheduleSystemPage() {
                   <Icons.List />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">予定一覧</h4>
+                  <h4 className="font-semibold text-gray-900">予定表作成</h4>
                   <p className="text-xs text-gray-500">全メンバーの予定確認・編集</p>
                 </div>
               </button>

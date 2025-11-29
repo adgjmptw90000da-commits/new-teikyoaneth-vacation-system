@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -101,6 +101,9 @@ const Icons = {
   Trash: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
   ),
+  Lock: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+  ),
 };
 
 const WEEKDAYS = [
@@ -163,6 +166,12 @@ export default function ScheduleSubmitPage() {
   // 初期ロード完了フラグ（設定の自動保存を防ぐため）
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
+  // 予定提出ロック状態
+  const [isLocked, setIsLocked] = useState(false);
+
+  // 二重フェッチ防止用
+  const isFetchingRef = useRef(false);
+
   useEffect(() => {
     const currentUser = getUser();
     if (!currentUser) {
@@ -174,6 +183,10 @@ export default function ScheduleSubmitPage() {
   }, [router, currentYear, currentMonth]);
 
   const fetchData = async (staffId: string) => {
+    // 二重フェッチ防止
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     setLoading(true);
     try {
       const startDate = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
@@ -189,6 +202,7 @@ export default function ScheduleSubmitPage() {
         { data: userSchedules },
         { data: userData },
         { data: displaySettingsData },
+        { data: publishData },
       ] = await Promise.all([
         supabase.from("holiday").select("*"),
         supabase.from("conference").select("*"),
@@ -210,7 +224,15 @@ export default function ScheduleSubmitPage() {
           .eq("staff_id", staffId)
           .single(),
         supabase.from("setting").select("display_settings").single(),
+        supabase.from("schedule_publish")
+          .select("is_submission_locked")
+          .eq("year", currentYear)
+          .eq("month", currentMonth)
+          .maybeSingle(),
       ]);
+
+      // 予定提出ロック状態を設定
+      setIsLocked(publishData?.is_submission_locked ?? false);
 
       setHolidaysData(holidays || []);
       setConferencesData(conferences || []);
@@ -308,6 +330,7 @@ export default function ScheduleSubmitPage() {
       console.error("Error fetching data:", err);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -827,6 +850,11 @@ export default function ScheduleSubmitPage() {
 
   // 日付クリック
   const handleDateClick = (date: string) => {
+    // ロック中は操作不可
+    if (isLocked) {
+      return;
+    }
+
     // 選択モード中の場合
     if (selectionMode !== 'none') {
       if (!selectionStart) {
@@ -870,7 +898,8 @@ export default function ScheduleSubmitPage() {
   // 選択された日のデータ
   const selectedDayData = selectedDate ? daysData.find(d => d.date === selectedDate) : null;
 
-  if (loading) {
+  // 初回ロード時のみフルスクリーンローディングを表示
+  if (loading && !initialLoadComplete) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-pulse flex flex-col items-center">
@@ -925,12 +954,13 @@ export default function ScheduleSubmitPage() {
                 <h3 className="text-sm font-bold text-gray-700 mb-2">研究日（曜日選択）</h3>
                 <div className="flex flex-wrap gap-1">
                   <button
-                    onClick={() => setResearchDay(null)}
+                    onClick={() => !isLocked && setResearchDay(null)}
+                    disabled={isLocked}
                     className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                       researchDay === null
                         ? 'text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                     style={researchDay === null ? { backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' } : undefined}
                   >
                     なし
@@ -938,12 +968,13 @@ export default function ScheduleSubmitPage() {
                   {WEEKDAYS.filter(w => w.value >= 1 && w.value <= 5).map((w) => (
                     <button
                       key={w.value}
-                      onClick={() => setResearchDay(w.value)}
+                      onClick={() => !isLocked && setResearchDay(w.value)}
+                      disabled={isLocked}
                       className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                         researchDay === w.value
                           ? ''
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                       style={researchDay === w.value ? { backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' } : undefined}
                     >
                       {w.label}
@@ -970,8 +1001,9 @@ export default function ScheduleSubmitPage() {
                 ) : (
                   <div className="space-y-1">
                     <button
-                      onClick={() => setSelectionMode('secondment')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors"
+                      onClick={() => !isLocked && setSelectionMode('secondment')}
+                      disabled={isLocked}
+                      className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                       style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
                     >
                       <Icons.Plus />
@@ -986,12 +1018,14 @@ export default function ScheduleSubmitPage() {
                             style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
                           >
                             {period.start_date.slice(5).replace(/-/g, '/')}〜{period.end_date.slice(5).replace(/-/g, '/')}
-                            <button
-                              onClick={() => handleDeleteSecondment(period.start_date, period.end_date)}
-                              className="hover:opacity-70"
-                            >
-                              ×
-                            </button>
+                            {!isLocked && (
+                              <button
+                                onClick={() => handleDeleteSecondment(period.start_date, period.end_date)}
+                                className="hover:opacity-70"
+                              >
+                                ×
+                              </button>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -1018,8 +1052,9 @@ export default function ScheduleSubmitPage() {
                 ) : (
                   <div className="space-y-1">
                     <button
-                      onClick={() => setSelectionMode('leave')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors"
+                      onClick={() => !isLocked && setSelectionMode('leave')}
+                      disabled={isLocked}
+                      className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                       style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
                     >
                       <Icons.Plus />
@@ -1034,12 +1069,14 @@ export default function ScheduleSubmitPage() {
                             style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
                           >
                             {leave.start_date.slice(5).replace(/-/g, '/')}〜{leave.end_date.slice(5).replace(/-/g, '/')}
-                            <button
-                              onClick={() => handleDeleteLeaveOfAbsence(leave.start_date, leave.end_date)}
-                              className="hover:opacity-70"
-                            >
-                              ×
-                            </button>
+                            {!isLocked && (
+                              <button
+                                onClick={() => handleDeleteLeaveOfAbsence(leave.start_date, leave.end_date)}
+                                className="hover:opacity-70"
+                              >
+                                ×
+                              </button>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -1100,6 +1137,23 @@ export default function ScheduleSubmitPage() {
             </div>
           </div>
 
+          {/* ロック警告メッセージ */}
+          {isLocked && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="text-red-500">
+                <Icons.Lock />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-red-700">
+                  この月の予定提出はロックされています
+                </p>
+                <p className="text-xs text-red-600 mt-0.5">
+                  編集が必要な場合は管理者にお問い合わせください
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* カレンダー */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-2 sm:p-4">
             {/* 曜日ヘッダー */}
@@ -1159,12 +1213,14 @@ export default function ScheduleSubmitPage() {
                   <div
                     key={day.date}
                     onClick={() => handleDateClick(day.date)}
-                    className={`min-h-[90px] sm:min-h-[110px] rounded-lg flex flex-col overflow-hidden cursor-pointer transition-all ${
-                      isSelectionStart
-                        ? 'border-2 border-indigo-500 shadow-lg ring-2 ring-indigo-200'
-                        : isInSelectionMode
-                          ? 'border-2 border-dashed border-indigo-300 hover:border-indigo-500 hover:shadow-md'
-                          : 'border border-gray-200 hover:border-indigo-400 hover:shadow-md'
+                    className={`min-h-[90px] sm:min-h-[110px] rounded-lg flex flex-col overflow-hidden transition-all ${
+                      isLocked
+                        ? 'cursor-default border border-gray-200'
+                        : isSelectionStart
+                          ? 'cursor-pointer border-2 border-indigo-500 shadow-lg ring-2 ring-indigo-200'
+                          : isInSelectionMode
+                            ? 'cursor-pointer border-2 border-dashed border-indigo-300 hover:border-indigo-500 hover:shadow-md'
+                            : 'cursor-pointer border border-gray-200 hover:border-indigo-400 hover:shadow-md'
                     } ${
                       day.isSecondment ? 'bg-amber-50/80' :
                       day.isLeaveOfAbsence ? 'bg-gray-100' :

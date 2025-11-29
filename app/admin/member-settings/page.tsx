@@ -121,6 +121,27 @@ export default function MemberSettingsPage() {
     }
   };
 
+  const handlePositionChange = async (staffId: string, position: '常勤' | '非常勤' | 'ローテーター' | '研修医') => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("user")
+        .update({ position })
+        .eq("staff_id", staffId);
+
+      if (error) {
+        alert("立場の更新に失敗しました");
+        console.error("Error:", error);
+      } else {
+        setUsers(prev => prev.map(u => u.staff_id === staffId ? { ...u, position } : u));
+      }
+    } catch (err) {
+      console.error("Error:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCapabilityChange = async (staffId: string, field: 'can_cardiac' | 'can_obstetric' | 'can_icu' | 'can_remaining_duty', value: boolean) => {
     setSaving(true);
     try {
@@ -327,6 +348,7 @@ export default function MemberSettingsPage() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">職員ID</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">氏名</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">チーム</th>
+                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">立場</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">当直レベル</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">心外</th>
                     <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">産科</th>
@@ -385,6 +407,20 @@ export default function MemberSettingsPage() {
                             </button>
                           ))}
                         </div>
+                      </td>
+                      {/* 立場 */}
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <select
+                          value={user.position || '常勤'}
+                          onChange={(e) => handlePositionChange(user.staff_id, e.target.value as '常勤' | '非常勤' | 'ローテーター' | '研修医')}
+                          disabled={saving}
+                          className="px-2 py-1 text-xs font-medium border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                        >
+                          <option value="常勤">常勤</option>
+                          <option value="非常勤">非常勤</option>
+                          <option value="ローテーター">ローテーター</option>
+                          <option value="研修医">研修医</option>
+                        </select>
                       </td>
                       {/* 当直レベル */}
                       <td className="px-4 py-3 whitespace-nowrap text-center">
@@ -485,6 +521,9 @@ export default function MemberSettingsPage() {
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 bg-orange-600 text-white rounded font-bold">B</span>
                 <span className="text-gray-600">B表チーム</span>
+              </div>
+              <div className="flex items-center gap-2 border-l border-gray-300 pl-4">
+                <span className="text-gray-600">立場: 常勤 / 非常勤 / ローテーター / 研修医</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 bg-gray-600 text-white rounded font-bold">なし</span>

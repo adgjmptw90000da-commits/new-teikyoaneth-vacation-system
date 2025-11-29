@@ -53,7 +53,10 @@ type UserShift = Database["public"]["Tables"]["user_shift"]["Row"];
 type WorkLocation = Database["public"]["Tables"]["work_location"]["Row"];
 type UserWorkLocation = Database["public"]["Tables"]["user_work_location"]["Row"];
 type CountConfig = Database["public"]["Tables"]["count_config"]["Row"];
+type MemberCountConfig = Database["public"]["Tables"]["member_count_config"]["Row"];
+type ScoreConfig = Database["public"]["Tables"]["score_config"]["Row"];
 type ShiftAssignPreset = Database["public"]["Tables"]["shift_assign_preset"]["Row"];
+type DutyAssignPreset = Database["public"]["Tables"]["duty_assign_preset"]["Row"];
 
 // 除外フィルターの型定義
 type TargetDay = 'same_day' | 'prev_day' | 'next_day';
@@ -83,6 +86,7 @@ interface MemberData {
   name: string;
   team: 'A' | 'B';
   display_order: number;
+  position: '常勤' | '非常勤' | 'ローテーター' | '研修医';
   researchDay: number | null;
   isFirstYear: boolean;
   isSecondment: boolean;
@@ -169,6 +173,7 @@ export default function ScheduleViewPage() {
     target_period_night: boolean;
     filter_teams: string[];
     filter_night_shift_levels: string[];
+    filter_positions: string[];
     filter_can_cardiac: boolean | null;
     filter_can_obstetric: boolean | null;
     filter_can_icu: boolean | null;
@@ -185,17 +190,71 @@ export default function ScheduleViewPage() {
     target_period_night: true,
     filter_teams: [],
     filter_night_shift_levels: [],
+    filter_positions: [],
     filter_can_cardiac: null,
     filter_can_obstetric: null,
     filter_can_icu: null,
   });
 
-  // プリセット関連
+  // メンバー別カウント設定
+  const [memberCountConfigs, setMemberCountConfigs] = useState<MemberCountConfig[]>([]);
+  const [editingMemberCountConfig, setEditingMemberCountConfig] = useState<MemberCountConfig | null>(null);
+  const [newMemberCountConfig, setNewMemberCountConfig] = useState<{
+    name: string;
+    display_label: string;
+    is_active: boolean;
+    target_schedule_type_ids: number[];
+    target_shift_type_ids: number[];
+    filter_day_of_weeks: number[];
+    include_holiday: boolean;
+    include_pre_holiday: boolean;
+  }>({
+    name: '',
+    display_label: '',
+    is_active: true,
+    target_schedule_type_ids: [],
+    target_shift_type_ids: [],
+    filter_day_of_weeks: [],
+    include_holiday: false,
+    include_pre_holiday: false,
+  });
+  const [countConfigTab, setCountConfigTab] = useState<'date' | 'member'>('date');
+
+  // 得点設定
+  const [scoreConfigs, setScoreConfigs] = useState<ScoreConfig[]>([]);
+  const [showScoreConfigModal, setShowScoreConfigModal] = useState(false);
+  const [editingScoreConfig, setEditingScoreConfig] = useState<ScoreConfig | null>(null);
+  const [newScoreConfig, setNewScoreConfig] = useState<{
+    name: string;
+    is_active: boolean;
+    target_shift_type_ids: number[];
+    filter_day_of_weeks: number[];
+    include_holiday: boolean;
+    include_pre_holiday: boolean;
+    points: number;
+  }>({
+    name: '',
+    is_active: true,
+    target_shift_type_ids: [],
+    filter_day_of_weeks: [],
+    include_holiday: false,
+    include_pre_holiday: false,
+    points: 1,
+  });
+
+  // プリセット関連（一般シフト）
   const [shiftAssignPresets, setShiftAssignPresets] = useState<ShiftAssignPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null);
   const [showPresetSaveModal, setShowPresetSaveModal] = useState(false);
   const [presetSaveName, setPresetSaveName] = useState('');
   const [showPresetManageModal, setShowPresetManageModal] = useState(false);
+
+  // プリセット関連（当直）
+  const [dutyAssignPresets, setDutyAssignPresets] = useState<DutyAssignPreset[]>([]);
+  const [selectedDutyPresetId, setSelectedDutyPresetId] = useState<number | null>(null);
+  const [showDutyPresetSaveModal, setShowDutyPresetSaveModal] = useState(false);
+  const [dutyPresetSaveName, setDutyPresetSaveName] = useState('');
+  const [showDutyPresetManageModal, setShowDutyPresetManageModal] = useState(false);
 
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
@@ -209,6 +268,7 @@ export default function ScheduleViewPage() {
   const [isPublished, setIsPublished] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
 
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
@@ -240,6 +300,7 @@ export default function ScheduleViewPage() {
     includeHolidays: boolean;
     includePreHolidays: boolean;
     specificDates: string[]; // 個別選択した日付
+    priorityMode: 'count' | 'score'; // 回数ベース or 得点ベース
   }>(() => {
     // 初期値計算
     const now = new Date();
@@ -265,9 +326,10 @@ export default function ScheduleViewPage() {
       startDate: firstDay,
       endDate: endDay,
       targetWeekdays: [],
-      includeHolidays: true,
-      includePreHolidays: true, // デフォルトで祝前日も含む
+      includeHolidays: false,
+      includePreHolidays: false,
       specificDates: [],
+      priorityMode: 'count',
     };
   });
   const [autoAssignPreview, setAutoAssignPreview] = useState<{
@@ -282,6 +344,7 @@ export default function ScheduleViewPage() {
     selectionMode: 'filter' | 'individual';
     filterTeams: ('A' | 'B')[];
     filterNightShiftLevels: string[];
+    filterPositions: string[];
     filterCanCardiac: boolean | null;
     filterCanObstetric: boolean | null;
     filterCanIcu: boolean | null;
@@ -291,9 +354,12 @@ export default function ScheduleViewPage() {
     startDate: string;
     endDate: string;
     targetWeekdays: number[];
+    includeHolidays: boolean;      // 祝日も対象にする
+    includePreHolidays: boolean;   // 祝前日も対象にする
     specificDates: string[];
     exclusionFilters: ExclusionFilter[];
     excludeNightShiftUnavailable: boolean; // 当直不可（×）の日は割り振らない
+    priorityMode: 'count' | 'score'; // 回数ベース or 得点ベース
   }>(() => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -308,6 +374,7 @@ export default function ScheduleViewPage() {
       selectionMode: 'filter',
       filterTeams: [],
       filterNightShiftLevels: [],
+      filterPositions: [],
       filterCanCardiac: null,
       filterCanObstetric: null,
       filterCanIcu: null,
@@ -317,9 +384,12 @@ export default function ScheduleViewPage() {
       startDate: firstDay,
       endDate: endDay,
       targetWeekdays: [],
+      includeHolidays: false,
+      includePreHolidays: false,
       specificDates: [],
       exclusionFilters: [],
       excludeNightShiftUnavailable: false,
+      priorityMode: 'count',
     };
   });
   const [generalShiftPreview, setGeneralShiftPreview] = useState<{
@@ -414,7 +484,10 @@ export default function ScheduleViewPage() {
         { data: workLocationsData },
         { data: userWorkLocationsData },
         { data: countConfigsData },
+        { data: memberCountConfigsData },
+        { data: scoreConfigsData },
         { data: shiftAssignPresetsData },
+        { data: dutyAssignPresetsData },
       ] = await Promise.all([
         supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
@@ -451,7 +524,10 @@ export default function ScheduleViewPage() {
           .gte("work_date", startDate)
           .lte("work_date", endDate),
         supabase.from("count_config").select("*").order("display_order"),
+        supabase.from("member_count_config").select("*").order("display_order"),
+        supabase.from("score_config").select("*").order("display_order"),
         supabase.from("shift_assign_preset").select("*").order("display_order"),
+        supabase.from("duty_assign_preset").select("*").order("display_order"),
       ]);
 
       // 確定済み日付のSetを作成
@@ -466,7 +542,10 @@ export default function ScheduleViewPage() {
       setHolidays(holidaysData || []);
       setWorkLocationMaster(workLocationsData || []);
       setCountConfigs(countConfigsData || []);
+      setMemberCountConfigs(memberCountConfigsData || []);
+      setScoreConfigs(scoreConfigsData || []);
       setShiftAssignPresets(shiftAssignPresetsData || []);
+      setDutyAssignPresets(dutyAssignPresetsData || []);
 
       // システム予約タイプからdisplaySettingsを構築
       const systemScheduleTypes = {
@@ -514,6 +593,8 @@ export default function ScheduleViewPage() {
         setIsPublished(false);
         setPublishedAt(null);
       }
+      // 予定提出ロック状態を設定
+      setIsSubmissionLocked(publishData?.is_submission_locked ?? false);
 
       // メンバーデータを構築
       const membersData: MemberData[] = (users || []).map(user => {
@@ -573,6 +654,7 @@ export default function ScheduleViewPage() {
           name: user.name,
           team: user.team || 'A',
           display_order: user.display_order || 0,
+          position: user.position || '常勤',
           researchDay: researchDayRecord?.day_of_week ?? null,
           isFirstYear: researchDayRecord?.is_first_year ?? false,
           isSecondment,
@@ -622,6 +704,97 @@ export default function ScheduleViewPage() {
   // 休職期間内かチェック
   const isDateInLeaveOfAbsence = (date: string, leaves: { start_date: string; end_date: string }[]): boolean => {
     return leaves.some(leave => date >= leave.start_date && date <= leave.end_date);
+  };
+
+  // 祝前日かどうかをチェック（翌日が祝日なら祝前日）
+  const isPreHoliday = (date: string): boolean => {
+    const nextDay = new Date(date);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().split('T')[0];
+    return holidays.some(h => h.holiday_date === nextDayStr);
+  };
+
+  // メンバー別カウント: 日付がカウント対象かどうか判定
+  const isDateMatchForMemberCount = (day: DayData, config: MemberCountConfig): boolean => {
+    // 曜日マッチ（曜日が指定されていない場合は全曜日対象）
+    const dayOfWeeksFilter = config.filter_day_of_weeks || [];
+    if (dayOfWeeksFilter.length === 0 || dayOfWeeksFilter.includes(day.dayOfWeek)) {
+      return true;
+    }
+    // 祝日マッチ
+    if (config.include_holiday && day.isHoliday) {
+      return true;
+    }
+    // 祝前日マッチ
+    if (config.include_pre_holiday && isPreHoliday(day.date)) {
+      return true;
+    }
+    // どれにもマッチしない
+    return false;
+  };
+
+  // メンバー別カウント: メンバーのカウントを計算
+  const calculateMemberCount = (member: MemberData, config: MemberCountConfig): number => {
+    return daysData.filter(day => {
+      // 日付フィルタチェック
+      if (!isDateMatchForMemberCount(day, config)) return false;
+
+      // シフトマッチ
+      const shifts = member.shifts[day.date] || [];
+      const shiftMatch = (config.target_shift_type_ids || []).some(id =>
+        shifts.some(s => s.shift_type_id === id)
+      );
+      if (shiftMatch) return true;
+
+      // 予定マッチ
+      const schedules = member.schedules[day.date] || [];
+      const scheduleMatch = (config.target_schedule_type_ids || []).some(id =>
+        schedules.some(s => s.schedule_type_id === id)
+      );
+      if (scheduleMatch) return true;
+
+      return false;
+    }).length;
+  };
+
+  // 得点計算: 日付がカウント対象かどうか判定
+  const isDateMatchForScore = (day: DayData, config: ScoreConfig): boolean => {
+    const dayOfWeeksFilter = config.filter_day_of_weeks || [];
+    // 曜日が指定されていない場合は全曜日対象
+    if (dayOfWeeksFilter.length === 0 || dayOfWeeksFilter.includes(day.dayOfWeek)) {
+      return true;
+    }
+    // 祝日マッチ
+    if (config.include_holiday && day.isHoliday) {
+      return true;
+    }
+    // 祝前日マッチ
+    if (config.include_pre_holiday && isPreHoliday(day.date)) {
+      return true;
+    }
+    return false;
+  };
+
+  // メンバーの得点計算（全設定の合計）
+  const calculateMemberScore = (member: MemberData): number => {
+    const activeScoreConfigs = scoreConfigs.filter(c => c.is_active);
+
+    return activeScoreConfigs.reduce((totalScore, config) => {
+      // このconfigに該当するシフト数をカウント
+      const count = daysData.filter(day => {
+        // 日付フィルタチェック
+        if (!isDateMatchForScore(day, config)) return false;
+
+        // シフトマッチ
+        const shifts = member.shifts[day.date] || [];
+        return (config.target_shift_type_ids || []).some(id =>
+          shifts.some(s => s.shift_type_id === id)
+        );
+      }).length;
+
+      // カウント × 得点を加算
+      return totalScore + (count * config.points);
+    }, 0);
   };
 
   // 当直可否を計算
@@ -1018,14 +1191,20 @@ export default function ScheduleViewPage() {
         return baseDays.filter(day => specificSet.has(day.date));
 
       case 'weekday':
-        // 期間＋曜日指定モード
+        // 期間＋曜日指定モード（祝日・祝前日オプション含む）
         return baseDays.filter(day => {
-          // 曜日が1つも選択されていない場合は全日対象
-          if (autoAssignConfig.targetWeekdays.length === 0) {
-            return true;
-          }
-          // 選択された曜日のみ
-          return autoAssignConfig.targetWeekdays.includes(day.dayOfWeek);
+          // 曜日・祝日・祝前日のいずれかにマッチすればOK
+          const weekdayMatch = autoAssignConfig.targetWeekdays.includes(day.dayOfWeek);
+          const holidayMatch = autoAssignConfig.includeHolidays && day.isHoliday;
+          const preHolidayMatch = autoAssignConfig.includePreHolidays && isPreHoliday(day.date);
+
+          // 全て未選択なら全日対象、どれか選択されていればORで判定
+          const hasAnySelection = autoAssignConfig.targetWeekdays.length > 0 ||
+                                  autoAssignConfig.includeHolidays ||
+                                  autoAssignConfig.includePreHolidays;
+          if (!hasAnySelection) return true;
+
+          return weekdayMatch || holidayMatch || preHolidayMatch;
         });
 
       default:
@@ -1233,21 +1412,62 @@ export default function ScheduleViewPage() {
         });
       };
 
-      // 最も割り振り回数の少ないメンバーを選択（同じ回数の場合はランダム）
-      const selectLeastAssigned = (availableMembers: MemberData[]): MemberData | null => {
-        if (availableMembers.length === 0) return null;
+      // 割り振り中のシフトを含めた得点計算（プレビュー用）
+      const calculateMemberScoreWithPreview = (
+        member: MemberData,
+        previewAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[],
+        targetShiftTypeId: number
+      ): number => {
+        // 既存の得点
+        let score = calculateMemberScore(member);
 
-        // 最小回数を取得
-        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-
-        // 最小回数のメンバーを抽出
-        const leastAssignedMembers = availableMembers.filter(m =>
-          (assignmentCount.get(m.staff_id) || 0) === minCount
+        // プレビューで割り振ったシフトの得点を加算
+        const activeConfigs = scoreConfigs.filter(c => c.is_active);
+        const memberPreviewAssignments = previewAssignments.filter(
+          a => a.staffId === member.staff_id && a.type === 'night_shift'
         );
 
-        // ランダムに選択
-        const randomIndex = Math.floor(Math.random() * leastAssignedMembers.length);
-        return leastAssignedMembers[randomIndex];
+        for (const assignment of memberPreviewAssignments) {
+          const day = daysData.find(d => d.date === assignment.date);
+          if (!day) continue;
+
+          for (const config of activeConfigs) {
+            // 対象シフトタイプかチェック
+            if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+            // 日付フィルタチェック
+            if (!isDateMatchForScore(day, config)) continue;
+            // 得点加算
+            score += config.points;
+          }
+        }
+
+        return score;
+      };
+
+      // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
+      const selectLeastAssigned = (
+        availableMembers: MemberData[],
+        currentAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
+      ): MemberData | null => {
+        if (availableMembers.length === 0) return null;
+
+        if (autoAssignConfig.priorityMode === 'score') {
+          // 得点ベース: プレビュー割り振りを含めた得点で判断
+          const memberScores = availableMembers.map(m => ({
+            member: m,
+            score: calculateMemberScoreWithPreview(m, currentAssignments, autoAssignConfig.nightShiftTypeId!)
+          }));
+          const minScore = Math.min(...memberScores.map(ms => ms.score));
+          const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+          return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+        } else {
+          // 回数ベース（現行通り）
+          const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+          const leastAssignedMembers = availableMembers.filter(m =>
+            (assignmentCount.get(m.staff_id) || 0) === minCount
+          );
+          return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+        }
       };
 
       // その日に既に当直シフトが入っているかチェック（誰かに入っていたらスキップ）
@@ -1271,7 +1491,7 @@ export default function ScheduleViewPage() {
 
         const availableMembers = targetMembers.filter(m => canAssignNightShift(day.date, m, assignments, day));
         if (availableMembers.length > 0) {
-          const selected = selectLeastAssigned(availableMembers);
+          const selected = selectLeastAssigned(availableMembers, assignments);
           if (selected) {
             // 当直を追加
             assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
@@ -1404,6 +1624,9 @@ export default function ScheduleViewPage() {
       if (generalShiftConfig.filterNightShiftLevels.length > 0 && !generalShiftConfig.filterNightShiftLevels.includes(m.nightShiftLevel || '')) {
         return false;
       }
+      if (generalShiftConfig.filterPositions.length > 0 && !generalShiftConfig.filterPositions.includes(m.position)) {
+        return false;
+      }
       if (generalShiftConfig.filterCanCardiac !== null && m.can_cardiac !== generalShiftConfig.filterCanCardiac) {
         return false;
       }
@@ -1442,11 +1665,20 @@ export default function ScheduleViewPage() {
         return baseDays.filter(day => specificSet.has(day.date));
 
       case 'weekday':
+        // 期間＋曜日指定モード（祝日・祝前日オプション含む）
         return baseDays.filter(day => {
-          if (generalShiftConfig.targetWeekdays.length === 0) {
-            return true;
-          }
-          return generalShiftConfig.targetWeekdays.includes(day.dayOfWeek);
+          // 曜日・祝日・祝前日のいずれかにマッチすればOK
+          const weekdayMatch = generalShiftConfig.targetWeekdays.includes(day.dayOfWeek);
+          const holidayMatch = generalShiftConfig.includeHolidays && day.isHoliday;
+          const preHolidayMatch = generalShiftConfig.includePreHolidays && isPreHoliday(day.date);
+
+          // 全て未選択なら全日対象、どれか選択されていればORで判定
+          const hasAnySelection = generalShiftConfig.targetWeekdays.length > 0 ||
+                                  generalShiftConfig.includeHolidays ||
+                                  generalShiftConfig.includePreHolidays;
+          if (!hasAnySelection) return true;
+
+          return weekdayMatch || holidayMatch || preHolidayMatch;
         });
 
       default:
@@ -1746,18 +1978,60 @@ export default function ScheduleViewPage() {
       // 結果格納用
       const assignments: { date: string; staffId: string; staffName: string }[] = [];
 
-      // 最も割り振り回数の少ないメンバーを選択（同じ回数の場合はランダム）
-      const selectLeastAssignedForGeneral = (availableMembers: MemberData[]): MemberData | null => {
+      // 割り振り中のシフトを含めた得点計算（一般シフトプレビュー用）
+      const calculateMemberScoreWithPreviewGeneral = (
+        member: MemberData,
+        previewAssignments: { date: string; staffId: string; staffName: string }[],
+        targetShiftTypeId: number
+      ): number => {
+        // 既存の得点
+        let score = calculateMemberScore(member);
+
+        // プレビューで割り振ったシフトの得点を加算
+        const activeConfigs = scoreConfigs.filter(c => c.is_active);
+        const memberPreviewAssignments = previewAssignments.filter(a => a.staffId === member.staff_id);
+
+        for (const assignment of memberPreviewAssignments) {
+          const day = daysData.find(d => d.date === assignment.date);
+          if (!day) continue;
+
+          for (const config of activeConfigs) {
+            // 対象シフトタイプかチェック
+            if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+            // 日付フィルタチェック
+            if (!isDateMatchForScore(day, config)) continue;
+            // 得点加算
+            score += config.points;
+          }
+        }
+
+        return score;
+      };
+
+      // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
+      const selectLeastAssignedForGeneral = (
+        availableMembers: MemberData[],
+        currentAssignments: { date: string; staffId: string; staffName: string }[]
+      ): MemberData | null => {
         if (availableMembers.length === 0) return null;
 
-        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-        const leastAssignedMembers = availableMembers.filter(m =>
-          (assignmentCount.get(m.staff_id) || 0) === minCount
-        );
-
-        // ランダムに選択
-        const randomIndex = Math.floor(Math.random() * leastAssignedMembers.length);
-        return leastAssignedMembers[randomIndex];
+        if (generalShiftConfig.priorityMode === 'score') {
+          // 得点ベース: プレビュー割り振りを含めた得点で判断
+          const memberScores = availableMembers.map(m => ({
+            member: m,
+            score: calculateMemberScoreWithPreviewGeneral(m, currentAssignments, generalShiftConfig.shiftTypeId!)
+          }));
+          const minScore = Math.min(...memberScores.map(ms => ms.score));
+          const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+          return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+        } else {
+          // 回数ベース（現行通り）
+          const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+          const leastAssignedMembers = availableMembers.filter(m =>
+            (assignmentCount.get(m.staff_id) || 0) === minCount
+          );
+          return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+        }
       };
 
       // その日に既にシフトが入っているかチェック（誰かに入っていたらスキップ）
@@ -1778,7 +2052,7 @@ export default function ScheduleViewPage() {
 
         const availableMembers = targetMembers.filter(m => canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday));
         if (availableMembers.length > 0) {
-          const selected = selectLeastAssignedForGeneral(availableMembers);
+          const selected = selectLeastAssignedForGeneral(availableMembers, assignments);
           if (selected) {
             assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
             assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
@@ -2000,6 +2274,31 @@ export default function ScheduleViewPage() {
       alert("エラーが発生しました");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // 予定提出ロック切り替え
+  const handleToggleSubmissionLock = async () => {
+    const newLockState = !isSubmissionLocked;
+    try {
+      const { error } = await supabase
+        .from("schedule_publish")
+        .upsert({
+          year: currentYear,
+          month: currentMonth,
+          is_submission_locked: newLockState,
+        }, {
+          onConflict: 'year,month',
+        });
+
+      if (error) {
+        alert("ロック状態の変更に失敗しました: " + error.message);
+      } else {
+        setIsSubmissionLocked(newLockState);
+      }
+    } catch (err) {
+      console.error("Error toggling submission lock:", err);
+      alert("エラーが発生しました");
     }
   };
 
@@ -2349,16 +2648,25 @@ export default function ScheduleViewPage() {
     };
   }, [selectedCell, daysData]);
 
+  // 立場の表示順
+  const POSITION_ORDER: { [key: string]: number } = { '常勤': 0, '非常勤': 1, 'ローテーター': 2, '研修医': 3 };
+
   // 選択されたチームのメンバーをフィルター
   const filteredMembers = useMemo(() => {
     return members
       .filter(m => selectedTeam === 'all' || m.team === selectedTeam)
       .sort((a, b) => {
-        // 全体表示時はまずチームでソート、次にdisplay_order
+        // 1. 全体表示時はまずチームでソート
         if (selectedTeam === 'all' && a.team !== b.team) {
           return a.team === 'A' ? -1 : 1;
         }
+        // 2. 立場でソート
+        const posA = POSITION_ORDER[a.position] ?? 99;
+        const posB = POSITION_ORDER[b.position] ?? 99;
+        if (posA !== posB) return posA - posB;
+        // 3. display_orderでソート
         if (a.display_order !== b.display_order) return a.display_order - b.display_order;
+        // 4. staff_idでソート
         return a.staff_id.localeCompare(b.staff_id);
       });
   }, [members, selectedTeam]);
@@ -2382,6 +2690,11 @@ export default function ScheduleViewPage() {
       // 2. メンバーフィルタ（当直レベル）
       if (config.filter_night_shift_levels && config.filter_night_shift_levels.length > 0) {
         if (!config.filter_night_shift_levels.includes(member.nightShiftLevel || 'なし')) return false;
+      }
+
+      // 2.5. メンバーフィルタ（立場）
+      if (config.filter_positions && config.filter_positions.length > 0) {
+        if (!config.filter_positions.includes(member.position)) return false;
       }
 
       // 3. メンバーフィルタ（スキル）
@@ -2528,6 +2841,7 @@ export default function ScheduleViewPage() {
           target_period_night: newCountConfig.target_period_night,
           filter_teams: newCountConfig.filter_teams,
           filter_night_shift_levels: newCountConfig.filter_night_shift_levels,
+          filter_positions: newCountConfig.filter_positions,
           filter_can_cardiac: newCountConfig.filter_can_cardiac,
           filter_can_obstetric: newCountConfig.filter_can_obstetric,
           filter_can_icu: newCountConfig.filter_can_icu,
@@ -2556,6 +2870,7 @@ export default function ScheduleViewPage() {
           target_period_night: newCountConfig.target_period_night,
           filter_teams: newCountConfig.filter_teams,
           filter_night_shift_levels: newCountConfig.filter_night_shift_levels,
+          filter_positions: newCountConfig.filter_positions,
           filter_can_cardiac: newCountConfig.filter_can_cardiac,
           filter_can_obstetric: newCountConfig.filter_can_obstetric,
           filter_can_icu: newCountConfig.filter_can_icu,
@@ -2622,6 +2937,7 @@ export default function ScheduleViewPage() {
       target_period_night: true,
       filter_teams: [],
       filter_night_shift_levels: [],
+      filter_positions: [],
       filter_can_cardiac: null,
       filter_can_obstetric: null,
       filter_can_icu: null,
@@ -2644,11 +2960,235 @@ export default function ScheduleViewPage() {
       target_period_night: config.target_period_night ?? true,
       filter_teams: config.filter_teams || [],
       filter_night_shift_levels: config.filter_night_shift_levels || [],
+      filter_positions: config.filter_positions || [],
       filter_can_cardiac: config.filter_can_cardiac,
       filter_can_obstetric: config.filter_can_obstetric,
       filter_can_icu: config.filter_can_icu,
     });
     setShowCountConfigModal(true);
+  };
+
+  // メンバー別カウント設定の保存
+  const handleSaveMemberCountConfig = async () => {
+    try {
+      if (editingMemberCountConfig) {
+        // 更新
+        const { error } = await supabase.from("member_count_config").update({
+          name: newMemberCountConfig.name,
+          display_label: newMemberCountConfig.display_label,
+          is_active: newMemberCountConfig.is_active,
+          target_schedule_type_ids: newMemberCountConfig.target_schedule_type_ids,
+          target_shift_type_ids: newMemberCountConfig.target_shift_type_ids,
+          filter_day_of_weeks: newMemberCountConfig.filter_day_of_weeks,
+          include_holiday: newMemberCountConfig.include_holiday,
+          include_pre_holiday: newMemberCountConfig.include_pre_holiday,
+          updated_at: new Date().toISOString(),
+        }).eq("id", editingMemberCountConfig.id);
+
+        if (error) throw error;
+
+        setMemberCountConfigs(prev => prev.map(c =>
+          c.id === editingMemberCountConfig.id ? { ...c, ...newMemberCountConfig } : c
+        ));
+      } else {
+        // 新規作成
+        const maxOrder = Math.max(0, ...memberCountConfigs.map(c => c.display_order || 0));
+        const { data, error } = await supabase.from("member_count_config").insert({
+          name: newMemberCountConfig.name,
+          display_label: newMemberCountConfig.display_label,
+          is_active: newMemberCountConfig.is_active,
+          display_order: maxOrder + 1,
+          target_schedule_type_ids: newMemberCountConfig.target_schedule_type_ids,
+          target_shift_type_ids: newMemberCountConfig.target_shift_type_ids,
+          filter_day_of_weeks: newMemberCountConfig.filter_day_of_weeks,
+          include_holiday: newMemberCountConfig.include_holiday,
+          include_pre_holiday: newMemberCountConfig.include_pre_holiday,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) {
+          setMemberCountConfigs(prev => [...prev, data]);
+        }
+      }
+
+      setShowCountConfigModal(false);
+      setEditingMemberCountConfig(null);
+      resetMemberCountConfigForm();
+    } catch (err) {
+      console.error("Error saving member count config:", err);
+      alert("保存に失敗しました");
+    }
+  };
+
+  // メンバー別カウント設定削除
+  const handleDeleteMemberCountConfig = async (id: number) => {
+    if (!confirm("このメンバー別カウント設定を削除しますか？")) return;
+
+    try {
+      const { error } = await supabase.from("member_count_config").delete().eq("id", id);
+      if (error) throw error;
+      setMemberCountConfigs(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      console.error("Error deleting member count config:", err);
+      alert("削除に失敗しました");
+    }
+  };
+
+  // メンバー別カウント設定の有効/無効切り替え
+  const handleToggleMemberCountConfig = async (id: number, isActive: boolean) => {
+    try {
+      const { error } = await supabase.from("member_count_config").update({
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id);
+
+      if (error) throw error;
+      setMemberCountConfigs(prev => prev.map(c =>
+        c.id === id ? { ...c, is_active: isActive } : c
+      ));
+    } catch (err) {
+      console.error("Error toggling member count config:", err);
+    }
+  };
+
+  // メンバー別カウント設定フォームリセット
+  const resetMemberCountConfigForm = () => {
+    setNewMemberCountConfig({
+      name: '',
+      display_label: '',
+      is_active: true,
+      target_schedule_type_ids: [],
+      target_shift_type_ids: [],
+      filter_day_of_weeks: [],
+      include_holiday: false,
+      include_pre_holiday: false,
+    });
+  };
+
+  // メンバー別カウント設定の編集モード開始
+  const handleEditMemberCountConfig = (config: MemberCountConfig) => {
+    setEditingMemberCountConfig(config);
+    setNewMemberCountConfig({
+      name: config.name,
+      display_label: config.display_label,
+      is_active: config.is_active ?? true,
+      target_schedule_type_ids: config.target_schedule_type_ids || [],
+      target_shift_type_ids: config.target_shift_type_ids || [],
+      filter_day_of_weeks: config.filter_day_of_weeks || [],
+      include_holiday: config.include_holiday ?? false,
+      include_pre_holiday: config.include_pre_holiday ?? false,
+    });
+    setCountConfigTab('member');
+    setShowCountConfigModal(true);
+  };
+
+  // 得点設定の保存
+  const handleSaveScoreConfig = async () => {
+    try {
+      if (editingScoreConfig) {
+        // 更新
+        const { error } = await supabase.from("score_config").update({
+          name: newScoreConfig.name,
+          is_active: newScoreConfig.is_active,
+          target_shift_type_ids: newScoreConfig.target_shift_type_ids,
+          filter_day_of_weeks: newScoreConfig.filter_day_of_weeks,
+          include_holiday: newScoreConfig.include_holiday,
+          include_pre_holiday: newScoreConfig.include_pre_holiday,
+          points: newScoreConfig.points,
+          updated_at: new Date().toISOString(),
+        }).eq("id", editingScoreConfig.id);
+
+        if (error) throw error;
+
+        setScoreConfigs(prev => prev.map(c =>
+          c.id === editingScoreConfig.id ? { ...c, ...newScoreConfig } : c
+        ));
+      } else {
+        // 新規作成
+        const maxOrder = Math.max(0, ...scoreConfigs.map(c => c.display_order || 0));
+        const { data, error } = await supabase.from("score_config").insert({
+          name: newScoreConfig.name,
+          is_active: newScoreConfig.is_active,
+          display_order: maxOrder + 1,
+          target_shift_type_ids: newScoreConfig.target_shift_type_ids,
+          filter_day_of_weeks: newScoreConfig.filter_day_of_weeks,
+          include_holiday: newScoreConfig.include_holiday,
+          include_pre_holiday: newScoreConfig.include_pre_holiday,
+          points: newScoreConfig.points,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) {
+          setScoreConfigs(prev => [...prev, data]);
+        }
+      }
+
+      setShowScoreConfigModal(false);
+      setEditingScoreConfig(null);
+      resetScoreConfigForm();
+    } catch (err) {
+      console.error("Error saving score config:", err);
+      alert("保存に失敗しました");
+    }
+  };
+
+  // 得点設定削除
+  const handleDeleteScoreConfig = async (id: number) => {
+    if (!confirm("この得点設定を削除しますか？")) return;
+
+    try {
+      const { error } = await supabase.from("score_config").delete().eq("id", id);
+      if (error) throw error;
+      setScoreConfigs(prev => prev.filter(c => c.id !== id));
+    } catch (err) {
+      console.error("Error deleting score config:", err);
+      alert("削除に失敗しました");
+    }
+  };
+
+  // 得点設定の有効/無効切り替え
+  const handleToggleScoreConfig = async (id: number, isActive: boolean) => {
+    try {
+      const { error } = await supabase.from("score_config").update({
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id);
+
+      if (error) throw error;
+      setScoreConfigs(prev => prev.map(c =>
+        c.id === id ? { ...c, is_active: isActive } : c
+      ));
+    } catch (err) {
+      console.error("Error toggling score config:", err);
+    }
+  };
+
+  // 得点設定フォームリセット
+  const resetScoreConfigForm = () => {
+    setNewScoreConfig({
+      name: '',
+      is_active: true,
+      target_shift_type_ids: [],
+      filter_day_of_weeks: [],
+      include_holiday: false,
+      include_pre_holiday: false,
+      points: 1,
+    });
+  };
+
+  // 得点設定の編集モード開始
+  const handleEditScoreConfig = (config: ScoreConfig) => {
+    setEditingScoreConfig(config);
+    setNewScoreConfig({
+      name: config.name,
+      is_active: config.is_active ?? true,
+      target_shift_type_ids: config.target_shift_type_ids || [],
+      filter_day_of_weeks: config.filter_day_of_weeks || [],
+      include_holiday: config.include_holiday ?? false,
+      include_pre_holiday: config.include_pre_holiday ?? false,
+      points: config.points ?? 1,
+    });
+    setShowScoreConfigModal(true);
   };
 
   if (loading) {
@@ -2680,7 +3220,7 @@ export default function ScheduleViewPage() {
                 <Icons.Calendar />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                予定一覧
+                予定表作成
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -2714,8 +3254,8 @@ export default function ScheduleViewPage() {
                     startDate: firstDay,
                     endDate: endDay,
                     targetWeekdays: [],
-                    includeHolidays: true,
-                    includePreHolidays: true, // デフォルトで祝前日も含む
+                    includeHolidays: false,
+                    includePreHolidays: false,
                     specificDates: [],
                   });
                   setAutoAssignPreview(null);
@@ -2761,6 +3301,17 @@ export default function ScheduleViewPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-100 hover:bg-purple-200 rounded-lg transition-colors"
               >
                 カウント設定
+              </button>
+              {/* 得点設定ボタン */}
+              <button
+                onClick={() => {
+                  resetScoreConfigForm();
+                  setEditingScoreConfig(null);
+                  setShowScoreConfigModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-yellow-700 bg-yellow-100 hover:bg-yellow-200 rounded-lg transition-colors"
+              >
+                得点設定
               </button>
               {/* アップロード/再アップロード/非公開ボタン */}
               {isPublished ? (
@@ -2824,6 +3375,18 @@ export default function ScheduleViewPage() {
                     </span>
                   )}
                 </div>
+                {/* 予定提出ロック */}
+                <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isSubmissionLocked}
+                    onChange={handleToggleSubmissionLock}
+                    className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                  />
+                  <span className={`text-xs font-medium ${isSubmissionLocked ? 'text-red-600' : 'text-gray-600'}`}>
+                    予定提出ロック
+                  </span>
+                </label>
               </div>
               <button
                 onClick={() => changeMonth(1)}
@@ -3115,6 +3678,74 @@ export default function ScheduleViewPage() {
                           style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
                         >
                           {calculateCount(day, config)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {/* 得点合計行 */}
+                  {scoreConfigs.some(c => c.is_active) && (
+                    <tr className="bg-yellow-50">
+                      {/* 固定列: ラベル */}
+                      <td
+                        className="sticky left-0 z-20 bg-yellow-100 border border-black px-2 py-1.5 text-xs font-bold text-yellow-800 whitespace-nowrap"
+                        colSpan={1}
+                      >
+                        得点
+                      </td>
+                      {/* メンバー列: 得点値 */}
+                      {filteredMembers.map((member) => (
+                        <React.Fragment key={`score-${member.staff_id}`}>
+                          {/* AM/PM/夜勤の3列を結合して得点表示 */}
+                          <td
+                            colSpan={3}
+                            className="border border-black px-1 py-1.5 text-center text-sm font-bold text-yellow-700 bg-yellow-50"
+                          >
+                            {calculateMemberScore(member)}
+                          </td>
+                        </React.Fragment>
+                      ))}
+                      {/* 既存の日付別カウント列分の空セル */}
+                      {activeCountConfigs.map((countConfig, index) => (
+                        <td
+                          key={`score-empty-${countConfig.id}`}
+                          className="sticky z-10 bg-yellow-100 border border-black px-1 py-1 text-center text-xs text-gray-400 w-10 min-w-10 max-w-10"
+                          style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
+                        >
+                          -
+                        </td>
+                      ))}
+                    </tr>
+                  )}
+                  {/* メンバー別カウント行 */}
+                  {memberCountConfigs.filter(c => c.is_active).map((config, configIndex) => (
+                    <tr key={`member-count-${config.id}`} className="bg-orange-50">
+                      {/* 固定列: ラベル */}
+                      <td
+                        className="sticky left-0 z-20 bg-orange-100 border border-black px-2 py-1.5 text-xs font-bold text-orange-800 whitespace-nowrap"
+                        colSpan={1}
+                      >
+                        {config.display_label}
+                      </td>
+                      {/* メンバー列: カウント値 */}
+                      {filteredMembers.map((member) => (
+                        <React.Fragment key={`member-count-${config.id}-${member.staff_id}`}>
+                          {/* AM/PM/夜勤の3列を結合してカウント表示 */}
+                          <td
+                            colSpan={3}
+                            className="border border-black px-1 py-1.5 text-center text-sm font-bold text-orange-700 bg-orange-50"
+                          >
+                            {calculateMemberCount(member, config)}
+                          </td>
+                        </React.Fragment>
+                      ))}
+                      {/* 既存の日付別カウント列分の空セル */}
+                      {activeCountConfigs.map((countConfig, index) => (
+                        <td
+                          key={`member-count-empty-${config.id}-${countConfig.id}`}
+                          className="sticky z-10 bg-orange-100 border border-black px-1 py-1 text-center text-xs text-gray-400 w-10 min-w-10 max-w-10"
+                          style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
+                        >
+                          -
                         </td>
                       ))}
                     </tr>
@@ -3527,7 +4158,9 @@ export default function ScheduleViewPage() {
                   onClick={() => {
                     setShowCountConfigModal(false);
                     setEditingCountConfig(null);
+                    setEditingMemberCountConfig(null);
                     resetCountConfigForm();
+                    resetMemberCountConfigForm();
                   }}
                   className="text-gray-500 hover:text-gray-700 p-1"
                 >
@@ -3535,6 +4168,40 @@ export default function ScheduleViewPage() {
                 </button>
               </div>
 
+              {/* タブ切り替え */}
+              <div className="flex border-b border-gray-200">
+                <button
+                  onClick={() => {
+                    setCountConfigTab('date');
+                    setEditingCountConfig(null);
+                    setEditingMemberCountConfig(null);
+                  }}
+                  className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    countConfigTab === 'date'
+                      ? 'border-purple-500 text-purple-600 bg-purple-50'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  日付別カウント
+                </button>
+                <button
+                  onClick={() => {
+                    setCountConfigTab('member');
+                    setEditingCountConfig(null);
+                    setEditingMemberCountConfig(null);
+                  }}
+                  className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    countConfigTab === 'member'
+                      ? 'border-orange-500 text-orange-600 bg-orange-50'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  メンバー別カウント
+                </button>
+              </div>
+
+              {/* 日付別カウント設定タブ */}
+              {countConfigTab === 'date' && (
               <div className="p-4 space-y-4">
                 {/* 既存のカウント設定一覧 */}
                 {!editingCountConfig && countConfigs.length > 0 && (
@@ -3805,6 +4472,32 @@ export default function ScheduleViewPage() {
                     <p className="text-[10px] text-gray-400 mt-0.5">選択なし = 全レベル対象</p>
                   </div>
 
+                  {/* フィルタ: 立場 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: 立場</label>
+                    <div className="flex flex-wrap gap-3">
+                      {['常勤', '非常勤', 'ローテーター', '研修医'].map(position => (
+                        <label key={position} className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={newCountConfig.filter_positions.includes(position)}
+                            onChange={(e) => {
+                              setNewCountConfig(prev => ({
+                                ...prev,
+                                filter_positions: e.target.checked
+                                  ? [...prev.filter_positions, position]
+                                  : prev.filter_positions.filter(p => p !== position)
+                              }));
+                            }}
+                            className="w-3.5 h-3.5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                          />
+                          <span className="text-xs text-gray-700">{position}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">選択なし = 全立場対象</p>
+                  </div>
+
                   {/* フィルタ: スキル */}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: スキル</label>
@@ -3858,24 +4551,447 @@ export default function ScheduleViewPage() {
                   </div>
                 </div>
               </div>
+              )}
+
+              {/* メンバー別カウント設定タブ */}
+              {countConfigTab === 'member' && (
+              <div className="p-4 space-y-4">
+                {/* 既存のメンバー別カウント設定一覧 */}
+                {!editingMemberCountConfig && memberCountConfigs.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
+                    <div className="space-y-1">
+                      {memberCountConfigs.map(config => (
+                        <div
+                          key={config.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={config.is_active || false}
+                              onChange={(e) => handleToggleMemberCountConfig(config.id, e.target.checked)}
+                              className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{config.display_label}</div>
+                              <div className="text-xs text-gray-500">{config.name}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditMemberCountConfig(config)}
+                              className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                            >
+                              編集
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMemberCountConfig(config.id)}
+                              className="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded transition-colors"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <hr className="my-4" />
+                  </div>
+                )}
+
+                {/* 新規追加/編集フォーム */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {editingMemberCountConfig ? '設定を編集' : '新規メンバー別カウント設定'}
+                  </h3>
+
+                  {/* 基本情報 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">設定名（内部用）</label>
+                      <input
+                        type="text"
+                        value={newMemberCountConfig.name}
+                        onChange={(e) => setNewMemberCountConfig(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        placeholder="例: 土曜上直"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">表示ラベル（短い名前）</label>
+                      <input
+                        type="text"
+                        value={newMemberCountConfig.display_label}
+                        onChange={(e) => setNewMemberCountConfig(prev => ({ ...prev, display_label: e.target.value }))}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        placeholder="例: 土上直"
+                      />
+                    </div>
+                  </div>
+
+                  {/* カウント対象: 予定タイプ */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: 予定タイプ</label>
+                    <div className="flex flex-wrap gap-1">
+                      {scheduleTypes.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setNewMemberCountConfig(prev => ({
+                              ...prev,
+                              target_schedule_type_ids: prev.target_schedule_type_ids.includes(type.id)
+                                ? prev.target_schedule_type_ids.filter(id => id !== type.id)
+                                : [...prev.target_schedule_type_ids, type.id]
+                            }));
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+                            newMemberCountConfig.target_schedule_type_ids.includes(type.id)
+                              ? 'ring-2 ring-orange-500 border-orange-500'
+                              : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: type.color, color: type.text_color || '#000000' }}
+                        >
+                          {type.display_label || type.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* カウント対象: シフトタイプ */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: シフトタイプ</label>
+                    <div className="flex flex-wrap gap-1">
+                      {shiftTypes.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setNewMemberCountConfig(prev => ({
+                              ...prev,
+                              target_shift_type_ids: prev.target_shift_type_ids.includes(type.id)
+                                ? prev.target_shift_type_ids.filter(id => id !== type.id)
+                                : [...prev.target_shift_type_ids, type.id]
+                            }));
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+                            newMemberCountConfig.target_shift_type_ids.includes(type.id)
+                              ? 'ring-2 ring-orange-500 border-orange-500'
+                              : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: type.color, color: type.text_color || '#000000' }}
+                        >
+                          {type.display_label || type.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <hr />
+
+                  {/* 日付フィルタ: 曜日 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象曜日（複数選択可）</label>
+                    <div className="flex gap-2">
+                      {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            setNewMemberCountConfig(prev => ({
+                              ...prev,
+                              filter_day_of_weeks: prev.filter_day_of_weeks.includes(index)
+                                ? prev.filter_day_of_weeks.filter(d => d !== index)
+                                : [...prev.filter_day_of_weeks, index]
+                            }));
+                          }}
+                          className={`w-8 h-8 rounded-full text-xs font-medium border transition-all ${
+                            newMemberCountConfig.filter_day_of_weeks.includes(index)
+                              ? 'bg-orange-500 text-white border-orange-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          } ${index === 0 ? 'text-red-600' : ''} ${index === 6 ? 'text-blue-600' : ''}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">選択なし = 全曜日対象</p>
+                  </div>
+
+                  {/* 日付フィルタ: 祝日・祝前日 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">追加対象日</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newMemberCountConfig.include_holiday}
+                          onChange={(e) => setNewMemberCountConfig(prev => ({ ...prev, include_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">祝日を含む</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newMemberCountConfig.include_pre_holiday}
+                          onChange={(e) => setNewMemberCountConfig(prev => ({ ...prev, include_pre_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">祝前日を含む</span>
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">チェックすると、曜日条件に加えて祝日/祝前日もカウント対象になります</p>
+                  </div>
+                </div>
+              </div>
+              )}
 
               <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
                 <button
                   onClick={() => {
                     setShowCountConfigModal(false);
                     setEditingCountConfig(null);
+                    setEditingMemberCountConfig(null);
                     resetCountConfigForm();
+                    resetMemberCountConfigForm();
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  キャンセル
+                </button>
+                {countConfigTab === 'date' ? (
+                  <button
+                    onClick={handleSaveCountConfig}
+                    disabled={!newCountConfig.name || !newCountConfig.display_label}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {editingCountConfig ? '更新' : '追加'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSaveMemberCountConfig}
+                    disabled={!newMemberCountConfig.name || !newMemberCountConfig.display_label}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {editingMemberCountConfig ? '更新' : '追加'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 得点設定モーダル */}
+      {showScoreConfigModal && (
+        <>
+          {/* オーバーレイ */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => {
+              setShowScoreConfigModal(false);
+              setEditingScoreConfig(null);
+              resetScoreConfigForm();
+            }}
+          />
+          {/* モーダル本体 */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900">
+                  {editingScoreConfig ? '得点設定を編集' : '得点設定'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowScoreConfigModal(false);
+                    setEditingScoreConfig(null);
+                    resetScoreConfigForm();
+                  }}
+                  className="text-gray-500 hover:text-gray-700 p-1"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* 既存の得点設定一覧 */}
+                {!editingScoreConfig && scoreConfigs.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
+                    <div className="space-y-1">
+                      {scoreConfigs.map(config => (
+                        <div
+                          key={config.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={config.is_active || false}
+                              onChange={(e) => handleToggleScoreConfig(config.id, e.target.checked)}
+                              className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{config.name}</div>
+                              <div className="text-xs text-gray-500">{config.points}点</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditScoreConfig(config)}
+                              className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                            >
+                              編集
+                            </button>
+                            <button
+                              onClick={() => handleDeleteScoreConfig(config.id)}
+                              className="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded transition-colors"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <hr className="my-4" />
+                  </div>
+                )}
+
+                {/* 新規追加/編集フォーム */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {editingScoreConfig ? '設定を編集' : '新規得点設定'}
+                  </h3>
+
+                  {/* 設定名 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">設定名</label>
+                    <input
+                      type="text"
+                      value={newScoreConfig.name}
+                      onChange={(e) => setNewScoreConfig(prev => ({ ...prev, name: e.target.value }))}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      placeholder="例: 土曜上直"
+                    />
+                  </div>
+
+                  {/* 対象シフトタイプ */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象シフトタイプ</label>
+                    <div className="flex flex-wrap gap-1">
+                      {shiftTypes.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setNewScoreConfig(prev => ({
+                              ...prev,
+                              target_shift_type_ids: prev.target_shift_type_ids.includes(type.id)
+                                ? prev.target_shift_type_ids.filter(id => id !== type.id)
+                                : [...prev.target_shift_type_ids, type.id]
+                            }));
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+                            newScoreConfig.target_shift_type_ids.includes(type.id)
+                              ? 'ring-2 ring-yellow-500 border-yellow-500'
+                              : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: type.color, color: type.text_color || '#000000' }}
+                        >
+                          {type.display_label || type.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <hr />
+
+                  {/* 対象曜日 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象曜日（複数選択可）</label>
+                    <div className="flex gap-2">
+                      {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            setNewScoreConfig(prev => ({
+                              ...prev,
+                              filter_day_of_weeks: prev.filter_day_of_weeks.includes(index)
+                                ? prev.filter_day_of_weeks.filter(d => d !== index)
+                                : [...prev.filter_day_of_weeks, index]
+                            }));
+                          }}
+                          className={`w-8 h-8 rounded-full text-xs font-medium border transition-all ${
+                            newScoreConfig.filter_day_of_weeks.includes(index)
+                              ? 'bg-yellow-500 text-white border-yellow-500'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          } ${index === 0 ? 'text-red-600' : ''} ${index === 6 ? 'text-blue-600' : ''}`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">選択なし = 全曜日対象</p>
+                  </div>
+
+                  {/* 祝日・祝前日 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">追加対象日</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newScoreConfig.include_holiday}
+                          onChange={(e) => setNewScoreConfig(prev => ({ ...prev, include_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                        />
+                        <span className="text-sm text-gray-700">祝日を含む</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newScoreConfig.include_pre_holiday}
+                          onChange={(e) => setNewScoreConfig(prev => ({ ...prev, include_pre_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+                        />
+                        <span className="text-sm text-gray-700">祝前日を含む</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <hr />
+
+                  {/* 付与得点 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">付与得点</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={newScoreConfig.points}
+                      onChange={(e) => setNewScoreConfig(prev => ({ ...prev, points: parseFloat(e.target.value) || 0 }))}
+                      className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                      min="-100"
+                      max="100"
+                    />
+                    <span className="ml-2 text-sm text-gray-500">点</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowScoreConfigModal(false);
+                    setEditingScoreConfig(null);
+                    resetScoreConfigForm();
                   }}
                   className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
                 >
                   キャンセル
                 </button>
                 <button
-                  onClick={handleSaveCountConfig}
-                  disabled={!newCountConfig.name || !newCountConfig.display_label}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleSaveScoreConfig}
+                  disabled={!newScoreConfig.name || newScoreConfig.target_shift_type_ids.length === 0}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingCountConfig ? '更新' : '追加'}
+                  {editingScoreConfig ? '更新' : '追加'}
                 </button>
               </div>
             </div>
@@ -4010,6 +5126,37 @@ export default function ScheduleViewPage() {
                     <p className="text-xs text-gray-500 mt-1">
                       選択した当直が前後2日以内にある場合、割り振り不可になります
                     </p>
+                  </div>
+                </div>
+
+                {/* 候補者選択の優先順位 */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-700">候補者選択の優先順位</h3>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="duty-priority-mode"
+                        value="count"
+                        checked={autoAssignConfig.priorityMode === 'count'}
+                        onChange={() => setAutoAssignConfig(prev => ({ ...prev, priorityMode: 'count' }))}
+                        className="w-4 h-4 text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-gray-700">回数ベース</span>
+                      <span className="text-xs text-gray-500">（同一シフト回数が少ない人から）</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="duty-priority-mode"
+                        value="score"
+                        checked={autoAssignConfig.priorityMode === 'score'}
+                        onChange={() => setAutoAssignConfig(prev => ({ ...prev, priorityMode: 'score' }))}
+                        className="w-4 h-4 text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm text-gray-700">得点ベース</span>
+                      <span className="text-xs text-gray-500">（総得点が低い人から）</span>
+                    </label>
                   </div>
                 </div>
 
@@ -4269,6 +5416,35 @@ export default function ScheduleViewPage() {
                           ))}
                         </div>
                       </div>
+                      {/* 祝日・祝前日オプション */}
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => setAutoAssignConfig(prev => ({
+                            ...prev,
+                            includeHolidays: !prev.includeHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            autoAssignConfig.includeHolidays
+                              ? 'bg-red-100 border-red-400 text-red-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日
+                        </button>
+                        <button
+                          onClick={() => setAutoAssignConfig(prev => ({
+                            ...prev,
+                            includePreHolidays: !prev.includePreHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            autoAssignConfig.includePreHolidays
+                              ? 'bg-orange-100 border-orange-400 text-orange-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日
+                        </button>
+                      </div>
                     </>
                   )}
 
@@ -4401,6 +5577,63 @@ export default function ScheduleViewPage() {
                   )}
                 </div>
 
+                {/* プリセット選択 */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setShowDutyPresetSaveModal(true)}
+                        className="px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => setShowDutyPresetManageModal(true)}
+                        className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      >
+                        管理
+                      </button>
+                    </div>
+                  </div>
+                  <select
+                    value={selectedDutyPresetId || ''}
+                    onChange={(e) => {
+                      const presetId = e.target.value ? Number(e.target.value) : null;
+                      setSelectedDutyPresetId(presetId);
+                      if (presetId) {
+                        const preset = dutyAssignPresets.find(p => p.id === presetId);
+                        if (preset) {
+                          setAutoAssignConfig(prev => ({
+                            ...prev,
+                            nightShiftTypeId: preset.night_shift_type_id,
+                            dayAfterShiftTypeId: preset.day_after_shift_type_id,
+                            excludeNightShiftTypeIds: preset.exclude_night_shift_type_ids || [],
+                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                            filterCanCardiac: preset.filter_can_cardiac,
+                            filterCanObstetric: preset.filter_can_obstetric,
+                            filterCanIcu: preset.filter_can_icu,
+                            selectedMemberIds: preset.selected_member_ids || [],
+                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                            targetWeekdays: preset.target_weekdays || [],
+                            includeHolidays: preset.include_holidays,
+                            includePreHolidays: preset.include_pre_holidays,
+                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                          }));
+                        }
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="">プリセットを選択...</option>
+                    {dutyAssignPresets.map(preset => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* プレビュー実行ボタン */}
                 <div className="pt-2">
                   <button
@@ -4513,6 +5746,37 @@ export default function ScheduleViewPage() {
                   </label>
                 </div>
 
+                {/* 候補者選択の優先順位 */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-700">候補者選択の優先順位</h3>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="general-priority-mode"
+                        value="count"
+                        checked={generalShiftConfig.priorityMode === 'count'}
+                        onChange={() => setGeneralShiftConfig(prev => ({ ...prev, priorityMode: 'count' }))}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">回数ベース</span>
+                      <span className="text-xs text-gray-500">（同一シフト回数が少ない人から）</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="general-priority-mode"
+                        value="score"
+                        checked={generalShiftConfig.priorityMode === 'score'}
+                        onChange={() => setGeneralShiftConfig(prev => ({ ...prev, priorityMode: 'score' }))}
+                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">得点ベース</span>
+                      <span className="text-xs text-gray-500">（総得点が低い人から）</span>
+                    </label>
+                  </div>
+                </div>
+
                 {/* 対象者選択 */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-gray-700">対象者</h3>
@@ -4587,6 +5851,29 @@ export default function ScheduleViewPage() {
                           ))}
                         </div>
                       </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">立場</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['常勤', '非常勤', 'ローテーター', '研修医'].map(position => (
+                            <label key={position} className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={generalShiftConfig.filterPositions.includes(position)}
+                                onChange={(e) => {
+                                  setGeneralShiftConfig(prev => ({
+                                    ...prev,
+                                    filterPositions: e.target.checked
+                                      ? [...prev.filterPositions, position]
+                                      : prev.filterPositions.filter(p => p !== position)
+                                  }));
+                                }}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-700">{position}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                       {/* 医療対応・残り番フィルター */}
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">医療対応・残り番</label>
@@ -4623,14 +5910,22 @@ export default function ScheduleViewPage() {
                       </div>
                       <div className="text-xs text-gray-500">
                         対象者: {getTargetMembersForGeneralShift().length}名
-                        {generalShiftConfig.filterTeams.length === 0 && generalShiftConfig.filterNightShiftLevels.length === 0 && ' （フィルタ未設定: 全員対象）'}
+                        {generalShiftConfig.filterTeams.length === 0 && generalShiftConfig.filterNightShiftLevels.length === 0 && generalShiftConfig.filterPositions.length === 0 && ' （フィルタ未設定: 全員対象）'}
                       </div>
                     </div>
                   )}
 
                   {generalShiftConfig.selectionMode === 'individual' && (
                     <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg border border-gray-200">
-                      {members.map(member => (
+                      {[...members].sort((a, b) => {
+                        // チーム→立場→display_order→staff_id でソート
+                        if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
+                        const posA = POSITION_ORDER[a.position] ?? 99;
+                        const posB = POSITION_ORDER[b.position] ?? 99;
+                        if (posA !== posB) return posA - posB;
+                        if (a.display_order !== b.display_order) return a.display_order - b.display_order;
+                        return a.staff_id.localeCompare(b.staff_id);
+                      }).map(member => (
                         <label key={member.staff_id} className="flex items-center gap-2 py-1 px-2 hover:bg-gray-100 rounded cursor-pointer">
                           <input
                             type="checkbox"
@@ -4646,7 +5941,7 @@ export default function ScheduleViewPage() {
                             className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                           />
                           <span className="text-sm text-gray-700">{member.name}</span>
-                          <span className="text-xs text-gray-400">{member.team}</span>
+                          <span className="text-xs text-gray-400">{member.team} / {member.position}</span>
                         </label>
                       ))}
                     </div>
@@ -4743,6 +6038,35 @@ export default function ScheduleViewPage() {
                             {day}
                           </button>
                         ))}
+                      </div>
+                      {/* 祝日・祝前日オプション */}
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            includeHolidays: !prev.includeHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            generalShiftConfig.includeHolidays
+                              ? 'bg-red-100 border-red-400 text-red-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日
+                        </button>
+                        <button
+                          onClick={() => setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            includePreHolidays: !prev.includePreHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            generalShiftConfig.includePreHolidays
+                              ? 'bg-orange-100 border-orange-400 text-orange-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日
+                        </button>
                       </div>
                     </div>
                   )}
@@ -5178,7 +6502,10 @@ export default function ScheduleViewPage() {
                             selectedMemberIds: preset.selected_member_ids || [],
                             dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
                             targetWeekdays: preset.target_weekdays || [],
+                            includeHolidays: preset.include_holidays || false,
+                            includePreHolidays: preset.include_pre_holidays || false,
                             exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
+                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
                           }));
                         }
                       }
@@ -5326,7 +6653,10 @@ export default function ScheduleViewPage() {
                       selected_member_ids: generalShiftConfig.selectedMemberIds,
                       date_selection_mode: generalShiftConfig.dateSelectionMode,
                       target_weekdays: generalShiftConfig.targetWeekdays,
+                      include_holidays: generalShiftConfig.includeHolidays,
+                      include_pre_holidays: generalShiftConfig.includePreHolidays,
                       exclusion_filters: generalShiftConfig.exclusionFilters,
+                      priority_mode: generalShiftConfig.priorityMode,
                     });
                     if (error) throw error;
 
@@ -5412,6 +6742,160 @@ export default function ScheduleViewPage() {
             <div className="p-4 border-t border-gray-200 flex-shrink-0">
               <button
                 onClick={() => setShowPresetManageModal(false)}
+                className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 当直プリセット保存モーダル */}
+      {showDutyPresetSaveModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowDutyPresetSaveModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-96 max-w-[90vw]">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800">当直プリセットを保存</h3>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">プリセット名 *</label>
+                <input
+                  type="text"
+                  value={dutyPresetSaveName}
+                  onChange={(e) => setDutyPresetSaveName(e.target.value)}
+                  placeholder="例: 休日当直割り振り"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              </div>
+              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                <p className="font-medium mb-1">保存される設定:</p>
+                <ul className="space-y-1">
+                  <li>・当直シフト: {shiftTypes.find(s => s.id === autoAssignConfig.nightShiftTypeId)?.name || '未選択'}</li>
+                  <li>・当直明けシフト: {shiftTypes.find(s => s.id === autoAssignConfig.dayAfterShiftTypeId)?.name || '未選択'}</li>
+                  <li>・対象者設定: {autoAssignConfig.selectionMode === 'filter' ? 'フィルター' : '個別選択'}</li>
+                </ul>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowDutyPresetSaveModal(false);
+                  setDutyPresetSaveName('');
+                }}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={async () => {
+                  if (!dutyPresetSaveName.trim()) {
+                    alert('プリセット名を入力してください');
+                    return;
+                  }
+                  try {
+                    const { error } = await supabase.from('duty_assign_preset').insert({
+                      name: dutyPresetSaveName.trim(),
+                      night_shift_type_id: autoAssignConfig.nightShiftTypeId,
+                      day_after_shift_type_id: autoAssignConfig.dayAfterShiftTypeId,
+                      exclude_night_shift_type_ids: autoAssignConfig.excludeNightShiftTypeIds,
+                      selection_mode: autoAssignConfig.selectionMode,
+                      filter_teams: autoAssignConfig.filterTeams,
+                      filter_night_shift_levels: autoAssignConfig.filterNightShiftLevels,
+                      filter_can_cardiac: autoAssignConfig.filterCanCardiac,
+                      filter_can_obstetric: autoAssignConfig.filterCanObstetric,
+                      filter_can_icu: autoAssignConfig.filterCanIcu,
+                      selected_member_ids: autoAssignConfig.selectedMemberIds,
+                      date_selection_mode: autoAssignConfig.dateSelectionMode,
+                      target_weekdays: autoAssignConfig.targetWeekdays,
+                      include_holidays: autoAssignConfig.includeHolidays,
+                      include_pre_holidays: autoAssignConfig.includePreHolidays,
+                      priority_mode: autoAssignConfig.priorityMode,
+                    });
+                    if (error) throw error;
+
+                    // プリセット一覧を再取得
+                    const { data: presetsData } = await supabase
+                      .from('duty_assign_preset')
+                      .select('*')
+                      .order('display_order');
+                    setDutyAssignPresets(presetsData || []);
+
+                    setShowDutyPresetSaveModal(false);
+                    setDutyPresetSaveName('');
+                    alert('プリセットを保存しました');
+                  } catch (err) {
+                    console.error('プリセット保存エラー:', err);
+                    alert('プリセットの保存に失敗しました');
+                  }
+                }}
+                disabled={!dutyPresetSaveName.trim()}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 当直プリセット管理モーダル */}
+      {showDutyPresetManageModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowDutyPresetManageModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">当直プリセット管理</h3>
+            </div>
+            <div className="p-4 overflow-y-auto flex-grow">
+              {dutyAssignPresets.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  保存されたプリセットがありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {dutyAssignPresets.map(preset => (
+                    <div key={preset.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-grow">
+                        <div className="font-medium text-gray-800">{preset.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          当直: {shiftTypes.find(s => s.id === preset.night_shift_type_id)?.name || '-'}
+                          <span className="ml-2">・明け: {shiftTypes.find(s => s.id === preset.day_after_shift_type_id)?.name || '-'}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
+                          try {
+                            const { error } = await supabase
+                              .from('duty_assign_preset')
+                              .delete()
+                              .eq('id', preset.id);
+                            if (error) throw error;
+
+                            setDutyAssignPresets(prev => prev.filter(p => p.id !== preset.id));
+                            if (selectedDutyPresetId === preset.id) {
+                              setSelectedDutyPresetId(null);
+                            }
+                          } catch (err) {
+                            console.error('プリセット削除エラー:', err);
+                            alert('プリセットの削除に失敗しました');
+                          }
+                        }}
+                        className="ml-3 px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex-shrink-0">
+              <button
+                onClick={() => setShowDutyPresetManageModal(false)}
                 className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
               >
                 閉じる

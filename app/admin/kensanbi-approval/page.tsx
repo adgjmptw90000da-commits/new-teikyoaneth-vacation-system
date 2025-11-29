@@ -15,6 +15,7 @@ import {
   getManualKensanbiHistory,
   calculateKensanbiDays,
   KensanbiCandidate,
+  getFiscalYearFromShiftDate,
 } from "@/lib/kensanbi";
 
 interface Member {
@@ -342,6 +343,14 @@ export default function KensanbiApprovalPage() {
               </svg>
             </button>
           </div>
+          {/* 対象年度表示 */}
+          {candidates.length > 0 && (
+            <div className="mt-3 text-center">
+              <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
+                対象年度: {getFiscalYearFromShiftDate(`${targetYear}-${String(targetMonth).padStart(2, "0")}-15`)}年度
+              </span>
+            </div>
+          )}
         </div>
 
         {/* サマリー */}
@@ -432,6 +441,9 @@ export default function KensanbiApprovalPage() {
                           <div className="flex items-center gap-3">
                             <span className="font-medium">{candidate.staffName}</span>
                             <span className="text-sm text-gray-500">{candidate.shiftTypeName}</span>
+                            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded text-xs">
+                              {getFiscalYearFromShiftDate(candidate.shiftDate)}年度
+                            </span>
                             <span className="text-blue-600 font-bold">
                               → {candidate.grantedDays}日
                             </span>

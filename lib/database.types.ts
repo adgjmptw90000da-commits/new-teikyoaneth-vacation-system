@@ -44,6 +44,7 @@ export interface Database {
           can_icu: boolean
           can_remaining_duty: boolean
           display_order: number
+          position: '常勤' | '非常勤' | 'ローテーター' | '研修医'
           created_at: string
           updated_at: string
         }
@@ -59,6 +60,7 @@ export interface Database {
           can_icu?: boolean
           can_remaining_duty?: boolean
           display_order?: number
+          position?: '常勤' | '非常勤' | 'ローテーター' | '研修医'
           created_at?: string
           updated_at?: string
         }
@@ -74,6 +76,7 @@ export interface Database {
           can_icu?: boolean
           can_remaining_duty?: boolean
           display_order?: number
+          position?: '常勤' | '非常勤' | 'ローテーター' | '研修医'
           created_at?: string
           updated_at?: string
         }
@@ -620,6 +623,7 @@ export interface Database {
           approved_by_staff_id: string | null
           approved_at: string | null
           rejection_reason: string | null
+          fiscal_year: number | null
           created_at: string
           updated_at: string
         }
@@ -633,6 +637,7 @@ export interface Database {
           approved_by_staff_id?: string | null
           approved_at?: string | null
           rejection_reason?: string | null
+          fiscal_year?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -646,6 +651,7 @@ export interface Database {
           approved_by_staff_id?: string | null
           approved_at?: string | null
           rejection_reason?: string | null
+          fiscal_year?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -658,6 +664,7 @@ export interface Database {
           used_days: number
           reason: string | null
           application_id: number | null
+          fiscal_year: number | null
           created_at: string
           updated_at: string
         }
@@ -668,6 +675,7 @@ export interface Database {
           used_days: number
           reason?: string | null
           application_id?: number | null
+          fiscal_year?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -678,6 +686,7 @@ export interface Database {
           used_days?: number
           reason?: string | null
           application_id?: number | null
+          fiscal_year?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -688,6 +697,7 @@ export interface Database {
           year: number
           month: number
           is_published: boolean
+          is_submission_locked: boolean
           published_at: string | null
           published_by_staff_id: string | null
           snapshot_data: Json | null
@@ -699,6 +709,7 @@ export interface Database {
           year: number
           month: number
           is_published?: boolean
+          is_submission_locked?: boolean
           published_at?: string | null
           published_by_staff_id?: string | null
           snapshot_data?: Json | null
@@ -710,6 +721,7 @@ export interface Database {
           year?: number
           month?: number
           is_published?: boolean
+          is_submission_locked?: boolean
           published_at?: string | null
           published_by_staff_id?: string | null
           snapshot_data?: Json | null
@@ -797,6 +809,7 @@ export interface Database {
           target_period_night: boolean
           filter_teams: string[]
           filter_night_shift_levels: string[]
+          filter_positions: string[]
           filter_can_cardiac: boolean | null
           filter_can_obstetric: boolean | null
           filter_can_icu: boolean | null
@@ -818,6 +831,7 @@ export interface Database {
           target_period_night?: boolean
           filter_teams?: string[]
           filter_night_shift_levels?: string[]
+          filter_positions?: string[]
           filter_can_cardiac?: boolean | null
           filter_can_obstetric?: boolean | null
           filter_can_icu?: boolean | null
@@ -839,6 +853,7 @@ export interface Database {
           target_period_night?: boolean
           filter_teams?: string[]
           filter_night_shift_levels?: string[]
+          filter_positions?: string[]
           filter_can_cardiac?: boolean | null
           filter_can_obstetric?: boolean | null
           filter_can_icu?: boolean | null
@@ -862,7 +877,9 @@ export interface Database {
           date_selection_mode: string
           target_weekdays: number[] | null
           include_holidays: boolean
+          include_pre_holidays: boolean
           exclusion_filters: Json
+          priority_mode: string
           display_order: number
           created_at: string
           updated_at: string
@@ -882,7 +899,9 @@ export interface Database {
           date_selection_mode?: string
           target_weekdays?: number[] | null
           include_holidays?: boolean
+          include_pre_holidays?: boolean
           exclusion_filters?: Json
+          priority_mode?: string
           display_order?: number
           created_at?: string
           updated_at?: string
@@ -902,8 +921,166 @@ export interface Database {
           date_selection_mode?: string
           target_weekdays?: number[] | null
           include_holidays?: boolean
+          include_pre_holidays?: boolean
           exclusion_filters?: Json
+          priority_mode?: string
           display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      duty_assign_preset: {
+        Row: {
+          id: number
+          name: string
+          description: string | null
+          night_shift_type_id: number | null
+          day_after_shift_type_id: number | null
+          exclude_night_shift_type_ids: number[] | null
+          selection_mode: string
+          filter_teams: string[] | null
+          filter_night_shift_levels: string[] | null
+          filter_can_cardiac: boolean | null
+          filter_can_obstetric: boolean | null
+          filter_can_icu: boolean | null
+          selected_member_ids: string[] | null
+          date_selection_mode: string
+          target_weekdays: number[] | null
+          include_holidays: boolean
+          include_pre_holidays: boolean
+          priority_mode: string
+          display_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          description?: string | null
+          night_shift_type_id?: number | null
+          day_after_shift_type_id?: number | null
+          exclude_night_shift_type_ids?: number[] | null
+          selection_mode?: string
+          filter_teams?: string[] | null
+          filter_night_shift_levels?: string[] | null
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
+          selected_member_ids?: string[] | null
+          date_selection_mode?: string
+          target_weekdays?: number[] | null
+          include_holidays?: boolean
+          include_pre_holidays?: boolean
+          priority_mode?: string
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          description?: string | null
+          night_shift_type_id?: number | null
+          day_after_shift_type_id?: number | null
+          exclude_night_shift_type_ids?: number[] | null
+          selection_mode?: string
+          filter_teams?: string[] | null
+          filter_night_shift_levels?: string[] | null
+          filter_can_cardiac?: boolean | null
+          filter_can_obstetric?: boolean | null
+          filter_can_icu?: boolean | null
+          selected_member_ids?: string[] | null
+          date_selection_mode?: string
+          target_weekdays?: number[] | null
+          include_holidays?: boolean
+          include_pre_holidays?: boolean
+          priority_mode?: string
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      member_count_config: {
+        Row: {
+          id: number
+          name: string
+          display_label: string
+          is_active: boolean
+          display_order: number
+          target_schedule_type_ids: number[]
+          target_shift_type_ids: number[]
+          filter_day_of_weeks: number[]
+          include_holiday: boolean
+          include_pre_holiday: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          filter_day_of_weeks?: number[]
+          include_holiday?: boolean
+          include_pre_holiday?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          filter_day_of_weeks?: number[]
+          include_holiday?: boolean
+          include_pre_holiday?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      score_config: {
+        Row: {
+          id: number
+          name: string
+          is_active: boolean
+          display_order: number
+          target_shift_type_ids: number[]
+          filter_day_of_weeks: number[]
+          include_holiday: boolean
+          include_pre_holiday: boolean
+          points: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          is_active?: boolean
+          display_order?: number
+          target_shift_type_ids?: number[]
+          filter_day_of_weeks?: number[]
+          include_holiday?: boolean
+          include_pre_holiday?: boolean
+          points: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          is_active?: boolean
+          display_order?: number
+          target_shift_type_ids?: number[]
+          filter_day_of_weeks?: number[]
+          include_holiday?: boolean
+          include_pre_holiday?: boolean
+          points?: number
           created_at?: string
           updated_at?: string
         }
