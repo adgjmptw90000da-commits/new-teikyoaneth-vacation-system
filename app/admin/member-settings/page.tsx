@@ -49,7 +49,7 @@ export default function MemberSettingsPage() {
     }
     if (!isAdmin()) {
       alert("管理者のみアクセスできます");
-      router.push("/home");
+      router.push("/admin/home");
       return;
     }
     fetchUsers();
@@ -280,7 +280,7 @@ export default function MemberSettingsPage() {
             </div>
             <div className="flex items-center">
               <button
-                onClick={() => router.push("/home")}
+                onClick={() => router.push("/admin/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ホーム"
               >

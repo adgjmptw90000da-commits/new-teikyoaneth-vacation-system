@@ -493,7 +493,7 @@ export default function ScheduleViewPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => router.push("/home")}
+                onClick={() => router.push("/admin/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ホーム"
               >

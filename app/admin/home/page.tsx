@@ -60,7 +60,7 @@ export default function AdminHomePage() {
     }
     // 管理者チェック - 管理者でなければ一般ホームへリダイレクト
     if (!currentUser.is_admin) {
-      router.push("/home");
+      router.push("/admin/home");
       return;
     }
     setUser(currentUser);

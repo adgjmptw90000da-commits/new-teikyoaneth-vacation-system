@@ -43,7 +43,7 @@ export default function ScheduleSystemPage() {
     }
     // 管理者チェック - 管理者でなければホームへリダイレクト
     if (!isAdmin()) {
-      router.push("/home");
+      router.push("/admin/home");
       return;
     }
     setUser(currentUser);
@@ -83,7 +83,7 @@ export default function ScheduleSystemPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => router.push("/home")}
+                onClick={() => router.push("/admin/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 title="ホーム"
               >
