@@ -6,6 +6,23 @@ import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type User = Database["public"]["Tables"]["user"]["Row"];
 
@@ -20,12 +37,6 @@ const Icons = {
   Users: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
   ),
-  ArrowUp: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-  ),
-  ArrowDown: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-  ),
   GripVertical: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
   ),
@@ -33,6 +44,49 @@ const Icons = {
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
   ),
 };
+
+// SortableRow コンポーネント
+interface SortableRowProps {
+  id: string;
+  children: React.ReactNode;
+  index: number;
+}
+
+function SortableRow({ id, children, index }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? '#f3f4f6' : undefined,
+  };
+
+  return (
+    <tr ref={setNodeRef} style={style} className="hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-3 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <div
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing touch-none text-gray-400 hover:text-gray-600"
+          >
+            <Icons.GripVertical />
+          </div>
+          <span className="text-gray-400 text-xs">{index + 1}</span>
+        </div>
+      </td>
+      {children}
+    </tr>
+  );
+}
 
 export default function MemberSettingsPage() {
   const router = useRouter();
@@ -163,40 +217,65 @@ export default function MemberSettingsPage() {
     }
   };
 
-  const moveUser = async (staffId: string, direction: 'up' | 'down') => {
+  // ドラッグ&ドロップのセンサー
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // ドラッグ終了時の処理
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
     const filteredUsers = getFilteredUsers();
-    const currentIndex = filteredUsers.findIndex(u => u.staff_id === staffId);
+    const oldIndex = filteredUsers.findIndex(u => u.staff_id === active.id);
+    const newIndex = filteredUsers.findIndex(u => u.staff_id === over.id);
 
-    if (currentIndex === -1) return;
-    if (direction === 'up' && currentIndex === 0) return;
-    if (direction === 'down' && currentIndex === filteredUsers.length - 1) return;
+    if (oldIndex === -1 || newIndex === -1) return;
 
-    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    const currentUser = filteredUsers[currentIndex];
-    const swapUser = filteredUsers[swapIndex];
+    // ローカルstateを先に更新（楽観的更新）
+    const reorderedUsers = arrayMove(filteredUsers, oldIndex, newIndex);
 
-    // 表示順を交換
-    const currentOrder = currentUser.display_order ?? currentIndex;
-    const swapOrder = swapUser.display_order ?? swapIndex;
+    // display_orderを再計算
+    const updates: { staffId: string; order: number }[] = [];
+    reorderedUsers.forEach((user, idx) => {
+      const newOrder = selectedTeam === 'B' ? idx + 1000 : idx;
+      updates.push({ staffId: user.staff_id, order: newOrder });
+    });
 
+    // ローカルstate更新
+    setUsers(prev => {
+      const newUsers = [...prev];
+      updates.forEach(({ staffId, order }) => {
+        const idx = newUsers.findIndex(u => u.staff_id === staffId);
+        if (idx !== -1) {
+          newUsers[idx] = { ...newUsers[idx], display_order: order };
+        }
+      });
+      return newUsers;
+    });
+
+    // DBに保存
     setSaving(true);
     try {
-      await Promise.all([
-        supabase.from("user").update({ display_order: swapOrder }).eq("staff_id", currentUser.staff_id),
-        supabase.from("user").update({ display_order: currentOrder }).eq("staff_id", swapUser.staff_id),
-      ]);
-
-      setUsers(prev => {
-        const newUsers = [...prev];
-        const idx1 = newUsers.findIndex(u => u.staff_id === currentUser.staff_id);
-        const idx2 = newUsers.findIndex(u => u.staff_id === swapUser.staff_id);
-        newUsers[idx1] = { ...newUsers[idx1], display_order: swapOrder };
-        newUsers[idx2] = { ...newUsers[idx2], display_order: currentOrder };
-        return newUsers;
-      });
+      await Promise.all(
+        updates.map(({ staffId, order }) =>
+          supabase.from("user").update({ display_order: order }).eq("staff_id", staffId)
+        )
+      );
     } catch (err) {
       console.error("Error:", err);
       alert("並び順の更新に失敗しました");
+      // エラー時はリロード
+      await fetchUsers();
     } finally {
       setSaving(false);
     }
@@ -340,174 +419,158 @@ export default function MemberSettingsPage() {
               </p>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">順序</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">職員ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">氏名</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">チーム</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">立場</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">当直レベル</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">心外</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">産科</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">ICU</th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">残り番</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredUsers.map((user, idx) => (
-                    <tr key={user.staff_id} className="hover:bg-gray-50 transition-colors">
-                      {/* 順序操作 */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => moveUser(user.staff_id, 'up')}
-                            disabled={idx === 0 || saving}
-                            className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            <Icons.ArrowUp />
-                          </button>
-                          <button
-                            onClick={() => moveUser(user.staff_id, 'down')}
-                            disabled={idx === filteredUsers.length - 1 || saving}
-                            className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            <Icons.ArrowDown />
-                          </button>
-                          <span className="text-gray-400 text-xs ml-1">{idx + 1}</span>
-                        </div>
-                      </td>
-                      {/* 職員ID */}
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {user.staff_id}
-                      </td>
-                      {/* 氏名 */}
-                      <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900">
-                        {user.name}
-                      </td>
-                      {/* チーム */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <div className="flex justify-center gap-1">
-                          {(['A', 'B'] as const).map(team => (
-                            <button
-                              key={team}
-                              onClick={() => handleTeamChange(user.staff_id, team)}
-                              disabled={saving}
-                              className={`px-3 py-1 rounded text-xs font-bold transition-all ${
-                                user.team === team
-                                  ? team === 'A'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-orange-600 text-white'
-                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                              }`}
-                            >
-                              {team}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      {/* 立場 */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <select
-                          value={user.position || '常勤'}
-                          onChange={(e) => handlePositionChange(user.staff_id, e.target.value as '常勤' | '非常勤' | 'ローテーター' | '研修医')}
-                          disabled={saving}
-                          className="px-2 py-1 text-xs font-medium text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
-                        >
-                          <option value="常勤">常勤</option>
-                          <option value="非常勤">非常勤</option>
-                          <option value="ローテーター">ローテーター</option>
-                          <option value="研修医">研修医</option>
-                        </select>
-                      </td>
-                      {/* 当直レベル */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <div className="flex justify-center gap-1">
-                          {(['なし', '上', '中', '下'] as const).map(level => (
-                            <button
-                              key={level}
-                              onClick={() => handleNightShiftLevelChange(user.staff_id, level)}
-                              disabled={saving}
-                              className={`px-2 py-1 rounded text-xs font-bold transition-all ${
-                                user.night_shift_level === level
-                                  ? level === 'なし'
-                                    ? 'bg-gray-600 text-white'
-                                    : level === '上'
-                                    ? 'bg-green-600 text-white'
-                                    : level === '中'
-                                    ? 'bg-yellow-500 text-white'
-                                    : 'bg-red-500 text-white'
-                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                              }`}
-                            >
-                              {level}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      {/* 心外 */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => handleCapabilityChange(user.staff_id, 'can_cardiac', !user.can_cardiac)}
-                          disabled={saving}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                            user.can_cardiac
-                              ? 'bg-pink-600 text-white'
-                              : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
-                          }`}
-                        >
-                          {user.can_cardiac && <Icons.Check />}
-                        </button>
-                      </td>
-                      {/* 産科 */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => handleCapabilityChange(user.staff_id, 'can_obstetric', !user.can_obstetric)}
-                          disabled={saving}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                            user.can_obstetric
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
-                          }`}
-                        >
-                          {user.can_obstetric && <Icons.Check />}
-                        </button>
-                      </td>
-                      {/* ICU */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => handleCapabilityChange(user.staff_id, 'can_icu', !user.can_icu)}
-                          disabled={saving}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                            user.can_icu
-                              ? 'bg-teal-600 text-white'
-                              : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
-                          }`}
-                        >
-                          {user.can_icu && <Icons.Check />}
-                        </button>
-                      </td>
-                      {/* 残り番 */}
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => handleCapabilityChange(user.staff_id, 'can_remaining_duty', !user.can_remaining_duty)}
-                          disabled={saving}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                            user.can_remaining_duty
-                              ? 'bg-orange-600 text-white'
-                              : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
-                          }`}
-                        >
-                          {user.can_remaining_duty && <Icons.Check />}
-                        </button>
-                      </td>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase w-16">順序</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">職員ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">氏名</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">チーム</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">立場</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">当直レベル</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">心外</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">産科</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">ICU</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">残り番</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <SortableContext items={filteredUsers.map(u => u.staff_id)} strategy={verticalListSortingStrategy}>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredUsers.map((user, idx) => (
+                        <SortableRow key={user.staff_id} id={user.staff_id} index={idx}>
+                          {/* 職員ID */}
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {user.staff_id}
+                          </td>
+                          {/* 氏名 */}
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900">
+                            {user.name}
+                          </td>
+                          {/* チーム */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <div className="flex justify-center gap-1">
+                              {(['A', 'B'] as const).map(team => (
+                                <button
+                                  key={team}
+                                  onClick={() => handleTeamChange(user.staff_id, team)}
+                                  disabled={saving}
+                                  className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                                    user.team === team
+                                      ? team === 'A'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-orange-600 text-white'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {team}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                          {/* 立場 */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <select
+                              value={user.position || '常勤'}
+                              onChange={(e) => handlePositionChange(user.staff_id, e.target.value as '常勤' | '非常勤' | 'ローテーター' | '研修医')}
+                              disabled={saving}
+                              className="px-2 py-1 text-xs font-medium text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                            >
+                              <option value="常勤">常勤</option>
+                              <option value="非常勤">非常勤</option>
+                              <option value="ローテーター">ローテーター</option>
+                              <option value="研修医">研修医</option>
+                            </select>
+                          </td>
+                          {/* 当直レベル */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <div className="flex justify-center gap-1">
+                              {(['なし', '上', '中', '下'] as const).map(level => (
+                                <button
+                                  key={level}
+                                  onClick={() => handleNightShiftLevelChange(user.staff_id, level)}
+                                  disabled={saving}
+                                  className={`px-2 py-1 rounded text-xs font-bold transition-all ${
+                                    user.night_shift_level === level
+                                      ? level === 'なし'
+                                        ? 'bg-gray-600 text-white'
+                                        : level === '上'
+                                        ? 'bg-green-600 text-white'
+                                        : level === '中'
+                                        ? 'bg-yellow-500 text-white'
+                                        : 'bg-red-500 text-white'
+                                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {level}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                          {/* 心外 */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => handleCapabilityChange(user.staff_id, 'can_cardiac', !user.can_cardiac)}
+                              disabled={saving}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                                user.can_cardiac
+                                  ? 'bg-pink-600 text-white'
+                                  : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
+                              }`}
+                            >
+                              {user.can_cardiac && <Icons.Check />}
+                            </button>
+                          </td>
+                          {/* 産科 */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => handleCapabilityChange(user.staff_id, 'can_obstetric', !user.can_obstetric)}
+                              disabled={saving}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                                user.can_obstetric
+                                  ? 'bg-purple-600 text-white'
+                                  : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
+                              }`}
+                            >
+                              {user.can_obstetric && <Icons.Check />}
+                            </button>
+                          </td>
+                          {/* ICU */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => handleCapabilityChange(user.staff_id, 'can_icu', !user.can_icu)}
+                              disabled={saving}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                                user.can_icu
+                                  ? 'bg-teal-600 text-white'
+                                  : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
+                              }`}
+                            >
+                              {user.can_icu && <Icons.Check />}
+                            </button>
+                          </td>
+                          {/* 残り番 */}
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => handleCapabilityChange(user.staff_id, 'can_remaining_duty', !user.can_remaining_duty)}
+                              disabled={saving}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                                user.can_remaining_duty
+                                  ? 'bg-orange-600 text-white'
+                                  : 'bg-gray-100 text-gray-300 hover:bg-gray-200'
+                              }`}
+                            >
+                              {user.can_remaining_duty && <Icons.Check />}
+                            </button>
+                          </td>
+                        </SortableRow>
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </table>
+              </div>
+            </DndContext>
           </div>
 
           {/* 凡例 */}
