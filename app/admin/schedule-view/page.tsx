@@ -2204,11 +2204,43 @@ export default function ScheduleViewPage() {
     if (!tableRef.current) return null;
 
     try {
+      // キャプチャ前に一時的にスタイルを変更（全幅表示）
+      const originalStyle = tableRef.current.style.cssText;
+      const originalOverflow = tableRef.current.style.overflow;
+      const originalWidth = tableRef.current.style.width;
+      const originalMaxWidth = tableRef.current.style.maxWidth;
+
+      tableRef.current.style.overflow = 'visible';
+      tableRef.current.style.width = 'auto';
+      tableRef.current.style.maxWidth = 'none';
+
+      // テーブル内のsticky要素も一時的に解除
+      const stickyElements = tableRef.current.querySelectorAll('[class*="sticky"]');
+      const originalStickyStyles: string[] = [];
+      stickyElements.forEach((el, i) => {
+        originalStickyStyles[i] = (el as HTMLElement).style.cssText;
+        (el as HTMLElement).style.position = 'static';
+      });
+
+      // 少し待ってからキャプチャ
+      await new Promise(r => setTimeout(r, 100));
+
       const canvas = await html2canvas(tableRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        windowWidth: tableRef.current.scrollWidth + 100,
+        windowHeight: tableRef.current.scrollHeight + 100,
+      });
+
+      // スタイルを元に戻す
+      tableRef.current.style.cssText = originalStyle;
+      tableRef.current.style.overflow = originalOverflow;
+      tableRef.current.style.width = originalWidth;
+      tableRef.current.style.maxWidth = originalMaxWidth;
+      stickyElements.forEach((el, i) => {
+        (el as HTMLElement).style.cssText = originalStickyStyles[i];
       });
 
       const blob = await new Promise<Blob>((resolve, reject) => {
