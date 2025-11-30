@@ -841,7 +841,7 @@ export default function ScheduleViewPage() {
   const calculateMemberScore = (member: MemberData): number => {
     const activeScoreConfigs = scoreConfigs.filter(c => c.is_active);
 
-    return activeScoreConfigs.reduce((totalScore, config) => {
+    const rawScore = activeScoreConfigs.reduce((totalScore, config) => {
       // このconfigに該当するシフト数をカウント
       const count = daysData.filter(day => {
         // 日付フィルタチェック
@@ -857,6 +857,8 @@ export default function ScheduleViewPage() {
       // カウント × 得点を加算
       return totalScore + (count * config.points);
     }, 0);
+    // 小数点以下1桁に丸める（浮動小数点精度問題対策）
+    return Math.round(rawScore * 10) / 10;
   };
 
   // 当直可否を計算
@@ -1511,7 +1513,8 @@ export default function ScheduleViewPage() {
           }
         }
 
-        return score;
+        // 小数点以下1桁に丸める（浮動小数点精度問題対策）
+        return Math.round(score * 10) / 10;
       };
 
       // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
@@ -2079,7 +2082,8 @@ export default function ScheduleViewPage() {
           }
         }
 
-        return score;
+        // 小数点以下1桁に丸める（浮動小数点精度問題対策）
+        return Math.round(score * 10) / 10;
       };
 
       // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
