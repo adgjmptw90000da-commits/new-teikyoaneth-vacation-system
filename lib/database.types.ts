@@ -878,6 +878,8 @@ export interface Database {
           target_weekdays: number[] | null
           include_holidays: boolean
           include_pre_holidays: boolean
+          exclude_holidays: boolean
+          exclude_pre_holidays: boolean
           exclusion_filters: Json
           priority_mode: string
           display_order: number
@@ -900,6 +902,8 @@ export interface Database {
           target_weekdays?: number[] | null
           include_holidays?: boolean
           include_pre_holidays?: boolean
+          exclude_holidays?: boolean
+          exclude_pre_holidays?: boolean
           exclusion_filters?: Json
           priority_mode?: string
           display_order?: number
@@ -922,6 +926,8 @@ export interface Database {
           target_weekdays?: number[] | null
           include_holidays?: boolean
           include_pre_holidays?: boolean
+          exclude_holidays?: boolean
+          exclude_pre_holidays?: boolean
           exclusion_filters?: Json
           priority_mode?: string
           display_order?: number
@@ -948,6 +954,8 @@ export interface Database {
           target_weekdays: number[] | null
           include_holidays: boolean
           include_pre_holidays: boolean
+          exclude_holidays: boolean
+          exclude_pre_holidays: boolean
           priority_mode: string
           display_order: number
           created_at: string
@@ -971,6 +979,8 @@ export interface Database {
           target_weekdays?: number[] | null
           include_holidays?: boolean
           include_pre_holidays?: boolean
+          exclude_holidays?: boolean
+          exclude_pre_holidays?: boolean
           priority_mode?: string
           display_order?: number
           created_at?: string
@@ -994,6 +1004,8 @@ export interface Database {
           target_weekdays?: number[] | null
           include_holidays?: boolean
           include_pre_holidays?: boolean
+          exclude_holidays?: boolean
+          exclude_pre_holidays?: boolean
           priority_mode?: string
           display_order?: number
           created_at?: string

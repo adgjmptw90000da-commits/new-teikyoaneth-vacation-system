@@ -260,6 +260,10 @@ export default function ScheduleViewPage() {
   const [dutyPresetSaveName, setDutyPresetSaveName] = useState('');
   const [showDutyPresetManageModal, setShowDutyPresetManageModal] = useState(false);
 
+  // プリセット編集用
+  const [editingShiftPreset, setEditingShiftPreset] = useState<ShiftAssignPreset | null>(null);
+  const [editingDutyPreset, setEditingDutyPreset] = useState<DutyAssignPreset | null>(null);
+
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
 
@@ -313,6 +317,8 @@ export default function ScheduleViewPage() {
     targetWeekdays: number[];
     includeHolidays: boolean;
     includePreHolidays: boolean;
+    excludeHolidays: boolean;
+    excludePreHolidays: boolean;
     specificDates: string[]; // 個別選択した日付
     priorityMode: 'count' | 'score'; // 回数ベース or 得点ベース
   }>(() => {
@@ -342,6 +348,8 @@ export default function ScheduleViewPage() {
       targetWeekdays: [],
       includeHolidays: false,
       includePreHolidays: false,
+      excludeHolidays: false,
+      excludePreHolidays: false,
       specificDates: [],
       priorityMode: 'count',
     };
@@ -370,6 +378,8 @@ export default function ScheduleViewPage() {
     targetWeekdays: number[];
     includeHolidays: boolean;      // 祝日も対象にする
     includePreHolidays: boolean;   // 祝前日も対象にする
+    excludeHolidays: boolean;      // 祝日を除外する
+    excludePreHolidays: boolean;   // 祝前日を除外する
     specificDates: string[];
     exclusionFilters: ExclusionFilter[];
     excludeNightShiftUnavailable: boolean; // 当直不可（×）の日は割り振らない
@@ -400,6 +410,8 @@ export default function ScheduleViewPage() {
       targetWeekdays: [],
       includeHolidays: false,
       includePreHolidays: false,
+      excludeHolidays: false,
+      excludePreHolidays: false,
       specificDates: [],
       exclusionFilters: [],
       excludeNightShiftUnavailable: false,
@@ -1247,6 +1259,10 @@ export default function ScheduleViewPage() {
       case 'weekday':
         // 期間＋曜日指定モード（祝日・祝前日オプション含む）
         return baseDays.filter(day => {
+          // 除外チェック（優先）
+          if (autoAssignConfig.excludeHolidays && day.isHoliday) return false;
+          if (autoAssignConfig.excludePreHolidays && isPreHoliday(day.date)) return false;
+
           // 曜日・祝日・祝前日のいずれかにマッチすればOK
           const weekdayMatch = autoAssignConfig.targetWeekdays.includes(day.dayOfWeek);
           const holidayMatch = autoAssignConfig.includeHolidays && day.isHoliday;
@@ -1721,6 +1737,10 @@ export default function ScheduleViewPage() {
       case 'weekday':
         // 期間＋曜日指定モード（祝日・祝前日オプション含む）
         return baseDays.filter(day => {
+          // 除外チェック（優先）
+          if (generalShiftConfig.excludeHolidays && day.isHoliday) return false;
+          if (generalShiftConfig.excludePreHolidays && isPreHoliday(day.date)) return false;
+
           // 曜日・祝日・祝前日のいずれかにマッチすればOK
           const weekdayMatch = generalShiftConfig.targetWeekdays.includes(day.dayOfWeek);
           const holidayMatch = generalShiftConfig.includeHolidays && day.isHoliday;
@@ -5641,6 +5661,33 @@ export default function ScheduleViewPage() {
                         >
                           祝前日
                         </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => setAutoAssignConfig(prev => ({
+                            ...prev,
+                            excludeHolidays: !prev.excludeHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            autoAssignConfig.excludeHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日除外
+                        </button>
+                        <button
+                          onClick={() => setAutoAssignConfig(prev => ({
+                            ...prev,
+                            excludePreHolidays: !prev.excludePreHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            autoAssignConfig.excludePreHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日除外
+                        </button>
                       </div>
                     </>
                   )}
@@ -5817,6 +5864,8 @@ export default function ScheduleViewPage() {
                             targetWeekdays: preset.target_weekdays || [],
                             includeHolidays: preset.include_holidays,
                             includePreHolidays: preset.include_pre_holidays,
+                            excludeHolidays: preset.exclude_holidays || false,
+                            excludePreHolidays: preset.exclude_pre_holidays || false,
                             priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
                           }));
                         }
@@ -6264,6 +6313,33 @@ export default function ScheduleViewPage() {
                         >
                           祝前日
                         </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            excludeHolidays: !prev.excludeHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            generalShiftConfig.excludeHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日除外
+                        </button>
+                        <button
+                          onClick={() => setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            excludePreHolidays: !prev.excludePreHolidays
+                          }))}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            generalShiftConfig.excludePreHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日除外
+                        </button>
                       </div>
                     </div>
                   )}
@@ -6701,6 +6777,8 @@ export default function ScheduleViewPage() {
                             targetWeekdays: preset.target_weekdays || [],
                             includeHolidays: preset.include_holidays || false,
                             includePreHolidays: preset.include_pre_holidays || false,
+                            excludeHolidays: preset.exclude_holidays || false,
+                            excludePreHolidays: preset.exclude_pre_holidays || false,
                             exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
                             priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
                           }));
@@ -6799,10 +6877,12 @@ export default function ScheduleViewPage() {
       {/* プリセット保存モーダル */}
       {showPresetSaveModal && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowPresetSaveModal(false)} />
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => { setShowPresetSaveModal(false); setEditingShiftPreset(null); }} />
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-96 max-w-[90vw]">
             <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-800">プリセットを保存</h3>
+              <h3 className="text-lg font-bold text-gray-800">
+                {editingShiftPreset ? 'プリセットを編集' : 'プリセットを保存'}
+              </h3>
             </div>
             <div className="p-4 space-y-4">
               <div>
@@ -6829,6 +6909,7 @@ export default function ScheduleViewPage() {
                 onClick={() => {
                   setShowPresetSaveModal(false);
                   setPresetSaveName('');
+                  setEditingShiftPreset(null);
                 }}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
               >
@@ -6841,7 +6922,7 @@ export default function ScheduleViewPage() {
                     return;
                   }
                   try {
-                    const { error } = await supabase.from('shift_assign_preset').insert({
+                    const presetData = {
                       name: presetSaveName.trim(),
                       shift_type_id: generalShiftConfig.shiftTypeId,
                       selection_mode: generalShiftConfig.selectionMode,
@@ -6852,9 +6933,24 @@ export default function ScheduleViewPage() {
                       target_weekdays: generalShiftConfig.targetWeekdays,
                       include_holidays: generalShiftConfig.includeHolidays,
                       include_pre_holidays: generalShiftConfig.includePreHolidays,
+                      exclude_holidays: generalShiftConfig.excludeHolidays,
+                      exclude_pre_holidays: generalShiftConfig.excludePreHolidays,
                       exclusion_filters: generalShiftConfig.exclusionFilters,
                       priority_mode: generalShiftConfig.priorityMode,
-                    });
+                    };
+
+                    let error;
+                    if (editingShiftPreset) {
+                      // 更新
+                      const result = await supabase.from('shift_assign_preset')
+                        .update(presetData)
+                        .eq('id', editingShiftPreset.id);
+                      error = result.error;
+                    } else {
+                      // 新規作成
+                      const result = await supabase.from('shift_assign_preset').insert(presetData);
+                      error = result.error;
+                    }
                     if (error) throw error;
 
                     // プリセット一覧を再取得
@@ -6866,7 +6962,8 @@ export default function ScheduleViewPage() {
 
                     setShowPresetSaveModal(false);
                     setPresetSaveName('');
-                    alert('プリセットを保存しました');
+                    setEditingShiftPreset(null);
+                    alert(editingShiftPreset ? 'プリセットを更新しました' : 'プリセットを保存しました');
                   } catch (err) {
                     console.error('プリセット保存エラー:', err);
                     alert('プリセットの保存に失敗しました');
@@ -6875,7 +6972,7 @@ export default function ScheduleViewPage() {
                 disabled={!presetSaveName.trim()}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                保存
+                {editingShiftPreset ? '更新' : '保存'}
               </button>
             </div>
           </div>
@@ -6908,29 +7005,59 @@ export default function ScheduleViewPage() {
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
-                          try {
-                            const { error } = await supabase
-                              .from('shift_assign_preset')
-                              .delete()
-                              .eq('id', preset.id);
-                            if (error) throw error;
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            // プリセットの内容をフォームに読み込む
+                            setEditingShiftPreset(preset);
+                            setGeneralShiftConfig(prev => ({
+                              ...prev,
+                              shiftTypeId: preset.shift_type_id,
+                              selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                              filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                              filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                              selectedMemberIds: preset.selected_member_ids || [],
+                              dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                              targetWeekdays: preset.target_weekdays || [],
+                              includeHolidays: preset.include_holidays || false,
+                              includePreHolidays: preset.include_pre_holidays || false,
+                              excludeHolidays: preset.exclude_holidays || false,
+                              excludePreHolidays: preset.exclude_pre_holidays || false,
+                              exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
+                              priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                            }));
+                            setPresetSaveName(preset.name);
+                            setShowPresetManageModal(false);
+                            setShowPresetSaveModal(true);
+                          }}
+                          className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
+                            try {
+                              const { error } = await supabase
+                                .from('shift_assign_preset')
+                                .delete()
+                                .eq('id', preset.id);
+                              if (error) throw error;
 
-                            setShiftAssignPresets(prev => prev.filter(p => p.id !== preset.id));
-                            if (selectedPresetId === preset.id) {
-                              setSelectedPresetId(null);
+                              setShiftAssignPresets(prev => prev.filter(p => p.id !== preset.id));
+                              if (selectedPresetId === preset.id) {
+                                setSelectedPresetId(null);
+                              }
+                            } catch (err) {
+                              console.error('プリセット削除エラー:', err);
+                              alert('プリセットの削除に失敗しました');
                             }
-                          } catch (err) {
-                            console.error('プリセット削除エラー:', err);
-                            alert('プリセットの削除に失敗しました');
-                          }
-                        }}
-                        className="ml-3 px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        削除
-                      </button>
+                          }}
+                          className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -6951,10 +7078,12 @@ export default function ScheduleViewPage() {
       {/* 当直プリセット保存モーダル */}
       {showDutyPresetSaveModal && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowDutyPresetSaveModal(false)} />
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => { setShowDutyPresetSaveModal(false); setEditingDutyPreset(null); }} />
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-96 max-w-[90vw]">
             <div className="p-4 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-800">当直プリセットを保存</h3>
+              <h3 className="text-lg font-bold text-gray-800">
+                {editingDutyPreset ? '当直プリセットを編集' : '当直プリセットを保存'}
+              </h3>
             </div>
             <div className="p-4 space-y-4">
               <div>
@@ -6981,6 +7110,7 @@ export default function ScheduleViewPage() {
                 onClick={() => {
                   setShowDutyPresetSaveModal(false);
                   setDutyPresetSaveName('');
+                  setEditingDutyPreset(null);
                 }}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
               >
@@ -6993,7 +7123,7 @@ export default function ScheduleViewPage() {
                     return;
                   }
                   try {
-                    const { error } = await supabase.from('duty_assign_preset').insert({
+                    const presetData = {
                       name: dutyPresetSaveName.trim(),
                       night_shift_type_id: autoAssignConfig.nightShiftTypeId,
                       day_after_shift_type_id: autoAssignConfig.dayAfterShiftTypeId,
@@ -7009,8 +7139,23 @@ export default function ScheduleViewPage() {
                       target_weekdays: autoAssignConfig.targetWeekdays,
                       include_holidays: autoAssignConfig.includeHolidays,
                       include_pre_holidays: autoAssignConfig.includePreHolidays,
+                      exclude_holidays: autoAssignConfig.excludeHolidays,
+                      exclude_pre_holidays: autoAssignConfig.excludePreHolidays,
                       priority_mode: autoAssignConfig.priorityMode,
-                    });
+                    };
+
+                    let error;
+                    if (editingDutyPreset) {
+                      // 更新
+                      const result = await supabase.from('duty_assign_preset')
+                        .update(presetData)
+                        .eq('id', editingDutyPreset.id);
+                      error = result.error;
+                    } else {
+                      // 新規作成
+                      const result = await supabase.from('duty_assign_preset').insert(presetData);
+                      error = result.error;
+                    }
                     if (error) throw error;
 
                     // プリセット一覧を再取得
@@ -7022,7 +7167,8 @@ export default function ScheduleViewPage() {
 
                     setShowDutyPresetSaveModal(false);
                     setDutyPresetSaveName('');
-                    alert('プリセットを保存しました');
+                    setEditingDutyPreset(null);
+                    alert(editingDutyPreset ? 'プリセットを更新しました' : 'プリセットを保存しました');
                   } catch (err) {
                     console.error('プリセット保存エラー:', err);
                     alert('プリセットの保存に失敗しました');
@@ -7031,7 +7177,7 @@ export default function ScheduleViewPage() {
                 disabled={!dutyPresetSaveName.trim()}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                保存
+                {editingDutyPreset ? '更新' : '保存'}
               </button>
             </div>
           </div>
@@ -7062,29 +7208,63 @@ export default function ScheduleViewPage() {
                           <span className="ml-2">・明け: {shiftTypes.find(s => s.id === preset.day_after_shift_type_id)?.name || '-'}</span>
                         </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
-                          try {
-                            const { error } = await supabase
-                              .from('duty_assign_preset')
-                              .delete()
-                              .eq('id', preset.id);
-                            if (error) throw error;
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => {
+                            // プリセットの内容をフォームに読み込む
+                            setEditingDutyPreset(preset);
+                            setAutoAssignConfig(prev => ({
+                              ...prev,
+                              nightShiftTypeId: preset.night_shift_type_id,
+                              dayAfterShiftTypeId: preset.day_after_shift_type_id,
+                              excludeNightShiftTypeIds: preset.exclude_night_shift_type_ids || [],
+                              selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                              filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                              filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                              filterCanCardiac: preset.filter_can_cardiac,
+                              filterCanObstetric: preset.filter_can_obstetric,
+                              filterCanIcu: preset.filter_can_icu,
+                              selectedMemberIds: preset.selected_member_ids || [],
+                              dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                              targetWeekdays: preset.target_weekdays || [],
+                              includeHolidays: preset.include_holidays,
+                              includePreHolidays: preset.include_pre_holidays,
+                              excludeHolidays: preset.exclude_holidays || false,
+                              excludePreHolidays: preset.exclude_pre_holidays || false,
+                              priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                            }));
+                            setDutyPresetSaveName(preset.name);
+                            setShowDutyPresetManageModal(false);
+                            setShowDutyPresetSaveModal(true);
+                          }}
+                          className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`プリセット「${preset.name}」を削除しますか？`)) return;
+                            try {
+                              const { error } = await supabase
+                                .from('duty_assign_preset')
+                                .delete()
+                                .eq('id', preset.id);
+                              if (error) throw error;
 
-                            setDutyAssignPresets(prev => prev.filter(p => p.id !== preset.id));
-                            if (selectedDutyPresetId === preset.id) {
-                              setSelectedDutyPresetId(null);
+                              setDutyAssignPresets(prev => prev.filter(p => p.id !== preset.id));
+                              if (selectedDutyPresetId === preset.id) {
+                                setSelectedDutyPresetId(null);
+                              }
+                            } catch (err) {
+                              console.error('プリセット削除エラー:', err);
+                              alert('プリセットの削除に失敗しました');
                             }
-                          } catch (err) {
-                            console.error('プリセット削除エラー:', err);
-                            alert('プリセットの削除に失敗しました');
-                          }
-                        }}
-                        className="ml-3 px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
-                      >
-                        削除
-                      </button>
+                          }}
+                          className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
