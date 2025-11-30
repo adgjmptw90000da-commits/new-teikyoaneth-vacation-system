@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -276,6 +276,10 @@ export default function ScheduleViewPage() {
   const [showHiddenMembersModal, setShowHiddenMembersModal] = useState(false);
   const [savingHidden, setSavingHidden] = useState(false);
 
+  // ツールバーメニュー
+  const [showToolMenu, setShowToolMenu] = useState(false);
+  const toolMenuRef = useRef<HTMLDivElement>(null);
+
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
   const [autoAssignMode, setAutoAssignMode] = useState<'night_shift' | 'general_shift'>('night_shift'); // 当直 or 一般シフト
@@ -465,6 +469,23 @@ export default function ScheduleViewPage() {
     }
     fetchData();
   }, [router, currentYear, currentMonth]);
+
+  // メニュー外クリックで閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolMenuRef.current && !toolMenuRef.current.contains(event.target as Node)) {
+        setShowToolMenu(false);
+      }
+    };
+
+    if (showToolMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showToolMenu]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -3285,7 +3306,7 @@ export default function ScheduleViewPage() {
       {/* ヘッダー */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between h-14">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => router.back()}
@@ -3301,7 +3322,7 @@ export default function ScheduleViewPage() {
                 予定表作成
               </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center">
               <button
                 onClick={() => router.push("/admin/home")}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -3309,126 +3330,171 @@ export default function ScheduleViewPage() {
               >
                 <Icons.Home />
               </button>
-              {/* シフト自動割り振りボタン */}
-              <button
-                onClick={() => {
-                  // 現在表示月のデフォルト期間を計算
-                  const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-                  const lastDate = new Date(currentYear, currentMonth, 0);
-                  const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
-
-                  setAutoAssignConfig({
-                    nightShiftTypeId: null,
-                    dayAfterShiftTypeId: null,
-                    excludeNightShiftTypeIds: [],
-                    selectionMode: 'filter',
-                    filterTeams: [],
-                    filterNightShiftLevels: [],
-                    filterCanCardiac: null,
-                    filterCanObstetric: null,
-                    filterCanIcu: null,
-                    selectedMemberIds: [],
-                    dateSelectionMode: 'period', // デフォルト: 期間指定のみ
-                    startDate: firstDay,
-                    endDate: endDay,
-                    targetWeekdays: [],
-                    includeHolidays: false,
-                    includePreHolidays: false,
-                    specificDates: [],
-                  });
-                  setAutoAssignPreview(null);
-                  setShowAutoAssignModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors"
-              >
-                シフト自動割り振り
-              </button>
-              {/* 割り振り取り消しボタン */}
-              <button
-                onClick={handleUndoAutoAssign}
-                disabled={isAutoAssigning}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
-              >
-                割り振り取消
-              </button>
-              {/* シフト一括削除ボタン */}
-              <button
-                onClick={() => {
-                  const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-                  const lastDate = new Date(currentYear, currentMonth, 0);
-                  const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
-                  setBulkDeleteConfig({
-                    shiftTypeId: null,
-                    startDate: firstDay,
-                    endDate: endDay,
-                  });
-                  setBulkDeletePreview(null);
-                  setShowBulkDeleteModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
-              >
-                シフト一括削除
-              </button>
-              {/* カウント設定ボタン */}
-              <button
-                onClick={() => {
-                  resetCountConfigForm();
-                  setEditingCountConfig(null);
-                  setShowCountConfigModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-100 hover:bg-purple-200 rounded-lg transition-colors"
-              >
-                カウント設定
-              </button>
-              {/* 得点設定ボタン */}
-              <button
-                onClick={() => {
-                  resetScoreConfigForm();
-                  setEditingScoreConfig(null);
-                  setShowScoreConfigModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-yellow-700 bg-yellow-100 hover:bg-yellow-200 rounded-lg transition-colors"
-              >
-                得点設定
-              </button>
-              {/* 非表示メンバーボタン */}
-              <button
-                onClick={() => setShowHiddenMembersModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-              >
-                非表示メンバー
-              </button>
-              {/* アップロード/再アップロード/非公開ボタン */}
-              {isPublished ? (
-                <>
-                  <button
-                    onClick={handleUpload}
-                    disabled={isUploading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {isUploading ? '処理中...' : '再アップロード'}
-                  </button>
-                  <button
-                    onClick={handleUnpublish}
-                    disabled={isUploading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    {isUploading ? '処理中...' : '非公開にする'}
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={handleUpload}
-                  disabled={isUploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {isUploading ? '処理中...' : '予定表をアップロード'}
-                </button>
-              )}
             </div>
           </div>
         </div>
       </nav>
+
+      {/* ツールバー */}
+      <div className="bg-gray-50 border-b border-gray-200 sticky top-14 z-40 px-4 py-2">
+        <div className="flex justify-between items-center">
+          {/* 左: メニュードロップダウン */}
+          <div className="relative" ref={toolMenuRef}>
+            <button
+              onClick={() => setShowToolMenu(!showToolMenu)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" x2="20" y1="12" y2="12" />
+                <line x1="4" x2="20" y1="6" y2="6" />
+                <line x1="4" x2="20" y1="18" y2="18" />
+              </svg>
+              メニュー
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {showToolMenu && (
+              <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                {/* シフト自動割り振り */}
+                <button
+                  onClick={() => {
+                    const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                    const lastDate = new Date(currentYear, currentMonth, 0);
+                    const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+                    setAutoAssignConfig({
+                      nightShiftTypeId: null,
+                      dayAfterShiftTypeId: null,
+                      excludeNightShiftTypeIds: [],
+                      selectionMode: 'filter',
+                      filterTeams: [],
+                      filterNightShiftLevels: [],
+                      filterCanCardiac: null,
+                      filterCanObstetric: null,
+                      filterCanIcu: null,
+                      selectedMemberIds: [],
+                      dateSelectionMode: 'period',
+                      startDate: firstDay,
+                      endDate: endDay,
+                      targetWeekdays: [],
+                      includeHolidays: false,
+                      includePreHolidays: false,
+                      specificDates: [],
+                    });
+                    setAutoAssignPreview(null);
+                    setShowAutoAssignModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                  シフト自動割り振り
+                </button>
+                {/* 割り振り取消 */}
+                <button
+                  onClick={() => {
+                    handleUndoAutoAssign();
+                    setShowToolMenu(false);
+                  }}
+                  disabled={isAutoAssigning}
+                  className="w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 flex items-center gap-2 disabled:opacity-50"
+                >
+                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                  割り振り取消
+                </button>
+                {/* シフト一括削除 */}
+                <button
+                  onClick={() => {
+                    const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                    const lastDate = new Date(currentYear, currentMonth, 0);
+                    const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+                    setBulkDeleteConfig({
+                      shiftTypeId: null,
+                      startDate: firstDay,
+                      endDate: endDay,
+                    });
+                    setBulkDeletePreview(null);
+                    setShowBulkDeleteModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  シフト一括削除
+                </button>
+                <div className="border-t border-gray-100 my-1"></div>
+                {/* カウント設定 */}
+                <button
+                  onClick={() => {
+                    resetCountConfigForm();
+                    setEditingCountConfig(null);
+                    setShowCountConfigModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                  カウント設定
+                </button>
+                {/* 得点設定 */}
+                <button
+                  onClick={() => {
+                    resetScoreConfigForm();
+                    setEditingScoreConfig(null);
+                    setShowScoreConfigModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                  得点設定
+                </button>
+                {/* 非表示メンバー */}
+                <button
+                  onClick={() => {
+                    setShowHiddenMembersModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                  非表示メンバー
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 右: アップロードボタン */}
+          <div className="flex items-center gap-2">
+            {isPublished ? (
+              <>
+                <button
+                  onClick={handleUpload}
+                  disabled={isUploading}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  {isUploading ? '処理中...' : '再アップロード'}
+                </button>
+                <button
+                  onClick={handleUnpublish}
+                  disabled={isUploading}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isUploading ? '処理中...' : '非公開にする'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleUpload}
+                disabled={isUploading}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {isUploading ? '処理中...' : '予定表をアップロード'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       <main className="max-w-full mx-auto py-4 px-4 sm:px-6 lg:px-8">
         <div className="space-y-4">
