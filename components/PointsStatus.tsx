@@ -24,6 +24,9 @@ type PointsInfo = {
 type PointsStatusProps = {
     pointsInfo: PointsInfo | null;
     className?: string;
+    fiscalYear?: number | null;
+    defaultFiscalYear?: number | null;
+    onFiscalYearChange?: (year: number) => void;
 };
 
 const ShieldIcon = () => (
@@ -45,27 +48,54 @@ const ShieldIcon = () => (
 export const PointsStatus: React.FC<PointsStatusProps> = ({
     pointsInfo,
     className = "",
+    fiscalYear,
+    defaultFiscalYear,
+    onFiscalYearChange,
 }) => {
+    const showYearTabs = defaultFiscalYear && onFiscalYearChange;
+
     return (
         <div
             className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden ${className}`}
         >
-            <div className="p-4 sm:p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <span className="text-blue-500">
-                        <ShieldIcon />
-                    </span>
-                    年休得点状況
-                </h3>
-                {pointsInfo ? (
-                    <div className="text-xs sm:text-sm text-gray-500">
-                        上限:{" "}
-                        <span className="font-semibold text-gray-900">
-                            {pointsInfo.maxPoints.toFixed(2)}点
+            <div className="p-4 sm:p-6 border-b border-gray-100">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <span className="text-blue-500">
+                            <ShieldIcon />
                         </span>
+                        年休得点状況
+                    </h3>
+                    {pointsInfo ? (
+                        <div className="text-xs sm:text-sm text-gray-500">
+                            上限:{" "}
+                            <span className="font-semibold text-gray-900">
+                                {pointsInfo.maxPoints.toFixed(2)}点
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="h-5 w-20 sm:w-32 bg-gray-200 rounded animate-pulse"></div>
+                    )}
+                </div>
+
+                {/* 年度タブ */}
+                {showYearTabs && (
+                    <div className="flex gap-1 mt-3">
+                        {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
+                            <button
+                                key={year}
+                                type="button"
+                                onClick={() => onFiscalYearChange(year)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                    fiscalYear === year
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                {year}年度
+                            </button>
+                        ))}
                     </div>
-                ) : (
-                    <div className="h-5 w-20 sm:w-32 bg-gray-200 rounded animate-pulse"></div>
                 )}
             </div>
 

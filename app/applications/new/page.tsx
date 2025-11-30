@@ -412,31 +412,12 @@ export default function NewApplicationPage() {
             <div className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* 年休得点情報 */}
-                <div className="space-y-4">
-                  {/* 年度切替タブ */}
-                  {defaultFiscalYear && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-600">年度:</span>
-                      <div className="flex gap-1">
-                        {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
-                          <button
-                            type="button"
-                            key={year}
-                            onClick={() => handleFiscalYearChange(year)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                              selectedFiscalYear === year
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            {year}年度
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <PointsStatus pointsInfo={pointsInfo} />
-                </div>
+                <PointsStatus
+                  pointsInfo={pointsInfo}
+                  fiscalYear={selectedFiscalYear}
+                  defaultFiscalYear={defaultFiscalYear}
+                  onFiscalYearChange={handleFiscalYearChange}
+                />
 
                 {error && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">

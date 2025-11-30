@@ -226,31 +226,14 @@ export default function VacationSystemPage() {
         )}
 
         {/* Points Info Card */}
-        <div className="space-y-4">
-          {/* 年度切替タブ */}
-          {defaultFiscalYear && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-600">年度:</span>
-              <div className="flex gap-1">
-                {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
-                  <button
-                    key={year}
-                    onClick={() => handleFiscalYearChange(year)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      selectedFiscalYear === year
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {year}年度
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <PointsStatus pointsInfo={pointsInfo} className="lg:col-span-3" />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <PointsStatus
+            pointsInfo={pointsInfo}
+            className="lg:col-span-3"
+            fiscalYear={selectedFiscalYear}
+            defaultFiscalYear={defaultFiscalYear}
+            onFiscalYearChange={handleFiscalYearChange}
+          />
         </div>
 
         {/* User Menu */}

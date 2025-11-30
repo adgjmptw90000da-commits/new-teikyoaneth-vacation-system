@@ -16,6 +16,7 @@ import {
   calculateInitialPriority,
   calculateAnnualLeavePoints,
   getCurrentLotteryPeriodInfo,
+  getDefaultDisplayFiscalYear,
 } from "@/lib/application";
 import { requestCancellation } from "@/lib/cancellation";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -81,6 +82,8 @@ export default function ApplicationCalendarPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [setting, setSetting] = useState<Setting | null>(null);
   const [pointsInfo, setPointsInfo] = useState<any>(null);
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
     targetMonth: string;
@@ -124,6 +127,15 @@ export default function ApplicationCalendarPage() {
     };
     fetchLotteryPeriodInfo();
 
+    // デフォルト年度を取得し、得点情報を取得
+    const initializeFiscalYear = async () => {
+      const fiscalYear = await getDefaultDisplayFiscalYear();
+      setDefaultFiscalYear(fiscalYear);
+      setSelectedFiscalYear(fiscalYear);
+      await fetchPointsInfoForYear(currentUser.staff_id, fiscalYear);
+    };
+    initializeFiscalYear();
+
     fetchData(currentUser.staff_id);
   }, [router, currentYear, currentMonth]);
 
@@ -131,6 +143,47 @@ export default function ApplicationCalendarPage() {
   const handleViewModeChange = (mode: 'list' | 'grid') => {
     setViewMode(mode);
     localStorage.setItem('applicationCalendarViewMode', mode);
+  };
+
+  // 指定年度の得点情報を取得
+  const fetchPointsInfoForYear = async (staffId: string, fiscalYear: number) => {
+    const { data: settingData } = await supabase
+      .from("setting")
+      .select("level1_points, level2_points, level3_points, max_annual_leave_points")
+      .eq("id", 1)
+      .single();
+
+    if (!settingData) return;
+
+    const pointsData = await calculateAnnualLeavePoints(staffId, fiscalYear);
+    if (!pointsData) return;
+
+    const { data: userData } = await supabase
+      .from("user")
+      .select("point_retention_rate")
+      .eq("staff_id", staffId)
+      .single();
+
+    const maxPoints = Math.floor(
+      (settingData.max_annual_leave_points * (userData?.point_retention_rate || 100)) / 100
+    );
+
+    setPointsInfo({
+      ...pointsData,
+      maxPoints,
+      remainingPoints: maxPoints - pointsData.totalPoints,
+      level1PointsPerApplication: settingData.level1_points,
+      level2PointsPerApplication: settingData.level2_points,
+      level3PointsPerApplication: settingData.level3_points,
+    });
+  };
+
+  // 年度切替時の処理
+  const handleFiscalYearChange = async (year: number) => {
+    if (!user) return;
+    setSelectedFiscalYear(year);
+    setPointsInfo(null);
+    await fetchPointsInfoForYear(user.staff_id, year);
   };
 
   const fetchData = async (staffId: string) => {
@@ -192,31 +245,6 @@ export default function ApplicationCalendarPage() {
       }
 
       setDaysData(days);
-
-      // 年休得点情報を取得
-      if (settingData) {
-        const points = await calculateAnnualLeavePoints(staffId, settingData.current_fiscal_year);
-        if (points) {
-          const { data: userData } = await supabase
-            .from('user')
-            .select('point_retention_rate')
-            .eq('staff_id', staffId)
-            .single();
-
-          const maxPoints = Math.floor(
-            (settingData.max_annual_leave_points * (userData?.point_retention_rate || 100)) / 100
-          );
-
-          setPointsInfo({
-            ...points,
-            maxPoints,
-            remainingPoints: maxPoints - points.totalPoints,
-            level1PointsPerApplication: settingData.level1_points,
-            level2PointsPerApplication: settingData.level2_points,
-            level3PointsPerApplication: settingData.level3_points,
-          });
-        }
-      }
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -705,7 +733,12 @@ export default function ApplicationCalendarPage() {
           )}
 
           {/* 年休得点状況 */}
-          <PointsStatus pointsInfo={pointsInfo} />
+          <PointsStatus
+            pointsInfo={pointsInfo}
+            fiscalYear={selectedFiscalYear}
+            defaultFiscalYear={defaultFiscalYear}
+            onFiscalYearChange={handleFiscalYearChange}
+          />
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             {/* 表示切り替えボタン */}
