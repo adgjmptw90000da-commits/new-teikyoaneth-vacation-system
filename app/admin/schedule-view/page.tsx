@@ -231,6 +231,8 @@ export default function ScheduleViewPage() {
     filter_day_of_weeks: number[];
     include_holiday: boolean;
     include_pre_holiday: boolean;
+    exclude_holiday: boolean;
+    exclude_pre_holiday: boolean;
     points: number;
   }>({
     name: '',
@@ -239,6 +241,8 @@ export default function ScheduleViewPage() {
     filter_day_of_weeks: [],
     include_holiday: false,
     include_pre_holiday: false,
+    exclude_holiday: false,
+    exclude_pre_holiday: false,
     points: 1,
   });
 
@@ -797,15 +801,24 @@ export default function ScheduleViewPage() {
   // 得点計算: 日付がカウント対象かどうか判定
   const isDateMatchForScore = (day: DayData, config: ScoreConfig): boolean => {
     const dayOfWeeksFilter = config.filter_day_of_weeks || [];
+
+    // 除外チェック（祝日・祝前日を除外）
+    if (config.exclude_holiday && day.isHoliday) {
+      return false;
+    }
+    if (config.exclude_pre_holiday && isPreHoliday(day.date)) {
+      return false;
+    }
+
     // 曜日が指定されていない場合は全曜日対象
     if (dayOfWeeksFilter.length === 0 || dayOfWeeksFilter.includes(day.dayOfWeek)) {
       return true;
     }
-    // 祝日マッチ
+    // 祝日マッチ（追加）
     if (config.include_holiday && day.isHoliday) {
       return true;
     }
-    // 祝前日マッチ
+    // 祝前日マッチ（追加）
     if (config.include_pre_holiday && isPreHoliday(day.date)) {
       return true;
     }
@@ -3193,6 +3206,8 @@ export default function ScheduleViewPage() {
           filter_day_of_weeks: newScoreConfig.filter_day_of_weeks,
           include_holiday: newScoreConfig.include_holiday,
           include_pre_holiday: newScoreConfig.include_pre_holiday,
+          exclude_holiday: newScoreConfig.exclude_holiday,
+          exclude_pre_holiday: newScoreConfig.exclude_pre_holiday,
           points: newScoreConfig.points,
           updated_at: new Date().toISOString(),
         }).eq("id", editingScoreConfig.id);
@@ -3213,6 +3228,8 @@ export default function ScheduleViewPage() {
           filter_day_of_weeks: newScoreConfig.filter_day_of_weeks,
           include_holiday: newScoreConfig.include_holiday,
           include_pre_holiday: newScoreConfig.include_pre_holiday,
+          exclude_holiday: newScoreConfig.exclude_holiday,
+          exclude_pre_holiday: newScoreConfig.exclude_pre_holiday,
           points: newScoreConfig.points,
         }).select().single();
 
@@ -3271,6 +3288,8 @@ export default function ScheduleViewPage() {
       filter_day_of_weeks: [],
       include_holiday: false,
       include_pre_holiday: false,
+      exclude_holiday: false,
+      exclude_pre_holiday: false,
       points: 1,
     });
   };
@@ -3285,6 +3304,8 @@ export default function ScheduleViewPage() {
       filter_day_of_weeks: config.filter_day_of_weeks || [],
       include_holiday: config.include_holiday ?? false,
       include_pre_holiday: config.include_pre_holiday ?? false,
+      exclude_holiday: config.exclude_holiday ?? false,
+      exclude_pre_holiday: config.exclude_pre_holiday ?? false,
       points: config.points ?? 1,
     });
     setShowScoreConfigModal(true);
@@ -5103,6 +5124,31 @@ export default function ScheduleViewPage() {
                           className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
                         />
                         <span className="text-sm text-gray-700">祝前日を含む</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* 除外日 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">除外日</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newScoreConfig.exclude_holiday}
+                          onChange={(e) => setNewScoreConfig(prev => ({ ...prev, exclude_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                        />
+                        <span className="text-sm text-gray-700">祝日を除く</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newScoreConfig.exclude_pre_holiday}
+                          onChange={(e) => setNewScoreConfig(prev => ({ ...prev, exclude_pre_holiday: e.target.checked }))}
+                          className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                        />
+                        <span className="text-sm text-gray-700">祝前日を除く</span>
                       </label>
                     </div>
                   </div>

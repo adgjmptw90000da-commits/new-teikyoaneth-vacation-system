@@ -1054,6 +1054,8 @@ export interface Database {
           filter_day_of_weeks: number[]
           include_holiday: boolean
           include_pre_holiday: boolean
+          exclude_holiday: boolean
+          exclude_pre_holiday: boolean
           points: number
           created_at: string
           updated_at: string
@@ -1067,6 +1069,8 @@ export interface Database {
           filter_day_of_weeks?: number[]
           include_holiday?: boolean
           include_pre_holiday?: boolean
+          exclude_holiday?: boolean
+          exclude_pre_holiday?: boolean
           points: number
           created_at?: string
           updated_at?: string
@@ -1080,6 +1084,8 @@ export interface Database {
           filter_day_of_weeks?: number[]
           include_holiday?: boolean
           include_pre_holiday?: boolean
+          exclude_holiday?: boolean
+          exclude_pre_holiday?: boolean
           points?: number
           created_at?: string
           updated_at?: string
