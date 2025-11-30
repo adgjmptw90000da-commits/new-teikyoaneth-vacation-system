@@ -560,6 +560,10 @@ export default function ApplicationCalendarPage() {
       alert("申請が完了しました");
       setShowModal(false);
       fetchData(user.staff_id);
+      // 得点情報も更新
+      if (selectedFiscalYear) {
+        fetchPointsInfoForYear(user.staff_id, selectedFiscalYear);
+      }
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -618,6 +622,10 @@ export default function ApplicationCalendarPage() {
 
       setShowModal(false);
       await fetchData(user.staff_id);
+      // 得点情報も更新
+      if (selectedFiscalYear) {
+        await fetchPointsInfoForYear(user.staff_id, selectedFiscalYear);
+      }
 
       if (result.requiresApproval) {
         alert("キャンセル申請を送信しました。管理者の承認をお待ちください。");
