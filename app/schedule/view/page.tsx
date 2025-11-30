@@ -146,13 +146,22 @@ export default function ScheduleViewPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // schedule_publishからスナップショットを取得
-      const { data: publishData, error } = await supabase
-        .from("schedule_publish")
-        .select("*")
-        .eq("year", currentYear)
-        .eq("month", currentMonth)
-        .single();
+      // schedule_publishと非表示メンバーを同時に取得
+      const [
+        { data: publishData, error },
+        { data: hiddenMembersData },
+      ] = await Promise.all([
+        supabase
+          .from("schedule_publish")
+          .select("*")
+          .eq("year", currentYear)
+          .eq("month", currentMonth)
+          .single(),
+        supabase.from("schedule_hidden_members").select("staff_id"),
+      ]);
+
+      // 非表示メンバーのSetを作成
+      const hiddenMemberIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
 
       if (error || !publishData || !publishData.is_published) {
         // 未公開
@@ -167,7 +176,9 @@ export default function ScheduleViewPage() {
 
         const snapshot = publishData.snapshot_data as SnapshotData;
         if (snapshot) {
-          setMembers(snapshot.members || []);
+          // 非表示メンバーを除外
+          const visibleMembers = (snapshot.members || []).filter(m => !hiddenMemberIds.has(m.staff_id));
+          setMembers(visibleMembers);
           setHolidays(snapshot.holidays || []);
           setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...snapshot.displaySettings });
           setWorkLocationMaster(snapshot.workLocationMaster || []);

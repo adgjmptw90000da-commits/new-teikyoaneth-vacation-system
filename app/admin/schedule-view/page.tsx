@@ -488,8 +488,9 @@ export default function ScheduleViewPage() {
         { data: scoreConfigsData },
         { data: shiftAssignPresetsData },
         { data: dutyAssignPresetsData },
+        { data: hiddenMembersData },
       ] = await Promise.all([
-        supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty").order("team").order("display_order").order("staff_id"),
+        supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty, position").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
         supabase.from("shift_type").select("*").order("display_order"),
         supabase.from("holiday").select("*"),
@@ -528,6 +529,7 @@ export default function ScheduleViewPage() {
         supabase.from("score_config").select("*").order("display_order"),
         supabase.from("shift_assign_preset").select("*").order("display_order"),
         supabase.from("duty_assign_preset").select("*").order("display_order"),
+        supabase.from("schedule_hidden_members").select("staff_id"),
       ]);
 
       // 確定済み日付のSetを作成
@@ -596,8 +598,12 @@ export default function ScheduleViewPage() {
       // 予定提出ロック状態を設定
       setIsSubmissionLocked(publishData?.is_submission_locked ?? false);
 
-      // メンバーデータを構築
-      const membersData: MemberData[] = (users || []).map(user => {
+      // 非表示メンバーのSetを作成
+      const hiddenMemberIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
+
+      // メンバーデータを構築（非表示メンバーを除外）
+      const visibleUsers = (users || []).filter(u => !hiddenMemberIds.has(u.staff_id));
+      const membersData: MemberData[] = visibleUsers.map(user => {
         const researchDayRecord = researchDays?.find(r => r.staff_id === user.staff_id);
         const isSecondment = secondments?.some(s => s.staff_id === user.staff_id) || false;
         const userLeaves = leaveData?.filter(l => l.staff_id === user.staff_id) || [];
