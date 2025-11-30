@@ -140,7 +140,15 @@ export default function OnePersonnelPage() {
     setProcessing(applicationId);
     const result = await confirmOnePersonnelApplication(applicationId);
     if (result.success) {
-      await fetchData();
+      // ローカルstateを直接更新（スクロール位置を維持）
+      setDaysData(prev => prev.map(day => ({
+        ...day,
+        applications: day.applications.map(app =>
+          app.id === applicationId
+            ? { ...app, one_personnel_status: 'applied' as const }
+            : app
+        )
+      })));
     } else {
       alert("エラー: " + result.error);
     }
