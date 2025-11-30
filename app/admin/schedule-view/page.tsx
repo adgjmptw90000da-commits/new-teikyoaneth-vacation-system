@@ -3468,7 +3468,7 @@ export default function ScheduleViewPage() {
 
           {/* テーブル */}
           <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
-            <div ref={tableRef} className="overflow-x-auto">
+            <div className="overflow-x-auto">
               <table className="border-collapse table-fixed w-auto">
                 <thead>
                   {/* メンバー名ヘッダー */}
