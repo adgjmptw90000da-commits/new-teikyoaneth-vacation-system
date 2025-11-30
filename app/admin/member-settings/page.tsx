@@ -414,7 +414,7 @@ export default function MemberSettingsPage() {
                           value={user.position || '常勤'}
                           onChange={(e) => handlePositionChange(user.staff_id, e.target.value as '常勤' | '非常勤' | 'ローテーター' | '研修医')}
                           disabled={saving}
-                          className="px-2 py-1 text-xs font-medium border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                          className="px-2 py-1 text-xs font-medium text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
                         >
                           <option value="常勤">常勤</option>
                           <option value="非常勤">非常勤</option>

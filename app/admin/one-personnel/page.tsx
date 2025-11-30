@@ -300,7 +300,7 @@ export default function OnePersonnelPage() {
 
           {/* サマリー */}
           <div className="flex flex-wrap gap-4 text-sm border-t border-gray-100 pt-3">
-            <span>合計: <strong>{summary.total}件</strong></span>
+            <span className="text-gray-900">合計: <strong>{summary.total}件</strong></span>
             <span className="text-gray-600">未申請: <strong>{summary.notApplied}件</strong></span>
             <span className="text-blue-600">申請済み: <strong>{summary.applied}件</strong></span>
             <span className="text-green-600">研鑽日: <strong>{summary.kensanbi}件</strong></span>
