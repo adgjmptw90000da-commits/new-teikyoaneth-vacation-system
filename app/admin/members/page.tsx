@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { checkAnnualLeavePointsAvailable } from "@/lib/application";
+import { checkAnnualLeavePointsAvailable, calculateAnnualLeavePoints, getDefaultDisplayFiscalYear } from "@/lib/application";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
@@ -56,6 +56,8 @@ export default function MembersPage() {
   const [editingRetentionRates, setEditingRetentionRates] = useState<{ [key: string]: number }>({});
   const [sortColumn, setSortColumn] = useState<'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
 
   useEffect(() => {
     const user = getUser();
@@ -71,10 +73,24 @@ export default function MembersPage() {
     }
 
     setCurrentUser(user);
-    fetchUsers();
+
+    // デフォルト年度を取得してから fetchUsers を呼ぶ
+    const initialize = async () => {
+      const fiscalYear = await getDefaultDisplayFiscalYear();
+      setDefaultFiscalYear(fiscalYear);
+      setSelectedFiscalYear(fiscalYear);
+      await fetchUsersForYear(fiscalYear);
+    };
+    initialize();
   }, [router]);
 
-  const fetchUsers = async () => {
+  // 年度切替時の処理
+  const handleFiscalYearChange = async (year: number) => {
+    setSelectedFiscalYear(year);
+    await fetchUsersForYear(year);
+  };
+
+  const fetchUsersForYear = async (fiscalYear: number) => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -89,10 +105,10 @@ export default function MembersPage() {
         return;
       }
 
-      // 現在の年度を取得
+      // 設定を取得
       const { data: settingData } = await supabase
         .from("setting")
-        .select("current_fiscal_year")
+        .select("max_annual_leave_points")
         .eq("id", 1)
         .single();
 
@@ -102,13 +118,17 @@ export default function MembersPage() {
         return;
       }
 
-      // 各ユーザーの残り得点を取得
+      // 各ユーザーの残り得点を取得（指定年度で計算）
       const usersWithPoints: UserWithPoints[] = await Promise.all(
         (data || []).map(async (user) => {
-          const pointsData = await checkAnnualLeavePointsAvailable(user.staff_id, 1, "full_day");
+          const pointsData = await calculateAnnualLeavePoints(user.staff_id, fiscalYear);
+          const maxPoints = Math.floor(
+            (settingData.max_annual_leave_points * (user.point_retention_rate || 100)) / 100
+          );
+          const remainingPoints = pointsData ? maxPoints - pointsData.totalPoints : null;
           return {
             ...user,
-            remainingPoints: pointsData?.remainingPoints ?? null
+            remainingPoints
           };
         })
       );
@@ -406,7 +426,7 @@ export default function MembersPage() {
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
+          <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
                 登録メンバー一覧
@@ -415,6 +435,27 @@ export default function MembersPage() {
                 全{users.length}名（管理者: {getAdminCount()}名）
               </p>
             </div>
+            {/* 年度切替タブ */}
+            {defaultFiscalYear && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-600">年度:</span>
+                <div className="flex gap-1">
+                  {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
+                    <button
+                      key={year}
+                      onClick={() => handleFiscalYearChange(year)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        selectedFiscalYear === year
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {year}年度
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto">

@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import type { Database } from './database.types';
 import { getJSTDate, formatDateToYYYYMMDD } from './dateUtils';
+import { getFiscalYearFromUsageDate } from './kensanbi';
 
 type Application = Database['public']['Tables']['application']['Row'];
 type ApplicationInsert = Database['public']['Tables']['application']['Insert'];
@@ -1120,16 +1121,40 @@ export const calculateAnnualLeavePoints = async (
 };
 
 /**
+ * 表示用のデフォルト年度を取得
+ * 現在の月 + lottery_period_months の月の年度を返す
+ * @returns 年度（例: 2025 = 2025/4/1〜2026/3/31）
+ */
+export const getDefaultDisplayFiscalYear = async (): Promise<number> => {
+  const { data: setting } = await supabase
+    .from('setting')
+    .select('lottery_period_months')
+    .eq('id', 1)
+    .single();
+
+  const today = new Date();
+  const currentMonth = today.getMonth() + 1; // 1-12
+  const targetMonth = currentMonth + (setting?.lottery_period_months || 4);
+  const targetYear = today.getFullYear() + Math.floor((targetMonth - 1) / 12);
+  const normalizedMonth = ((targetMonth - 1) % 12) + 1;
+
+  // 4月〜12月→その年、1月〜3月→前年
+  return normalizedMonth >= 4 ? targetYear : targetYear - 1;
+};
+
+/**
  * 新規申請が可能かチェック
  * @param staffId 職員ID
  * @param level 申請レベル（1, 2, 3）
  * @param period 期間（full_day, am, pm）
+ * @param vacationDate 年休取得希望日（省略時はデフォルト年度を使用）
  * @returns 利用可能上限、消費得点、残り得点、申請可否
  */
 export const checkAnnualLeavePointsAvailable = async (
   staffId: string,
   level: 1 | 2 | 3,
-  period: 'full_day' | 'am' | 'pm'
+  period: 'full_day' | 'am' | 'pm',
+  vacationDate?: string
 ): Promise<{
   maxPoints: number;
   usedPoints: number;
@@ -1140,7 +1165,7 @@ export const checkAnnualLeavePointsAvailable = async (
     // 設定とスタッフ情報を取得
     const { data: setting, error: settingError } = await supabase
       .from('setting')
-      .select('max_annual_leave_points, level1_points, level2_points, level3_points, current_fiscal_year')
+      .select('max_annual_leave_points, level1_points, level2_points, level3_points')
       .eq('id', 1)
       .single();
 
@@ -1165,10 +1190,15 @@ export const checkAnnualLeavePointsAvailable = async (
       (setting.max_annual_leave_points * user.point_retention_rate) / 100
     );
 
-    // 現在の消費得点を計算
+    // 年度を決定: vacationDate指定時はその年度、未指定時はデフォルト年度
+    const fiscalYear = vacationDate
+      ? getFiscalYearFromUsageDate(vacationDate)
+      : await getDefaultDisplayFiscalYear();
+
+    // 対象年度の消費得点を計算
     const pointsData = await calculateAnnualLeavePoints(
       staffId,
-      setting.current_fiscal_year
+      fiscalYear
     );
 
     if (!pointsData) {

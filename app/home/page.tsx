@@ -10,6 +10,7 @@ import {
   calculateAnnualLeavePoints,
   checkAnnualLeavePointsAvailable,
   getCurrentLotteryPeriodInfo,
+  getDefaultDisplayFiscalYear,
 } from "@/lib/application";
 import { PointsStatus } from "@/components/PointsStatus";
 
@@ -79,17 +80,62 @@ export default function HomePage() {
     periodStart: string;
     periodEnd: string;
   } | null>(null);
-  const [pointsInfo, setPointsInfo] = useState<{
-    level1ApplicationCount: number;
-    level1ConfirmedCount: number;
-    level2ApplicationCount: number;
-    level2ConfirmedCount: number;
-    level3ApplicationCount: number;
-    level3ConfirmedCount: number;
-    totalPoints: number;
-    maxPoints: number;
-    remainingPoints: number;
-  } | null>(null);
+  const [pointsInfo, setPointsInfo] = useState<any>(null);
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
+
+  // 指定年度の得点情報を取得
+  const fetchPointsInfoForYear = async (staffId: string, fiscalYear: number) => {
+    const { data: settingData } = await supabase
+      .from("setting")
+      .select("level1_points, level2_points, level3_points, max_annual_leave_points")
+      .eq("id", 1)
+      .single();
+
+    if (!settingData) return;
+
+    const pointsData = await calculateAnnualLeavePoints(staffId, fiscalYear);
+    if (!pointsData) return;
+
+    const { data: userData } = await supabase
+      .from("user")
+      .select("point_retention_rate")
+      .eq("staff_id", staffId)
+      .single();
+
+    const maxPoints = Math.floor(
+      (settingData.max_annual_leave_points * (userData?.point_retention_rate || 100)) / 100
+    );
+
+    setPointsInfo({
+      level1PendingCount: pointsData.level1PendingCount,
+      level1ConfirmedCount: pointsData.level1ConfirmedCount,
+      level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
+      level1Points: pointsData.level1Points,
+      level1PointsPerApplication: settingData.level1_points,
+      level2PendingCount: pointsData.level2PendingCount,
+      level2ConfirmedCount: pointsData.level2ConfirmedCount,
+      level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
+      level2Points: pointsData.level2Points,
+      level2PointsPerApplication: settingData.level2_points,
+      level3PendingCount: pointsData.level3PendingCount,
+      level3ConfirmedCount: pointsData.level3ConfirmedCount,
+      level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
+      level3Points: pointsData.level3Points,
+      level3PointsPerApplication: settingData.level3_points,
+      totalPoints: pointsData.totalPoints,
+      maxPoints,
+      remainingPoints: maxPoints - pointsData.totalPoints,
+    });
+  };
+
+  // 年度切替時の処理
+  const handleFiscalYearChange = async (year: number) => {
+    if (!user) return;
+    setSelectedFiscalYear(year);
+    setPointsInfo(null);
+    await fetchPointsInfoForYear(user.staff_id, year);
+  };
 
   useEffect(() => {
     const currentUser = getUser();
@@ -105,55 +151,16 @@ export default function HomePage() {
       setLotteryPeriodInfo(info);
     };
 
-    // 年休得点情報を取得
-    const fetchPointsInfo = async () => {
-      const { data: settingData } = await supabase
-        .from("setting")
-        .select("current_fiscal_year, level1_points, level2_points, level3_points")
-        .eq("id", 1)
-        .single();
-
-      if (!settingData) return;
-
-      const pointsData = await calculateAnnualLeavePoints(
-        currentUser.staff_id,
-        settingData.current_fiscal_year
-      );
-
-      if (!pointsData) return;
-
-      const availabilityData = await checkAnnualLeavePointsAvailable(
-        currentUser.staff_id,
-        1,
-        "full_day"
-      );
-
-      if (!availabilityData) return;
-
-      setPointsInfo({
-        level1PendingCount: pointsData.level1PendingCount,
-        level1ConfirmedCount: pointsData.level1ConfirmedCount,
-        level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
-        level1Points: pointsData.level1Points,
-        level1PointsPerApplication: settingData.level1_points,
-        level2PendingCount: pointsData.level2PendingCount,
-        level2ConfirmedCount: pointsData.level2ConfirmedCount,
-        level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
-        level2Points: pointsData.level2Points,
-        level2PointsPerApplication: settingData.level2_points,
-        level3PendingCount: pointsData.level3PendingCount,
-        level3ConfirmedCount: pointsData.level3ConfirmedCount,
-        level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
-        level3Points: pointsData.level3Points,
-        level3PointsPerApplication: settingData.level3_points,
-        totalPoints: pointsData.totalPoints,
-        maxPoints: availabilityData.maxPoints,
-        remainingPoints: availabilityData.remainingPoints,
-      });
+    // デフォルト年度を取得し、得点情報を取得
+    const initializePointsInfo = async () => {
+      const fiscalYear = await getDefaultDisplayFiscalYear();
+      setDefaultFiscalYear(fiscalYear);
+      setSelectedFiscalYear(fiscalYear);
+      await fetchPointsInfoForYear(currentUser.staff_id, fiscalYear);
     };
 
     fetchLotteryPeriodInfo();
-    fetchPointsInfo();
+    initializePointsInfo();
 
     // 管理者の場合、承認待ち申請数を取得（レベル3承認待ち + キャンセル承認待ち）
     const fetchPendingApprovals = async () => {
@@ -427,8 +434,31 @@ export default function HomePage() {
         )}
 
         {/* Points Info Card */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <PointsStatus pointsInfo={pointsInfo} className="lg:col-span-3" />
+        <div className="space-y-4">
+          {/* 年度切替タブ */}
+          {defaultFiscalYear && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-600">年度:</span>
+              <div className="flex gap-1">
+                {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
+                  <button
+                    key={year}
+                    onClick={() => handleFiscalYearChange(year)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      selectedFiscalYear === year
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {year}年度
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <PointsStatus pointsInfo={pointsInfo} className="lg:col-span-3" />
+          </div>
         </div>
 
         {/* Menu Grid */}

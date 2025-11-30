@@ -43,7 +43,6 @@ export default function AdminSettingsPage() {
   const [level1Points, setLevel1Points] = useState(2);
   const [level2Points, setLevel2Points] = useState(1);
   const [level3Points, setLevel3Points] = useState(0.1);
-  const [currentFiscalYear, setCurrentFiscalYear] = useState(new Date().getFullYear());
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -79,7 +78,6 @@ export default function AdminSettingsPage() {
         setLevel1Points(data.level1_points ?? 2);
         setLevel2Points(data.level2_points ?? 1);
         setLevel3Points(data.level3_points ?? 0.1);
-        setCurrentFiscalYear(data.current_fiscal_year ?? new Date().getFullYear());
       }
     };
 
@@ -128,10 +126,6 @@ export default function AdminSettingsPage() {
       setError("レベル3消費得点は0以上で入力してください");
       return;
     }
-    if (currentFiscalYear < 2000) {
-      setError("年度は2000以上で入力してください");
-      return;
-    }
 
     setLoading(true);
 
@@ -148,7 +142,6 @@ export default function AdminSettingsPage() {
           level1_points: level1Points,
           level2_points: level2Points,
           level3_points: level3Points,
-          current_fiscal_year: currentFiscalYear,
         })
         .eq("id", 1);
 
@@ -392,25 +385,6 @@ export default function AdminSettingsPage() {
                       onChange={(e) => setMaxAnnualLeavePoints(Number(e.target.value))}
                     />
                     <p className="mt-1.5 text-xs text-gray-500 font-medium">デフォルト: 20点</p>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="currentFiscalYear"
-                      className="block text-sm font-bold text-gray-700 mb-2"
-                    >
-                      現在の年度
-                    </label>
-                    <input
-                      id="currentFiscalYear"
-                      type="number"
-                      min="2000"
-                      required
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                      value={currentFiscalYear}
-                      onChange={(e) => setCurrentFiscalYear(Number(e.target.value))}
-                    />
-                    <p className="mt-1.5 text-xs text-gray-500 font-medium">例: 2025（2025年4月〜2026年3月）</p>
                   </div>
 
                   <div>

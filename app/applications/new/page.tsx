@@ -21,6 +21,7 @@ import {
   getCurrentLotteryPeriodInfo,
   calculateAnnualLeavePoints,
   checkAnnualLeavePointsAvailable,
+  getDefaultDisplayFiscalYear,
 } from "@/lib/application";
 import { PointsStatus } from "@/components/PointsStatus";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -68,17 +69,63 @@ export default function NewApplicationPage() {
   } | null>(null);
 
   // 年休得点情報
-  const [pointsInfo, setPointsInfo] = useState<{
-    level1ApplicationCount: number;
-    level1ConfirmedCount: number;
-    level2ApplicationCount: number;
-    level2ConfirmedCount: number;
-    level3ApplicationCount: number;
-    level3ConfirmedCount: number;
-    totalPoints: number;
-    maxPoints: number;
-    remainingPoints: number;
-  } | null>(null);
+  const [pointsInfo, setPointsInfo] = useState<any>(null);
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // 指定年度の得点情報を取得
+  const fetchPointsInfoForYear = async (staffId: string, fiscalYear: number) => {
+    const { data: settingData } = await supabase
+      .from("setting")
+      .select("level1_points, level2_points, level3_points, max_annual_leave_points")
+      .eq("id", 1)
+      .single();
+
+    if (!settingData) return;
+
+    const pointsData = await calculateAnnualLeavePoints(staffId, fiscalYear);
+    if (!pointsData) return;
+
+    const { data: userData } = await supabase
+      .from("user")
+      .select("point_retention_rate")
+      .eq("staff_id", staffId)
+      .single();
+
+    const maxPoints = Math.floor(
+      (settingData.max_annual_leave_points * (userData?.point_retention_rate || 100)) / 100
+    );
+
+    setPointsInfo({
+      level1PendingCount: pointsData.level1PendingCount,
+      level1ConfirmedCount: pointsData.level1ConfirmedCount,
+      level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
+      level1Points: pointsData.level1Points,
+      level1PointsPerApplication: settingData.level1_points,
+      level2PendingCount: pointsData.level2PendingCount,
+      level2ConfirmedCount: pointsData.level2ConfirmedCount,
+      level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
+      level2Points: pointsData.level2Points,
+      level2PointsPerApplication: settingData.level2_points,
+      level3PendingCount: pointsData.level3PendingCount,
+      level3ConfirmedCount: pointsData.level3ConfirmedCount,
+      level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
+      level3Points: pointsData.level3Points,
+      level3PointsPerApplication: settingData.level3_points,
+      totalPoints: pointsData.totalPoints,
+      maxPoints,
+      remainingPoints: maxPoints - pointsData.totalPoints,
+    });
+  };
+
+  // 年度切替時の処理
+  const handleFiscalYearChange = async (year: number) => {
+    if (!currentUser) return;
+    setSelectedFiscalYear(year);
+    setPointsInfo(null);
+    await fetchPointsInfoForYear(currentUser.staff_id, year);
+  };
 
   useEffect(() => {
     const user = getUser();
@@ -86,6 +133,7 @@ export default function NewApplicationPage() {
       router.push("/auth/login");
       return;
     }
+    setCurrentUser(user);
 
     // 抽選期間情報を取得
     const fetchLotteryPeriodInfo = async () => {
@@ -93,58 +141,16 @@ export default function NewApplicationPage() {
       setLotteryPeriodInfo(info);
     };
 
-    // 年休得点情報を取得
-    const fetchPointsInfo = async () => {
-      // 設定から現在の年度を取得
-      const { data: settingData } = await supabase
-        .from("setting")
-        .select("current_fiscal_year, level1_points, level2_points, level3_points")
-        .eq("id", 1)
-        .single();
-
-      if (!settingData) return;
-
-      // 得点計算情報を取得
-      const pointsData = await calculateAnnualLeavePoints(
-        user.staff_id,
-        settingData.current_fiscal_year
-      );
-
-      if (!pointsData) return;
-
-      // 利用可能得点を確認
-      const availabilityData = await checkAnnualLeavePointsAvailable(
-        user.staff_id,
-        1, // とりあえずレベル1で計算
-        "full_day"
-      );
-
-      if (!availabilityData) return;
-
-      setPointsInfo({
-        level1PendingCount: pointsData.level1PendingCount,
-        level1ConfirmedCount: pointsData.level1ConfirmedCount,
-        level1CancelledAfterLotteryCount: pointsData.level1CancelledAfterLotteryCount,
-        level1Points: pointsData.level1Points,
-        level1PointsPerApplication: settingData.level1_points,
-        level2PendingCount: pointsData.level2PendingCount,
-        level2ConfirmedCount: pointsData.level2ConfirmedCount,
-        level2CancelledAfterLotteryCount: pointsData.level2CancelledAfterLotteryCount,
-        level2Points: pointsData.level2Points,
-        level2PointsPerApplication: settingData.level2_points,
-        level3PendingCount: pointsData.level3PendingCount,
-        level3ConfirmedCount: pointsData.level3ConfirmedCount,
-        level3CancelledAfterLotteryCount: pointsData.level3CancelledAfterLotteryCount,
-        level3Points: pointsData.level3Points,
-        level3PointsPerApplication: settingData.level3_points,
-        totalPoints: pointsData.totalPoints,
-        maxPoints: availabilityData.maxPoints,
-        remainingPoints: availabilityData.remainingPoints,
-      });
+    // デフォルト年度を取得し、得点情報を取得
+    const initializePointsInfo = async () => {
+      const fiscalYear = await getDefaultDisplayFiscalYear();
+      setDefaultFiscalYear(fiscalYear);
+      setSelectedFiscalYear(fiscalYear);
+      await fetchPointsInfoForYear(user.staff_id, fiscalYear);
     };
 
     fetchLotteryPeriodInfo();
-    fetchPointsInfo();
+    initializePointsInfo();
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,11 +239,12 @@ export default function NewApplicationPage() {
         return;
       }
 
-      // 年休得点チェック（全レベル共通）
+      // 年休得点チェック（全レベル共通）- 取得希望日の年度でチェック
       const pointsCheck = await checkAnnualLeavePointsAvailable(
         user.staff_id,
         level,
-        period
+        period,
+        vacationDate
       );
 
       if (!pointsCheck || !pointsCheck.canApply) {
@@ -405,7 +412,31 @@ export default function NewApplicationPage() {
             <div className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* 年休得点情報 */}
-                <PointsStatus pointsInfo={pointsInfo} className="mb-6" />
+                <div className="space-y-4">
+                  {/* 年度切替タブ */}
+                  {defaultFiscalYear && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-600">年度:</span>
+                      <div className="flex gap-1">
+                        {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
+                          <button
+                            type="button"
+                            key={year}
+                            onClick={() => handleFiscalYearChange(year)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                              selectedFiscalYear === year
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {year}年度
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <PointsStatus pointsInfo={pointsInfo} />
+                </div>
 
                 {error && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">

@@ -438,11 +438,12 @@ export default function ApplicationCalendarPage() {
         return;
       }
 
-      // バリデーション10: 得点チェック
+      // バリデーション10: 得点チェック - 取得希望日の年度でチェック
       const pointsCheck = await checkAnnualLeavePointsAvailable(
         user.staff_id,
         applyLevel,
-        applyPeriod
+        applyPeriod,
+        vacationDate
       );
       if (!pointsCheck || !pointsCheck.canApply) {
         alert(`年休得点が不足しています（残り: ${pointsCheck?.remainingPoints?.toFixed(2) || 0}点）`);
