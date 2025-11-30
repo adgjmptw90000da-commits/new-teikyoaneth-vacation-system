@@ -1594,17 +1594,25 @@ export default function ScheduleViewPage() {
 
     setIsAutoAssigning(true);
     try {
-      const insertData: { staff_id: string; shift_date: string; shift_type_id: number }[] = [];
+      const insertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
+
+      // シフトタイプのデフォルト勤務場所を取得
+      const nightShiftType = shiftTypes.find(t => t.id === autoAssignConfig.nightShiftTypeId);
+      const dayAfterShiftType = shiftTypes.find(t => t.id === autoAssignConfig.dayAfterShiftTypeId);
 
       for (const assignment of autoAssignPreview.assignments) {
         const shiftTypeId = assignment.type === 'night_shift'
           ? autoAssignConfig.nightShiftTypeId!
           : autoAssignConfig.dayAfterShiftTypeId!;
+        const workLocationId = assignment.type === 'night_shift'
+          ? (nightShiftType?.default_work_location_id || null)
+          : (dayAfterShiftType?.default_work_location_id || null);
 
         insertData.push({
           staff_id: assignment.staffId,
           shift_date: assignment.date,
           shift_type_id: shiftTypeId,
+          work_location_id: workLocationId,
         });
       }
 
@@ -1962,36 +1970,37 @@ export default function ScheduleViewPage() {
               }
             }
 
-            // 3. スケジュール/シフトタイプのデフォルト勤務場所
-            if (!workLocationId) {
-              for (const s of schedules) {
-                const matchesPeriod = (
-                  (period === 'am' && s.schedule_type?.position_am) ||
-                  (period === 'pm' && s.schedule_type?.position_pm) ||
-                  (period === 'night' && s.schedule_type?.position_night)
-                );
-                if (matchesPeriod && s.schedule_type?.default_work_location_id) {
-                  workLocationId = s.schedule_type.default_work_location_id;
-                  break;
+            // 3. 年休の勤務場所（displaySettingsから）
+            if (!workLocationId && vacation && period !== 'night') {
+              const matchesVacationPeriod = (
+                vacation.period === 'full_day' ||
+                (period === 'am' && vacation.period === 'am') ||
+                (period === 'pm' && vacation.period === 'pm')
+              );
+              if (matchesVacationPeriod) {
+                const onePersonnelStatus = vacation.one_personnel_status || 'not_applied';
+                let settingsKey: string;
+                if (onePersonnelStatus === 'kensanbi') {
+                  settingsKey = 'kensanbi_used';
+                } else {
+                  settingsKey = 'vacation';
+                }
+                const settings = displaySettings[settingsKey as keyof DisplaySettings];
+                if (settings && typeof settings === 'object' && 'default_work_location_id' in settings) {
+                  workLocationId = (settings as { default_work_location_id?: number }).default_work_location_id || null;
                 }
               }
             }
 
-            if (!workLocationId) {
-              for (const s of shifts) {
-                const matchesPeriod = (
-                  (period === 'am' && s.shift_type?.position_am) ||
-                  (period === 'pm' && s.shift_type?.position_pm) ||
-                  (period === 'night' && s.shift_type?.position_night)
-                );
-                if (matchesPeriod && s.shift_type?.default_work_location_id) {
-                  workLocationId = s.shift_type.default_work_location_id;
-                  break;
-                }
+            // 4. 研究日の勤務場所（displaySettingsから）
+            if (!workLocationId && isResearchDay && period !== 'night') {
+              const researchSettings = displaySettings.research_day;
+              if (researchSettings?.default_work_location_id) {
+                workLocationId = researchSettings.default_work_location_id;
               }
             }
 
-            // 4. user_work_location（日単位のフォールバック）
+            // 5. user_work_location（日単位のフォールバック）
             if (!workLocationId) {
               workLocationId = member.workLocations?.[checkDate] || null;
             }
@@ -2153,13 +2162,18 @@ export default function ScheduleViewPage() {
 
     setIsAutoAssigning(true);
     try {
-      const insertData: { staff_id: string; shift_date: string; shift_type_id: number }[] = [];
+      // シフトタイプのデフォルト勤務場所を取得
+      const targetShiftType = shiftTypes.find(t => t.id === generalShiftConfig.shiftTypeId);
+      const workLocationId = targetShiftType?.default_work_location_id || null;
+
+      const insertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
 
       for (const assignment of generalShiftPreview.assignments) {
         insertData.push({
           staff_id: assignment.staffId,
           shift_date: assignment.date,
           shift_type_id: generalShiftConfig.shiftTypeId!,
+          work_location_id: workLocationId,
         });
       }
 
