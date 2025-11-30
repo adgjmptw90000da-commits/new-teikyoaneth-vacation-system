@@ -116,13 +116,6 @@ interface NewWorkLocation {
   is_default_holiday: boolean;
 }
 
-interface UserForHidden {
-  staff_id: string;
-  name: string;
-  team: 'A' | 'B';
-  display_order: number;
-}
-
 // 研究日・出向・休職はschedule_typeに移行したため、systemタブは年休・研鑽日のみ
 type SystemSettingKey = 'vacation' | 'vacation_applied' | 'kensanbi_used';
 
@@ -182,7 +175,7 @@ const ColorPicker = ({
 export default function ScheduleSettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<{ staff_id: string; name: string; is_admin: boolean } | null>(null);
-  const [activeTab, setActiveTab] = useState<'schedule' | 'shift' | 'workLocation' | 'system' | 'hiddenMembers'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'shift' | 'workLocation' | 'system'>('schedule');
 
   // 予定タイプ
   const [scheduleTypes, setScheduleTypes] = useState<ScheduleType[]>([]);
@@ -243,11 +236,6 @@ export default function ScheduleSettingsPage() {
   });
   const [draggedWorkLocation, setDraggedWorkLocation] = useState<WorkLocation | null>(null);
 
-  // 非表示メンバー
-  const [allUsers, setAllUsers] = useState<UserForHidden[]>([]);
-  const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set());
-  const [savingHidden, setSavingHidden] = useState(false);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draggedSchedule, setDraggedSchedule] = useState<ScheduleType | null>(null);
@@ -275,15 +263,11 @@ export default function ScheduleSettingsPage() {
       { data: shifts },
       { data: settings },
       { data: locations },
-      { data: users },
-      { data: hiddenMembers },
     ] = await Promise.all([
       supabase.from("schedule_type").select("*").order("display_order"),
       supabase.from("shift_type").select("*").order("display_order"),
       supabase.from("setting").select("display_settings").single(),
       supabase.from("work_location").select("*").order("display_order"),
-      supabase.from("user").select("staff_id, name, team, display_order").order("team").order("display_order"),
-      supabase.from("schedule_hidden_members").select("staff_id"),
     ]);
 
     if (schedules) setScheduleTypes(schedules);
@@ -292,10 +276,6 @@ export default function ScheduleSettingsPage() {
       setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...settings.display_settings });
     }
     if (locations) setWorkLocations(locations);
-    if (users) setAllUsers(users);
-    if (hiddenMembers) {
-      setHiddenMemberIds(new Set(hiddenMembers.map(h => h.staff_id)));
-    }
     setLoading(false);
   };
 
@@ -590,42 +570,6 @@ export default function ScheduleSettingsPage() {
     e.dataTransfer.dropEffect = "move";
   };
 
-  // ===== 非表示メンバー関連 =====
-  const toggleHiddenMember = (staffId: string) => {
-    setHiddenMemberIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(staffId)) {
-        newSet.delete(staffId);
-      } else {
-        newSet.add(staffId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleSaveHiddenMembers = async () => {
-    setSavingHidden(true);
-    try {
-      // 既存のデータを全削除
-      await supabase.from("schedule_hidden_members").delete().neq("id", 0);
-
-      // 新しいデータを挿入
-      if (hiddenMemberIds.size > 0) {
-        const inserts = Array.from(hiddenMemberIds).map(staff_id => ({ staff_id }));
-        const { error } = await supabase.from("schedule_hidden_members").insert(inserts);
-        if (error) {
-          alert("保存に失敗しました: " + error.message);
-          setSavingHidden(false);
-          return;
-        }
-      }
-      alert("非表示メンバーを保存しました");
-    } catch (err) {
-      alert("保存に失敗しました");
-    }
-    setSavingHidden(false);
-  };
-
   if (!user) return null;
 
   return (
@@ -724,14 +668,6 @@ export default function ScheduleSettingsPage() {
             }`}
           >
             表示設定
-          </button>
-          <button
-            onClick={() => setActiveTab('hiddenMembers')}
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'hiddenMembers' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            非表示
           </button>
         </div>
 
@@ -996,68 +932,6 @@ export default function ScheduleSettingsPage() {
               </div>
             )}
 
-            {/* 非表示メンバータブ */}
-            {activeTab === 'hiddenMembers' && (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-4 bg-gray-50 border-b border-gray-200">
-                  <p className="text-sm text-gray-600">
-                    予定表に表示しないメンバーを選択してください。チェックしたメンバーは予定表の表示、当直・シフト自動割り振り、カウント計算から除外されます。
-                  </p>
-                </div>
-                {allUsers.length === 0 ? (
-                  <div className="p-12 text-center text-gray-500">
-                    メンバーが登録されていません
-                  </div>
-                ) : (
-                  <>
-                    <div className="divide-y divide-gray-200 max-h-[400px] overflow-y-auto">
-                      {['A', 'B'].map(team => {
-                        const teamUsers = allUsers.filter(u => u.team === team);
-                        if (teamUsers.length === 0) return null;
-                        return (
-                          <div key={team}>
-                            <div className="px-4 py-2 bg-gray-100 text-sm font-bold text-gray-700">
-                              {team}表
-                            </div>
-                            {teamUsers.map(u => (
-                              <label
-                                key={u.staff_id}
-                                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={hiddenMemberIds.has(u.staff_id)}
-                                  onChange={() => toggleHiddenMember(u.staff_id)}
-                                  className="w-4 h-4 text-blue-600 rounded"
-                                />
-                                <span className={hiddenMemberIds.has(u.staff_id) ? 'text-gray-400 line-through' : 'text-gray-900'}>
-                                  {u.name}
-                                </span>
-                                {hiddenMemberIds.has(u.staff_id) && (
-                                  <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded">非表示</span>
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-                      <span className="text-sm text-gray-600">
-                        {hiddenMemberIds.size}人を非表示に設定中
-                      </span>
-                      <button
-                        onClick={handleSaveHiddenMembers}
-                        disabled={savingHidden}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {savingHidden ? '保存中...' : '保存'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
           </>
         )}
       </main>

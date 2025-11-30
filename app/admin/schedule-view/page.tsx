@@ -270,6 +270,12 @@ export default function ScheduleViewPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
 
+  // 非表示メンバー管理
+  const [allUsersForHidden, setAllUsersForHidden] = useState<{ staff_id: string; name: string; team: 'A' | 'B' }[]>([]);
+  const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set());
+  const [showHiddenMembersModal, setShowHiddenMembersModal] = useState(false);
+  const [savingHidden, setSavingHidden] = useState(false);
+
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
   const [autoAssignMode, setAutoAssignMode] = useState<'night_shift' | 'general_shift'>('night_shift'); // 当直 or 一般シフト
@@ -598,11 +604,15 @@ export default function ScheduleViewPage() {
       // 予定提出ロック状態を設定
       setIsSubmissionLocked(publishData?.is_submission_locked ?? false);
 
-      // 非表示メンバーのSetを作成
-      const hiddenMemberIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
+      // 非表示メンバー管理用：全ユーザーを保存
+      setAllUsersForHidden((users || []).map(u => ({ staff_id: u.staff_id, name: u.name, team: u.team || 'A' })));
+
+      // 非表示メンバーのSetを作成・保存
+      const hiddenIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
+      setHiddenMemberIds(hiddenIds);
 
       // メンバーデータを構築（非表示メンバーを除外）
-      const visibleUsers = (users || []).filter(u => !hiddenMemberIds.has(u.staff_id));
+      const visibleUsers = (users || []).filter(u => !hiddenIds.has(u.staff_id));
       const membersData: MemberData[] = visibleUsers.map(user => {
         const researchDayRecord = researchDays?.find(r => r.staff_id === user.staff_id);
         const isSecondment = secondments?.some(s => s.staff_id === user.staff_id) || false;
@@ -2314,6 +2324,62 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // 非表示メンバーのトグル
+  const toggleHiddenMember = (staffId: string) => {
+    setHiddenMemberIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(staffId)) {
+        newSet.delete(staffId);
+      } else {
+        newSet.add(staffId);
+      }
+      return newSet;
+    });
+  };
+
+  // 非表示メンバーの保存
+  const handleSaveHiddenMembers = async () => {
+    setSavingHidden(true);
+    try {
+      // 既存データを全削除
+      const { error: deleteError } = await supabase
+        .from("schedule_hidden_members")
+        .delete()
+        .neq("id", 0); // 全件削除
+
+      if (deleteError) {
+        alert("保存に失敗しました: " + deleteError.message);
+        setSavingHidden(false);
+        return;
+      }
+
+      // 新しいデータを挿入
+      if (hiddenMemberIds.size > 0) {
+        const { error: insertError } = await supabase
+          .from("schedule_hidden_members")
+          .insert(
+            Array.from(hiddenMemberIds).map(staff_id => ({ staff_id }))
+          );
+
+        if (insertError) {
+          alert("保存に失敗しました: " + insertError.message);
+          setSavingHidden(false);
+          return;
+        }
+      }
+
+      alert("非表示メンバーを保存しました");
+      setShowHiddenMembersModal(false);
+      // データを再読み込みして画面を更新
+      fetchData();
+    } catch (err) {
+      console.error("Error saving hidden members:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setSavingHidden(false);
+    }
+  };
+
   const getRowBackgroundColor = (day: DayData): string => {
     if (day.isHoliday || day.dayOfWeek === 0) return "bg-red-50";
     if (day.dayOfWeek === 6) return "bg-blue-50";
@@ -3324,6 +3390,13 @@ export default function ScheduleViewPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-yellow-700 bg-yellow-100 hover:bg-yellow-200 rounded-lg transition-colors"
               >
                 得点設定
+              </button>
+              {/* 非表示メンバーボタン */}
+              <button
+                onClick={() => setShowHiddenMembersModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                非表示メンバー
               </button>
               {/* アップロード/再アップロード/非公開ボタン */}
               {isPublished ? (
@@ -7051,6 +7124,104 @@ export default function ScheduleViewPage() {
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isBulkDeleting ? '削除中...' : '削除実行'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 非表示メンバー設定モーダル */}
+      {showHiddenMembersModal && (
+        <>
+          {/* オーバーレイ */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => setShowHiddenMembersModal(false)}
+          />
+          {/* モーダル本体 */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                <h2 className="text-lg font-bold text-gray-900">
+                  非表示メンバー設定
+                </h2>
+                <button
+                  onClick={() => setShowHiddenMembersModal(false)}
+                  className="text-gray-500 hover:text-gray-700 p-1"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1">
+                <p className="text-sm text-gray-600 mb-4">
+                  予定表に表示しないメンバーを選択してください。<br />
+                  <span className="text-gray-500 text-xs">※非表示メンバーは当直・シフト自動割り振りからも除外されます</span>
+                </p>
+
+                <div className="space-y-4">
+                  {/* A表 */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">A表</h3>
+                    <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                      {allUsersForHidden
+                        .filter(u => u.team === 'A')
+                        .map(user => (
+                          <label key={user.staff_id} className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hiddenMemberIds.has(user.staff_id)}
+                              onChange={() => toggleHiddenMember(user.staff_id)}
+                              className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500"
+                            />
+                            <span className="text-sm text-gray-700">{user.name}</span>
+                            {hiddenMemberIds.has(user.staff_id) && (
+                              <span className="text-xs text-gray-400">（非表示）</span>
+                            )}
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* B表 */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">B表</h3>
+                    <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                      {allUsersForHidden
+                        .filter(u => u.team === 'B')
+                        .map(user => (
+                          <label key={user.staff_id} className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={hiddenMemberIds.has(user.staff_id)}
+                              onChange={() => toggleHiddenMember(user.staff_id)}
+                              className="w-4 h-4 text-gray-600 border-gray-300 rounded focus:ring-gray-500"
+                            />
+                            <span className="text-sm text-gray-700">{user.name}</span>
+                            {hiddenMemberIds.has(user.staff_id) && (
+                              <span className="text-xs text-gray-400">（非表示）</span>
+                            )}
+                          </label>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
+                <button
+                  onClick={() => setShowHiddenMembersModal(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleSaveHiddenMembers}
+                  disabled={savingHidden}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingHidden ? '保存中...' : '保存'}
                 </button>
               </div>
             </div>
