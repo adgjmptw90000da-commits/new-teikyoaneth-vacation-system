@@ -2201,15 +2201,23 @@ export default function ScheduleViewPage() {
 
   // PNG画像を生成してSupabase Storageにアップロード
   const generateAndUploadImage = async (team: 'A' | 'B'): Promise<string | null> => {
-    if (!tableRef.current) return null;
+    console.log(`[${team}表] 画像生成開始`);
+
+    if (!tableRef.current) {
+      console.error(`[${team}表] tableRef.currentがnullです`);
+      return null;
+    }
+    console.log(`[${team}表] tableRef OK, サイズ:`, tableRef.current.offsetWidth, 'x', tableRef.current.offsetHeight);
 
     try {
+      console.log(`[${team}表] html2canvas実行中...`);
       const canvas = await html2canvas(tableRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        logging: false,
+        logging: true, // デバッグ用にログ有効化
       });
+      console.log(`[${team}表] canvas生成完了, サイズ:`, canvas.width, 'x', canvas.height);
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((b) => {
@@ -2217,8 +2225,11 @@ export default function ScheduleViewPage() {
           else reject(new Error('Failed to create blob'));
         }, 'image/png');
       });
+      console.log(`[${team}表] blob生成完了, サイズ:`, blob.size, 'bytes');
 
       const fileName = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${team}.png`;
+      console.log(`[${team}表] アップロード中... ファイル名:`, fileName);
+
       const { error } = await supabase.storage
         .from('schedule-images')
         .upload(fileName, blob, {
@@ -2227,7 +2238,7 @@ export default function ScheduleViewPage() {
         });
 
       if (error) {
-        console.error('Image upload error:', error);
+        console.error(`[${team}表] アップロードエラー:`, error);
         return null;
       }
 
@@ -2235,9 +2246,10 @@ export default function ScheduleViewPage() {
         .from('schedule-images')
         .getPublicUrl(fileName);
 
+      console.log(`[${team}表] 完了! URL:`, data.publicUrl);
       return data.publicUrl;
     } catch (err) {
-      console.error('Image generation error:', err);
+      console.error(`[${team}表] エラー:`, err);
       return null;
     }
   };
