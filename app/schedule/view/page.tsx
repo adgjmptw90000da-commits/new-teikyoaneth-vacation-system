@@ -131,13 +131,6 @@ export default function ScheduleViewPage() {
   const [isPublished, setIsPublished] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
 
-  // 画像URL
-  const [imageUrlA, setImageUrlA] = useState<string | null>(null);
-  const [imageUrlB, setImageUrlB] = useState<string | null>(null);
-
-  // 表示モード
-  const [viewMode, setViewMode] = useState<'image' | 'table'>('image');
-
   // A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'A' | 'B'>('A');
 
@@ -167,14 +160,10 @@ export default function ScheduleViewPage() {
         setMembers([]);
         setHolidays([]);
         setPublishedAt(null);
-        setImageUrlA(null);
-        setImageUrlB(null);
       } else {
         // 公開済み - スナップショットからデータを復元
         setIsPublished(true);
         setPublishedAt(publishData.published_at);
-        setImageUrlA(publishData.image_url_a || null);
-        setImageUrlB(publishData.image_url_b || null);
 
         const snapshot = publishData.snapshot_data as SnapshotData;
         if (snapshot) {
@@ -593,32 +582,6 @@ export default function ScheduleViewPage() {
               </div>
             )}
 
-            {/* 表示モード切り替え */}
-            {isPublished && (imageUrlA || imageUrlB) && (
-              <div className="flex justify-center gap-2 pt-3 mt-3 border-t border-gray-100">
-                <button
-                  onClick={() => setViewMode('image')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    viewMode === 'image'
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  画像で表示
-                </button>
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    viewMode === 'table'
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  テーブルで表示
-                </button>
-              </div>
-            )}
-
             {/* 公開日時表示 */}
             {isPublished && publishedAt && (
               <div className="text-center text-xs text-gray-500 mt-2">
@@ -642,19 +605,8 @@ export default function ScheduleViewPage() {
             </div>
           )}
 
-          {/* 画像表示モード */}
-          {isPublished && viewMode === 'image' && (selectedTeam === 'A' ? imageUrlA : imageUrlB) && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <img
-                src={selectedTeam === 'A' ? imageUrlA! : imageUrlB!}
-                alt={`${currentYear}年${currentMonth}月 ${selectedTeam}表`}
-                className="w-full max-w-full"
-              />
-            </div>
-          )}
-
-          {/* テーブル表示モード */}
-          {isPublished && (viewMode === 'table' || !(selectedTeam === 'A' ? imageUrlA : imageUrlB)) && (
+          {/* テーブル表示 */}
+          {isPublished && (
             <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="border-collapse table-fixed w-auto">

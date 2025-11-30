@@ -1,11 +1,10 @@
 // @ts-nocheck
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import html2canvas from "html2canvas";
 import type { Database, DisplaySettings } from "@/lib/database.types";
 
 // デフォルトの表示設定（12月予定表の色に合わせる - パステル調）
@@ -259,9 +258,6 @@ export default function ScheduleViewPage() {
 
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
-
-  // テーブルキャプチャ用ref
-  const tableRef = useRef<HTMLDivElement>(null);
 
   // モーダル
   const [selectedCell, setSelectedCell] = useState<{ date: string; member: MemberData } | null>(null);
@@ -2199,81 +2195,6 @@ export default function ScheduleViewPage() {
     }
   };
 
-  // PNG画像を生成してSupabase Storageにアップロード
-  const generateAndUploadImage = async (team: 'A' | 'B'): Promise<string | null> => {
-    if (!tableRef.current) return null;
-
-    try {
-      // キャプチャ前に一時的にスタイルを変更（全幅表示）
-      const originalStyle = tableRef.current.style.cssText;
-      const originalOverflow = tableRef.current.style.overflow;
-      const originalWidth = tableRef.current.style.width;
-      const originalMaxWidth = tableRef.current.style.maxWidth;
-
-      tableRef.current.style.overflow = 'visible';
-      tableRef.current.style.width = 'auto';
-      tableRef.current.style.maxWidth = 'none';
-
-      // テーブル内のsticky要素も一時的に解除
-      const stickyElements = tableRef.current.querySelectorAll('[class*="sticky"]');
-      const originalStickyStyles: string[] = [];
-      stickyElements.forEach((el, i) => {
-        originalStickyStyles[i] = (el as HTMLElement).style.cssText;
-        (el as HTMLElement).style.position = 'static';
-      });
-
-      // 少し待ってからキャプチャ
-      await new Promise(r => setTimeout(r, 100));
-
-      const canvas = await html2canvas(tableRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        windowWidth: tableRef.current.scrollWidth + 100,
-        windowHeight: tableRef.current.scrollHeight + 100,
-      });
-
-      // スタイルを元に戻す
-      tableRef.current.style.cssText = originalStyle;
-      tableRef.current.style.overflow = originalOverflow;
-      tableRef.current.style.width = originalWidth;
-      tableRef.current.style.maxWidth = originalMaxWidth;
-      stickyElements.forEach((el, i) => {
-        (el as HTMLElement).style.cssText = originalStickyStyles[i];
-      });
-
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b);
-          else reject(new Error('Failed to create blob'));
-        }, 'image/png');
-      });
-
-      const fileName = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${team}.png`;
-      const { error } = await supabase.storage
-        .from('schedule-images')
-        .upload(fileName, blob, {
-          contentType: 'image/png',
-          upsert: true,
-        });
-
-      if (error) {
-        console.error('Image upload error:', error);
-        return null;
-      }
-
-      const { data } = supabase.storage
-        .from('schedule-images')
-        .getPublicUrl(fileName);
-
-      return data.publicUrl;
-    } catch (err) {
-      console.error('Image generation error:', err);
-      return null;
-    }
-  };
-
   // 予定表をアップロード（公開）
   const handleUpload = async () => {
     const confirmMessage = isPublished
@@ -2285,23 +2206,9 @@ export default function ScheduleViewPage() {
     }
 
     setIsUploading(true);
-    const previousTeam = selectedTeam;
 
     try {
       const currentUser = getUser();
-
-      // A表の画像を生成
-      setSelectedTeam('A');
-      await new Promise(r => setTimeout(r, 500)); // レンダリング待ち
-      const imageUrlA = await generateAndUploadImage('A');
-
-      // B表の画像を生成
-      setSelectedTeam('B');
-      await new Promise(r => setTimeout(r, 500)); // レンダリング待ち
-      const imageUrlB = await generateAndUploadImage('B');
-
-      // 元の表示に戻す
-      setSelectedTeam(previousTeam);
 
       // スナップショットデータを作成
       const snapshotData = {
@@ -2321,8 +2228,6 @@ export default function ScheduleViewPage() {
           published_at: new Date().toISOString(),
           published_by_staff_id: currentUser?.staff_id || null,
           snapshot_data: snapshotData,
-          image_url_a: imageUrlA,
-          image_url_b: imageUrlB,
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'year,month',
@@ -2331,14 +2236,9 @@ export default function ScheduleViewPage() {
       if (error) {
         alert("アップロードに失敗しました: " + error.message);
       } else {
-        const imageStatus = imageUrlA && imageUrlB
-          ? "\n\nA表・B表の画像も生成されました。"
-          : imageUrlA || imageUrlB
-            ? "\n\n一部の画像生成に失敗しました。"
-            : "\n\n画像の生成に失敗しました（Storage設定を確認してください）。";
         const successMessage = isPublished
-          ? "予定表を再アップロードしました。" + imageStatus
-          : "予定表をアップロードしました。一般ユーザーが閲覧できるようになりました。" + imageStatus;
+          ? "予定表を再アップロードしました。"
+          : "予定表をアップロードしました。一般ユーザーが閲覧できるようになりました。";
         setIsPublished(true);
         setPublishedAt(new Date().toISOString());
         alert(successMessage);
@@ -2346,7 +2246,6 @@ export default function ScheduleViewPage() {
     } catch (err) {
       console.error("Error uploading:", err);
       alert("エラーが発生しました");
-      setSelectedTeam(previousTeam);
     } finally {
       setIsUploading(false);
     }
