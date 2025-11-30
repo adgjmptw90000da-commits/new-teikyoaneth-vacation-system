@@ -5830,7 +5830,7 @@ export default function ScheduleViewPage() {
                         onClick={() => setShowDutyPresetSaveModal(true)}
                         className="px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
                       >
-                        保存
+                        {editingDutyPreset ? '上書き保存' : '保存'}
                       </button>
                       <button
                         onClick={() => setShowDutyPresetManageModal(true)}
@@ -5840,6 +5840,22 @@ export default function ScheduleViewPage() {
                       </button>
                     </div>
                   </div>
+                  {editingDutyPreset && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-sm text-emerald-700">
+                        編集中: <strong>{editingDutyPreset.name}</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingDutyPreset(null);
+                          setDutyPresetSaveName('');
+                        }}
+                        className="text-xs text-emerald-600 hover:text-emerald-800"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  )}
                   <select
                     value={selectedDutyPresetId || ''}
                     onChange={(e) => {
@@ -6748,7 +6764,7 @@ export default function ScheduleViewPage() {
                         onClick={() => setShowPresetSaveModal(true)}
                         className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
                       >
-                        保存
+                        {editingShiftPreset ? '上書き保存' : '保存'}
                       </button>
                       <button
                         onClick={() => setShowPresetManageModal(true)}
@@ -6758,6 +6774,22 @@ export default function ScheduleViewPage() {
                       </button>
                     </div>
                   </div>
+                  {editingShiftPreset && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-sm text-blue-700">
+                        編集中: <strong>{editingShiftPreset.name}</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingShiftPreset(null);
+                          setPresetSaveName('');
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  )}
                   <select
                     value={selectedPresetId || ''}
                     onChange={(e) => {
@@ -7028,7 +7060,7 @@ export default function ScheduleViewPage() {
                             }));
                             setPresetSaveName(preset.name);
                             setShowPresetManageModal(false);
-                            setShowPresetSaveModal(true);
+                            // モーダルを開かず、メインパネルで編集できるようにする
                           }}
                           className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
                         >
@@ -7235,7 +7267,7 @@ export default function ScheduleViewPage() {
                             }));
                             setDutyPresetSaveName(preset.name);
                             setShowDutyPresetManageModal(false);
-                            setShowDutyPresetSaveModal(true);
+                            // モーダルを開かず、メインパネルで編集できるようにする
                           }}
                           className="px-3 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
                         >
