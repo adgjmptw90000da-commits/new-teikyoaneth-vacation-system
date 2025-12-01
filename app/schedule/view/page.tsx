@@ -5,7 +5,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import type { DisplaySettings } from "@/lib/database.types";
+import type { DisplaySettings, Database } from "@/lib/database.types";
+
+type NameListConfig = Database["public"]["Tables"]["name_list_config"]["Row"];
 
 // デフォルトの表示設定
 const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -130,9 +132,13 @@ export default function ScheduleViewPage() {
   const [workLocationMaster, setWorkLocationMaster] = useState<WorkLocation[]>([]);
   const [isPublished, setIsPublished] = useState(false);
   const [publishedAt, setPublishedAt] = useState<string | null>(null);
+  const [nameListConfigs, setNameListConfigs] = useState<NameListConfig[]>([]);
 
   // A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'A' | 'B'>('A');
+
+  // メインタブ切り替え（予定表/名前一覧表）
+  const [mainTab, setMainTab] = useState<'schedule' | 'nameList'>('schedule');
 
   useEffect(() => {
     const currentUser = getUser();
@@ -146,10 +152,11 @@ export default function ScheduleViewPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // schedule_publishと非表示メンバーを同時に取得
+      // schedule_publishと非表示メンバー、名前一覧設定を同時に取得
       const [
         { data: publishData, error },
         { data: hiddenMembersData },
+        { data: nameListConfigsData },
       ] = await Promise.all([
         supabase
           .from("schedule_publish")
@@ -158,7 +165,10 @@ export default function ScheduleViewPage() {
           .eq("month", currentMonth)
           .single(),
         supabase.from("schedule_hidden_members").select("staff_id"),
+        supabase.from("name_list_config").select("*").eq("is_active", true).order("display_order"),
       ]);
+
+      setNameListConfigs(nameListConfigsData || []);
 
       // 非表示メンバーのSetを作成
       const hiddenMemberIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
@@ -217,6 +227,60 @@ export default function ScheduleViewPage() {
   // 休職期間内かチェック
   const isDateInLeaveOfAbsence = (date: string, leaves: { start_date: string; end_date: string }[]): boolean => {
     return leaves.some(leave => date >= leave.start_date && date <= leave.end_date);
+  };
+
+  // 名前一覧計算: 指定された日付と設定に対して該当する人の名前リストを取得
+  const calculateNameList = (day: DayData, config: NameListConfig): string[] => {
+    return members
+      .filter(member => {
+        // 出向中・休職中は除外
+        if (member.isSecondment) return false;
+        if (isDateInLeaveOfAbsence(day.date, member.leaveOfAbsence)) return false;
+
+        // 対象のシフト/予定があるかチェック
+        const schedules = member.schedules[day.date] || [];
+        const shifts = member.shifts[day.date] || [];
+
+        // 勤務時間帯フィルタの確認
+        const checkPeriod = (am: boolean, pm: boolean, night: boolean) => {
+          if (config.target_period_am && am) return true;
+          if (config.target_period_pm && pm) return true;
+          if (config.target_period_night && night) return true;
+          return false;
+        };
+
+        // 予定タイプチェック
+        if (config.target_schedule_type_ids && config.target_schedule_type_ids.length > 0) {
+          for (const schedule of schedules) {
+            if (config.target_schedule_type_ids.includes(schedule.schedule_type_id)) {
+              // schedule_type がある場合はそれを使用、なければ全時間帯をtrue扱い
+              const hasAm = schedule.schedule_type?.position_am ?? true;
+              const hasPm = schedule.schedule_type?.position_pm ?? true;
+              const hasNight = schedule.schedule_type?.position_night ?? false;
+              if (checkPeriod(hasAm, hasPm, hasNight)) {
+                return true;
+              }
+            }
+          }
+        }
+
+        // シフトタイプチェック
+        if (config.target_shift_type_ids && config.target_shift_type_ids.length > 0) {
+          for (const shift of shifts) {
+            if (config.target_shift_type_ids.includes(shift.shift_type_id)) {
+              const hasAm = shift.shift_type?.position_am ?? false;
+              const hasPm = shift.shift_type?.position_pm ?? false;
+              const hasNight = shift.shift_type?.position_night ?? true;
+              if (checkPeriod(hasAm, hasPm, hasNight)) {
+                return true;
+              }
+            }
+          }
+        }
+
+        return false;
+      })
+      .map(member => member.name);
   };
 
   // セルの内容を取得（当直可否は計算しない）
@@ -599,6 +663,33 @@ export default function ScheduleViewPage() {
                 最終更新: {new Date(publishedAt).toLocaleString('ja-JP')}
               </div>
             )}
+
+            {/* メインタブ切り替え（予定表/名前一覧表） */}
+            {isPublished && (
+              <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
+                <button
+                  onClick={() => setMainTab('schedule')}
+                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                    mainTab === 'schedule'
+                      ? 'bg-gray-800 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  予定表
+                </button>
+                <button
+                  onClick={() => setMainTab('nameList')}
+                  className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                    mainTab === 'nameList'
+                      ? 'bg-cyan-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <span className="w-2 h-2 bg-cyan-400 rounded-full"></span>
+                  名前一覧表
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 未公開メッセージ */}
@@ -616,8 +707,8 @@ export default function ScheduleViewPage() {
             </div>
           )}
 
-          {/* テーブル表示 */}
-          {isPublished && (
+          {/* 予定表タブ */}
+          {isPublished && mainTab === 'schedule' && (
             <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="border-collapse table-fixed w-auto">
@@ -799,6 +890,76 @@ export default function ScheduleViewPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* 名前一覧表タブ */}
+          {isPublished && mainTab === 'nameList' && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span className="w-3 h-3 bg-cyan-500 rounded-full"></span>
+                名前一覧表
+              </h3>
+              {nameListConfigs.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
+                    <thead>
+                      <tr>
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[60px]">
+                          日付
+                        </th>
+                        {nameListConfigs.map((config) => (
+                          <th
+                            key={`name-list-header-${config.id}`}
+                            className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
+                          >
+                            {config.display_label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {daysData.map((day) => {
+                        const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
+                        return (
+                          <tr
+                            key={`name-list-row-${day.date}`}
+                            className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
+                          >
+                            <td
+                              className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold whitespace-nowrap ${
+                                day.isHoliday || day.dayOfWeek === 0
+                                  ? 'bg-red-100 text-red-700'
+                                  : day.dayOfWeek === 6
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-gray-100 text-gray-900'
+                              }`}
+                            >
+                              {day.day}({weekdayNames[day.dayOfWeek]})
+                            </td>
+                            {nameListConfigs.map((config) => {
+                              const names = calculateNameList(day, config);
+                              return (
+                                <td
+                                  key={`name-list-cell-${day.date}-${config.id}`}
+                                  className="border border-black px-2 py-1.5 text-sm text-gray-900"
+                                >
+                                  {names.join('、')}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <p>名前一覧表の設定がありません。</p>
+                  <p className="text-sm mt-2">管理者が「名前一覧表設定」から設定を追加してください。</p>
+                </div>
+              )}
             </div>
           )}
         </div>

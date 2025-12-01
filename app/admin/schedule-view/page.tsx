@@ -292,6 +292,9 @@ export default function ScheduleViewPage() {
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
 
+  // メインタブ切り替え（予定表/名前一覧表）
+  const [mainTab, setMainTab] = useState<'schedule' | 'nameList'>('schedule');
+
   // モーダル
   const [selectedCell, setSelectedCell] = useState<{ date: string; member: MemberData } | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -3878,8 +3881,36 @@ export default function ScheduleViewPage() {
                 B表 ({teamBCount}名)
               </button>
             </div>
+
+            {/* メインタブ切り替え（予定表/名前一覧表） */}
+            <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
+              <button
+                onClick={() => setMainTab('schedule')}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                  mainTab === 'schedule'
+                    ? 'bg-gray-800 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                予定表
+              </button>
+              <button
+                onClick={() => setMainTab('nameList')}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                  mainTab === 'nameList'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span className="w-2 h-2 bg-cyan-400 rounded-full"></span>
+                名前一覧表
+              </button>
+            </div>
           </div>
 
+          {/* 予定表タブ */}
+          {mainTab === 'schedule' && (
+          <>
           {/* テーブル */}
           <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -4174,64 +4205,90 @@ export default function ScheduleViewPage() {
               </table>
             </div>
           </div>
+          </>
+          )}
 
-          {/* 名前一覧表 */}
-          {activeNameListConfigs.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mt-4">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span className="w-3 h-3 bg-cyan-500 rounded-full"></span>
-                名前一覧表
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
-                  <thead>
-                    <tr>
-                      <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[40px]">
-                        日
-                      </th>
-                      {activeNameListConfigs.map((config) => (
-                        <th
-                          key={`name-list-header-${config.id}`}
-                          className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
-                        >
-                          {config.display_label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {daysData.map((day) => (
-                      <tr
-                        key={`name-list-row-${day.date}`}
-                        className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
-                      >
-                        <td
-                          className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold ${
-                            day.isHoliday || day.dayOfWeek === 0
-                              ? 'bg-red-100 text-red-700'
-                              : day.dayOfWeek === 6
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-gray-100 text-gray-900'
-                          }`}
-                        >
-                          {day.day}
-                        </td>
-                        {activeNameListConfigs.map((config) => {
-                          const names = calculateNameList(day, config);
-                          return (
-                            <td
-                              key={`name-list-cell-${day.date}-${config.id}`}
-                              className="border border-black px-2 py-1.5 text-sm text-gray-900"
-                            >
-                              {names.join('、')}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* 名前一覧表タブ */}
+          {mainTab === 'nameList' && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <span className="w-3 h-3 bg-cyan-500 rounded-full"></span>
+                  名前一覧表
+                </h3>
+                {activeNameListConfigs.length === 0 && (
+                  <button
+                    onClick={() => {
+                      resetNameListConfigForm();
+                      setEditingNameListConfig(null);
+                      setShowNameListConfigModal(true);
+                    }}
+                    className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium"
+                  >
+                    設定を追加
+                  </button>
+                )}
               </div>
+              {activeNameListConfigs.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
+                    <thead>
+                      <tr>
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[60px]">
+                          日付
+                        </th>
+                        {activeNameListConfigs.map((config) => (
+                          <th
+                            key={`name-list-header-${config.id}`}
+                            className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
+                          >
+                            {config.display_label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {daysData.map((day) => {
+                        const weekdayNames = ['日', '月', '火', '水', '木', '金', '土'];
+                        return (
+                          <tr
+                            key={`name-list-row-${day.date}`}
+                            className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
+                          >
+                            <td
+                              className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold whitespace-nowrap ${
+                                day.isHoliday || day.dayOfWeek === 0
+                                  ? 'bg-red-100 text-red-700'
+                                  : day.dayOfWeek === 6
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-gray-100 text-gray-900'
+                              }`}
+                            >
+                              {day.day}({weekdayNames[day.dayOfWeek]})
+                            </td>
+                            {activeNameListConfigs.map((config) => {
+                              const names = calculateNameList(day, config);
+                              return (
+                                <td
+                                  key={`name-list-cell-${day.date}-${config.id}`}
+                                  className="border border-black px-2 py-1.5 text-sm text-gray-900"
+                                >
+                                  {names.join('、')}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <p>名前一覧表の設定がありません。</p>
+                  <p className="text-sm mt-2">ツールメニューの「名前一覧表設定」から設定を追加してください。</p>
+                </div>
+              )}
             </div>
           )}
         </div>
