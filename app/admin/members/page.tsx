@@ -287,7 +287,12 @@ export default function MembersPage() {
         alert("得点保持率の更新に失敗しました");
         console.error("Error:", error);
       } else {
-        await fetchUsersForYear(selectedFiscalYear);
+        // ローカル状態を更新（再取得せず連続編集を可能に）
+        setUsers(prev => prev.map(u =>
+          u.staff_id === user.staff_id
+            ? { ...u, point_retention_rate: newRate }
+            : u
+        ));
         // 編集状態をクリア
         setEditingRetentionRates(prev => {
           const newState = { ...prev };
