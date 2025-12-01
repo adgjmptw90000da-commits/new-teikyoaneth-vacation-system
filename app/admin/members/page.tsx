@@ -183,7 +183,7 @@ export default function MembersPage() {
         console.error("Error:", error);
       } else {
         alert(`${action}しました`);
-        await fetchUsers();
+        await fetchUsersForYear(selectedFiscalYear);
       }
     } catch (err) {
       console.error("Error:", err);
@@ -228,7 +228,7 @@ export default function MembersPage() {
         console.error("Error:", error);
       } else {
         alert("ユーザーを削除しました");
-        await fetchUsers();
+        await fetchUsersForYear(selectedFiscalYear);
       }
     } catch (err) {
       console.error("Error:", err);
@@ -287,7 +287,7 @@ export default function MembersPage() {
         alert("得点保持率の更新に失敗しました");
         console.error("Error:", error);
       } else {
-        await fetchUsers();
+        await fetchUsersForYear(selectedFiscalYear);
         // 編集状態をクリア
         setEditingRetentionRates(prev => {
           const newState = { ...prev };
