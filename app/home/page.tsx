@@ -103,8 +103,18 @@ export default function HomePage() {
       .eq("staff_id", staffId)
       .single();
 
+    // 年度別の割合を取得（なければuser.point_retention_rateを使用）
+    const { data: yearlyRate } = await supabase
+      .from("user_point_retention_rate")
+      .select("point_retention_rate")
+      .eq("staff_id", staffId)
+      .eq("fiscal_year", fiscalYear)
+      .single();
+
+    const effectiveRate = yearlyRate?.point_retention_rate ?? userData?.point_retention_rate ?? 100;
+
     const maxPoints = Math.floor(
-      (settingData.max_annual_leave_points * (userData?.point_retention_rate || 100)) / 100
+      (settingData.max_annual_leave_points * effectiveRate) / 100
     );
 
     setPointsInfo({

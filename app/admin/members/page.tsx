@@ -14,6 +14,7 @@ type User = Database["public"]["Tables"]["user"]["Row"];
 type UserWithPoints = User & {
   remainingPoints: number | null;
   usedPoints: number | null;
+  effectiveRetentionRate: number; // この年度での実効割合
 };
 
 // Icons
@@ -116,26 +117,36 @@ export default function MembersPage() {
 
       if (!settingData) {
         setMaxAnnualLeavePoints(null);
-        setUsers((data || []).map(user => ({ ...user, remainingPoints: null, usedPoints: null })));
+        setUsers((data || []).map(user => ({ ...user, remainingPoints: null, usedPoints: null, effectiveRetentionRate: user.point_retention_rate ?? 100 })));
         setLoading(false);
         return;
       }
 
       setMaxAnnualLeavePoints(settingData.max_annual_leave_points);
 
+      // 年度別の割合を取得
+      const { data: yearlyRates } = await supabase
+        .from('user_point_retention_rate')
+        .select('*')
+        .eq('fiscal_year', fiscalYear);
+
       // 各ユーザーの残り得点を取得（指定年度で計算）
       const usersWithPoints: UserWithPoints[] = await Promise.all(
         (data || []).map(async (user) => {
           const pointsData = await calculateAnnualLeavePoints(user.staff_id, fiscalYear);
           const usedPoints = pointsData ? pointsData.totalPoints : null;
+          // 年度別の割合があればそれを使用、なければuser.point_retention_rateを使用
+          const yearlyRate = yearlyRates?.find(r => r.staff_id === user.staff_id);
+          const effectiveRetentionRate = yearlyRate?.point_retention_rate ?? user.point_retention_rate ?? 100;
           const maxPoints = Math.floor(
-            (settingData.max_annual_leave_points * (user.point_retention_rate || 100)) / 100
+            (settingData.max_annual_leave_points * effectiveRetentionRate) / 100
           );
           const remainingPoints = usedPoints !== null ? maxPoints - usedPoints : null;
           return {
             ...user,
             remainingPoints,
-            usedPoints
+            usedPoints,
+            effectiveRetentionRate
           };
         })
       );
@@ -253,14 +264,14 @@ export default function MembersPage() {
     }));
   };
 
-  const handleRetentionRateBlur = async (user: User) => {
+  const handleRetentionRateBlur = async (user: UserWithPoints) => {
     const newRate = editingRetentionRates[user.staff_id];
 
     // 編集中の値がない場合は何もしない
     if (newRate === undefined) return;
 
-    // 元の値と同じ場合は何もしない
-    if (newRate === (user.point_retention_rate ?? 100)) {
+    // 元の値と同じ場合は何もしない（年度別の実効割合と比較）
+    if (newRate === user.effectiveRetentionRate) {
       // 編集状態をクリア
       setEditingRetentionRates(prev => {
         const newState = { ...prev };
@@ -282,13 +293,22 @@ export default function MembersPage() {
       return;
     }
 
+    if (!selectedFiscalYear) return;
+
     setProcessing(true);
 
     try {
+      // 年度別テーブルにupsert
       const { error } = await supabase
-        .from("user")
-        .update({ point_retention_rate: newRate })
-        .eq("staff_id", user.staff_id);
+        .from("user_point_retention_rate")
+        .upsert({
+          staff_id: user.staff_id,
+          fiscal_year: selectedFiscalYear,
+          point_retention_rate: newRate,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'staff_id,fiscal_year'
+        });
 
       if (error) {
         alert("得点保持率の更新に失敗しました");
@@ -306,7 +326,7 @@ export default function MembersPage() {
             : null;
           return {
             ...u,
-            point_retention_rate: newRate,
+            effectiveRetentionRate: newRate,
             remainingPoints: newRemainingPoints
           };
         }));
@@ -325,7 +345,7 @@ export default function MembersPage() {
     }
   };
 
-  const handleRetentionRateKeyDown = async (e: React.KeyboardEvent, user: User) => {
+  const handleRetentionRateKeyDown = async (e: React.KeyboardEvent, user: UserWithPoints) => {
     if (e.key === "Enter") {
       e.preventDefault();
       await handleRetentionRateBlur(user);
@@ -591,7 +611,7 @@ export default function MembersPage() {
                           type="number"
                           min="0"
                           max="100"
-                          value={editingRetentionRates[user.staff_id] ?? user.point_retention_rate ?? 100}
+                          value={editingRetentionRates[user.staff_id] ?? user.effectiveRetentionRate}
                           onChange={(e) => handleRetentionRateChange(user.staff_id, e.target.value)}
                           onBlur={() => handleRetentionRateBlur(user)}
                           onKeyDown={(e) => handleRetentionRateKeyDown(e, user)}
