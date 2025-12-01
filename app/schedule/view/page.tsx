@@ -968,7 +968,7 @@ export default function ScheduleViewPage() {
                               return (
                                 <td
                                   key={`name-list-cell-${day.date}-${config.id}`}
-                                  className="border border-black px-1 py-1 text-[10px] text-gray-900"
+                                  className="border border-black px-1 py-1 text-[10px] text-gray-900 text-center"
                                 >
                                   {names.join('、')}
                                 </td>
