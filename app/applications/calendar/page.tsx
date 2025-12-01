@@ -112,6 +112,7 @@ export default function ApplicationCalendarPage() {
     }
   }, []);
 
+  // 初回のみ: ユーザー認証、抽選期間、年度初期化
   useEffect(() => {
     const currentUser = getUser();
     if (!currentUser) {
@@ -127,7 +128,7 @@ export default function ApplicationCalendarPage() {
     };
     fetchLotteryPeriodInfo();
 
-    // デフォルト年度を取得し、得点情報を取得
+    // デフォルト年度を取得し、得点情報を取得（初回のみ）
     const initializeFiscalYear = async () => {
       const fiscalYear = await getDefaultDisplayFiscalYear();
       setDefaultFiscalYear(fiscalYear);
@@ -135,9 +136,14 @@ export default function ApplicationCalendarPage() {
       await fetchPointsInfoForYear(currentUser.staff_id, fiscalYear);
     };
     initializeFiscalYear();
+  }, [router]);
 
+  // 月変更時: データ再取得
+  useEffect(() => {
+    const currentUser = getUser();
+    if (!currentUser) return;
     fetchData(currentUser.staff_id);
-  }, [router, currentYear, currentMonth]);
+  }, [currentYear, currentMonth]);
 
   // viewModeが変更されたらLocalStorageに保存
   const handleViewModeChange = (mode: 'list' | 'grid') => {
@@ -347,6 +353,8 @@ export default function ApplicationCalendarPage() {
 
   // 申請可能かをチェック
   const canApply = (day: DayData): boolean => {
+    // 抽選期間外は申請不可
+    if (!lotteryPeriodInfo?.isWithinPeriod) return false;
     // 既に申請済み
     if (day.application) return false;
     // 日曜日
