@@ -33,6 +33,9 @@ const Icons = {
   AlertCircle: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>
   ),
+  RefreshCw: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+  ),
 };
 
 // ステータス表示名
@@ -86,6 +89,7 @@ export default function ExchangePage() {
   const [selectedMyApp, setSelectedMyApp] = useState<any>(null);
   const [targetApplications, setTargetApplications] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
+  const [exchangeConfirmTarget, setExchangeConfirmTarget] = useState<any>(null);
 
   // 確認ダイアログ
   const { confirm, ConfirmDialog } = useConfirm();
@@ -128,25 +132,24 @@ export default function ExchangePage() {
     setLoadingTargets(false);
   };
 
-  // 相手を選択して交換申請を作成
-  const handleSelectTarget = async (targetApp: any) => {
-    const confirmed = await confirm({
-      title: "交換申請の確認",
-      message: `${targetApp.user?.name || "相手"}さんの申請と交換申請を作成しますか？\n\n自分: レベル${selectedMyApp.level} 優先順位${selectedMyApp.priority}\n相手: レベル${targetApp.level} 優先順位${targetApp.priority}`,
-      confirmText: "申請する",
-      cancelText: "キャンセル",
-    });
+  // 相手を選択して確認モーダルを表示
+  const handleSelectTarget = (targetApp: any) => {
+    setExchangeConfirmTarget(targetApp);
+  };
 
-    if (!confirmed) return;
+  // 交換申請を実行
+  const handleExchangeConfirm = async () => {
+    if (!exchangeConfirmTarget || !selectedMyApp) return;
 
     const result = await createExchangeRequest(
       selectedMyApp.id,
-      targetApp.id,
+      exchangeConfirmTarget.id,
       user.staff_id
     );
 
     if (result.success) {
       alert("交換申請を作成しました");
+      setExchangeConfirmTarget(null);
       setShowTargetModal(false);
       fetchData(user.staff_id);
     } else {
@@ -565,6 +568,84 @@ export default function ExchangePage() {
                 className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
               >
                 キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 交換確認詳細モーダル */}
+      {exchangeConfirmTarget && selectedMyApp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">順位・レベル・ステータス交換の確認</h3>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換前</h4>
+                <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">自分:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{user?.name || "自分"}</p>
+                      <p className="text-sm text-gray-600">レベル: {selectedMyApp.level}</p>
+                      <p className="text-sm text-gray-600">順位: {selectedMyApp.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(selectedMyApp.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{exchangeConfirmTarget.user?.name || "相手"}</p>
+                      <p className="text-sm text-gray-600">レベル: {exchangeConfirmTarget.level}</p>
+                      <p className="text-sm text-gray-600">順位: {exchangeConfirmTarget.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(exchangeConfirmTarget.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center">
+                <Icons.RefreshCw />
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換後（予定）</h4>
+                <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">自分:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{user?.name || "自分"}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {exchangeConfirmTarget.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {exchangeConfirmTarget.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(exchangeConfirmTarget.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{exchangeConfirmTarget.user?.name || "相手"}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {selectedMyApp.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {selectedMyApp.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(selectedMyApp.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setExchangeConfirmTarget(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleExchangeConfirm}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold transition-colors"
+              >
+                交換申請する
               </button>
             </div>
           </div>
