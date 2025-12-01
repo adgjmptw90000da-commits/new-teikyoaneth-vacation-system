@@ -48,6 +48,19 @@ const Icons = {
   X: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
   ),
+  RefreshCw: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+  ),
+};
+
+// ステータス表示名
+const getStatusLabel = (status: string) => {
+  const labels: { [key: string]: string } = {
+    after_lottery: "抽選後",
+    confirmed: "確定",
+    withdrawn: "取り消し",
+  };
+  return labels[status] || status;
 };
 
 export default function ApprovalsPage() {
@@ -58,6 +71,7 @@ export default function ApprovalsPage() {
   const [exchangeRequests, setExchangeRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [approveExchangeRequest, setApproveExchangeRequest] = useState<any>(null);
 
   useEffect(() => {
     const user = getUser();
@@ -303,14 +317,14 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleApproveExchange = async (request: any) => {
-    const confirmed = await confirm({
-      title: "交換承認の確認",
-      message: `${request.requester?.name}さんと${request.target?.name}さんの優先順位交換を承認しますか？\n\n日付: ${request.requester_application?.vacation_date}\n${request.requester?.name}: 優先順位${request.requester_application?.priority} → ${request.target_application?.priority}\n${request.target?.name}: 優先順位${request.target_application?.priority} → ${request.requester_application?.priority}`,
-    });
-    if (!confirmed) {
-      return;
-    }
+  // 交換承認モーダルを表示
+  const handleApproveExchange = (request: any) => {
+    setApproveExchangeRequest(request);
+  };
+
+  // 交換承認を実行
+  const handleApproveExchangeConfirm = async () => {
+    if (!approveExchangeRequest) return;
 
     setProcessing(true);
 
@@ -322,12 +336,13 @@ export default function ApprovalsPage() {
         return;
       }
 
-      const result = await adminApproveExchangeRequest(request.id, user.staff_id);
+      const result = await adminApproveExchangeRequest(approveExchangeRequest.id, user.staff_id);
 
       if (!result.success) {
         alert(result.error || "承認に失敗しました");
       } else {
         alert("交換申請を承認し、交換を実行しました");
+        setApproveExchangeRequest(null);
         await fetchApplications();
       }
     } catch (err) {
@@ -761,6 +776,97 @@ export default function ApprovalsPage() {
           </div>
         </div>
       </main>
+
+      {/* 交換承認確認モーダル */}
+      {approveExchangeRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">交換承認の確認</h3>
+
+            <div className="mb-4 bg-gray-100 rounded-lg p-3">
+              <p className="text-sm font-medium text-gray-700">
+                日付: {approveExchangeRequest.requester_application?.vacation_date}
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換前</h4>
+                <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[60px]">申請者:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{approveExchangeRequest.requester?.name}</p>
+                      <p className="text-sm text-gray-600">レベル: {approveExchangeRequest.requester_application?.level}</p>
+                      <p className="text-sm text-gray-600">順位: {approveExchangeRequest.requester_application?.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(approveExchangeRequest.requester_application?.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[60px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{approveExchangeRequest.target?.name}</p>
+                      <p className="text-sm text-gray-600">レベル: {approveExchangeRequest.target_application?.level}</p>
+                      <p className="text-sm text-gray-600">順位: {approveExchangeRequest.target_application?.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(approveExchangeRequest.target_application?.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center">
+                <Icons.RefreshCw />
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換後</h4>
+                <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[60px]">申請者:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{approveExchangeRequest.requester?.name}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {approveExchangeRequest.target_application?.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {approveExchangeRequest.target_application?.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(approveExchangeRequest.target_application?.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[60px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{approveExchangeRequest.target?.name}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {approveExchangeRequest.requester_application?.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {approveExchangeRequest.requester_application?.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(approveExchangeRequest.requester_application?.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-sm text-green-800">
+                  承認すると即座に交換が実行されます。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setApproveExchangeRequest(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleApproveExchangeConfirm}
+                disabled={processing}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-bold transition-colors"
+              >
+                {processing ? "承認中..." : "承認する"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {ConfirmDialog}
     </div>
