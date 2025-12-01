@@ -86,6 +86,7 @@ export default function ApplicationCalendarPage() {
   const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
+    isBeforePeriod: boolean;
     targetMonth: string;
     periodStart: string;
     periodEnd: string;
@@ -353,8 +354,8 @@ export default function ApplicationCalendarPage() {
 
   // 申請可能かをチェック
   const canApply = (day: DayData): boolean => {
-    // 抽選期間外は申請不可
-    if (!lotteryPeriodInfo?.isWithinPeriod) return false;
+    // 抽選期間開始前は申請不可
+    if (lotteryPeriodInfo?.isBeforePeriod) return false;
     // 既に申請済み
     if (day.application) return false;
     // 日曜日

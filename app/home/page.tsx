@@ -76,6 +76,7 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
+    isBeforePeriod: boolean;
     targetMonth: string;
     periodStart: string;
     periodEnd: string;

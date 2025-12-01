@@ -63,6 +63,7 @@ export default function NewApplicationPage() {
   // 抽選期間情報
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
+    isBeforePeriod: boolean;
     targetMonth: string;
     periodStart: string;
     periodEnd: string;

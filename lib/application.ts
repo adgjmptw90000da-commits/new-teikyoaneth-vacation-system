@@ -870,6 +870,7 @@ export const isBeforeLotteryPeriod = async (
  */
 export const getCurrentLotteryPeriodInfo = async (): Promise<{
   isWithinPeriod: boolean;
+  isBeforePeriod: boolean;
   targetMonth: string;
   periodStart: string;
   periodEnd: string;
@@ -918,6 +919,8 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
 
     // 現在が抽選期間内かチェック
     const isWithinPeriod = today >= currentPeriodStart && today <= currentPeriodEnd;
+    // 現在が抽選期間開始前かチェック
+    const isBeforePeriod = today < currentPeriodStart;
 
     let targetMonth: Date;
     let periodStart: Date;
@@ -982,6 +985,7 @@ export const getCurrentLotteryPeriodInfo = async (): Promise<{
 
     return {
       isWithinPeriod,
+      isBeforePeriod,
       targetMonth: `${targetMonth.getFullYear()}年${targetMonth.getMonth() + 1}月`,
       periodStart: formatDate(periodStart),
       periodEnd: formatDate(periodEnd),
