@@ -13,6 +13,7 @@ import {
   getDefaultDisplayFiscalYear,
 } from "@/lib/application";
 import { PointsStatus } from "@/components/PointsStatus";
+import { getPendingExchangeRequestsForAdmin } from "@/lib/priority-exchange-request";
 
 // Icons
 const Icons = {
@@ -146,7 +147,11 @@ export default function VacationSystemPage() {
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
 
-      const totalCount = (level3Count || 0) + (cancellationCount || 0);
+      // 承認待ち交換申請も取得
+      const pendingExchangeRequests = await getPendingExchangeRequestsForAdmin();
+      const exchangeCount = pendingExchangeRequests.length;
+
+      const totalCount = (level3Count || 0) + (cancellationCount || 0) + exchangeCount;
       setPendingApprovalsCount(totalCount);
     };
 
@@ -291,6 +296,17 @@ export default function VacationSystemPage() {
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-green-600 transition-colors">研鑽日管理</h4>
               <p className="text-sm text-gray-500">確定済み年休を研鑽日に変更</p>
+            </button>
+
+            <button
+              onClick={() => router.push("/applications/exchange")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4" /><path d="M20 7H4" /><path d="M8 21l-4-4 4-4" /><path d="M4 17h16" /></svg>
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">優先順位交換</h4>
+              <p className="text-sm text-gray-500">抽選後の優先順位を交換申請</p>
             </button>
           </div>
         </div>

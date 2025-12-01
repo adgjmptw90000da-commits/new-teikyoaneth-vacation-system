@@ -34,29 +34,27 @@ export const exchangePriorityAndLevel = async (
         }
 
         // 2. バリデーション
-        if (app1.status !== 'after_lottery' || app2.status !== 'after_lottery') {
-            return { success: false, error: '抽選後(after_lottery)ステータスの申請のみ交換可能です' };
+        const exchangeableStatuses = ['after_lottery', 'confirmed', 'withdrawn'];
+        if (!exchangeableStatuses.includes(app1.status) || !exchangeableStatuses.includes(app2.status)) {
+            return { success: false, error: '交換可能なステータス（抽選後、確定済み、取り消し）の申請のみ交換可能です' };
         }
 
         if (app1.vacation_date !== app2.vacation_date) {
             return { success: false, error: '同じ日付の申請のみ交換可能です' };
         }
 
-        if (app1.status === 'confirmed' || app2.status === 'confirmed') {
-            return { success: false, error: '確定済みの申請は交換できません' };
-        }
-
         if (app1.priority === null || app2.priority === null) {
             return { success: false, error: '順位が設定されていない申請は交換できません' };
         }
 
-        // 3. 交換実行
+        // 3. 交換実行（優先順位、レベル、ステータスを交換）
         // @ts-ignore - Supabase type inference issue
         const { error: updateError1 } = await supabase
             .from('application')
             .update({
                 priority: app2.priority,
                 level: app2.level,
+                status: app2.status,
                 updated_at: new Date().toISOString(),
             })
             .eq('id', applicationId1);
@@ -67,6 +65,7 @@ export const exchangePriorityAndLevel = async (
             .update({
                 priority: app1.priority,
                 level: app1.level,
+                status: app1.status,
                 updated_at: new Date().toISOString(),
             })
             .eq('id', applicationId2);
@@ -75,7 +74,7 @@ export const exchangePriorityAndLevel = async (
             return { success: false, error: '申請の更新に失敗しました' };
         }
 
-        // 4. 履歴を記録
+        // 4. 履歴を記録（ステータスも含む）
         // @ts-ignore - Supabase type inference issue
         const { error: logError } = await supabase
             .from('priority_exchange_log')
@@ -90,6 +89,10 @@ export const exchangePriorityAndLevel = async (
                 after_priority_2: app1.priority,
                 after_level_1: app2.level,
                 after_level_2: app1.level,
+                before_status_1: app1.status,
+                before_status_2: app2.status,
+                after_status_1: app2.status,
+                after_status_2: app1.status,
                 exchanged_by_staff_id: adminStaffId,
             });
 

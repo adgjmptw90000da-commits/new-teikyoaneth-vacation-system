@@ -63,10 +63,11 @@ const Icons = {
 // 通知の型定義
 type Notification = {
   id: number;
-  type: 'application_approved' | 'application_rejected' | 'cancellation_approved' | 'cancellation_rejected';
+  type: 'application_approved' | 'application_rejected' | 'cancellation_approved' | 'cancellation_rejected' | 'exchange_request_received' | 'exchange_request_accepted' | 'exchange_request_rejected' | 'exchange_approved' | 'exchange_rejected';
   vacation_date: string;
   message: string;
-  sourceType: 'application' | 'cancellation_request';
+  sourceType: 'application' | 'cancellation_request' | 'exchange_request';
+  isRequester?: boolean;
 };
 
 export default function HomePage() {
@@ -172,7 +173,7 @@ export default function HomePage() {
     fetchLotteryPeriodInfo();
     initializePointsInfo();
 
-    // 管理者の場合、承認待ち申請数を取得（レベル3承認待ち + キャンセル承認待ち）
+    // 管理者の場合、承認待ち申請数を取得（レベル3承認待ち + キャンセル承認待ち + 交換承認待ち）
     const fetchPendingApprovals = async () => {
       if (!currentUser.is_admin) return;
 
@@ -188,7 +189,14 @@ export default function HomePage() {
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
 
-      const totalCount = (level3Count || 0) + (cancellationCount || 0);
+      // 優先順位交換承認待ち（相手承諾済み・管理者未対応）
+      const { count: exchangeCount, error: exchangeError } = await supabase
+        .from("priority_exchange_request")
+        .select("id", { count: "exact", head: true })
+        .eq("target_response", "accepted")
+        .eq("admin_response", "pending");
+
+      const totalCount = (level3Count || 0) + (cancellationCount || 0) + (exchangeCount || 0);
       setPendingApprovalsCount(totalCount);
     };
 
@@ -280,6 +288,117 @@ export default function HomePage() {
         });
       }
 
+      // 5. 交換申請（自分がtargetで未通知のもの = 交換申請が来た）
+      const { data: receivedExchangeRequests } = await supabase
+        .from("priority_exchange_request")
+        .select(`
+          id,
+          target_response,
+          requester_application:requester_application_id(vacation_date),
+          requester:requester_staff_id(name)
+        `)
+        .eq("target_staff_id", currentUser.staff_id)
+        .eq("target_notified", false)
+        .eq("target_response", "pending");
+
+      if (receivedExchangeRequests) {
+        receivedExchangeRequests.forEach((req: any) => {
+          notifs.push({
+            id: req.id,
+            type: 'exchange_request_received',
+            vacation_date: req.requester_application?.vacation_date || '',
+            message: `${req.requester?.name}さんから${req.requester_application?.vacation_date}の優先順位交換申請が届きました`,
+            sourceType: 'exchange_request',
+            isRequester: false
+          });
+        });
+      }
+
+      // 6. 交換申請（自分がrequesterで相手が応答済み・未通知のもの）
+      // ※管理者が既に応答済みの場合はセクション7で処理するので除外
+      const { data: respondedExchangeRequests } = await supabase
+        .from("priority_exchange_request")
+        .select(`
+          id,
+          target_response,
+          requester_application:requester_application_id(vacation_date),
+          target:target_staff_id(name)
+        `)
+        .eq("requester_staff_id", currentUser.staff_id)
+        .eq("requester_notified", false)
+        .eq("admin_response", "pending")
+        .in("target_response", ["accepted", "rejected"]);
+
+      if (respondedExchangeRequests) {
+        respondedExchangeRequests.forEach((req: any) => {
+          if (req.target_response === 'accepted') {
+            notifs.push({
+              id: req.id,
+              type: 'exchange_request_accepted',
+              vacation_date: req.requester_application?.vacation_date || '',
+              message: `${req.target?.name}さんが${req.requester_application?.vacation_date}の優先順位交換を承諾しました（管理者承認待ち）`,
+              sourceType: 'exchange_request',
+              isRequester: true
+            });
+          } else {
+            notifs.push({
+              id: req.id,
+              type: 'exchange_request_rejected',
+              vacation_date: req.requester_application?.vacation_date || '',
+              message: `${req.target?.name}さんが${req.requester_application?.vacation_date}の優先順位交換を拒否しました`,
+              sourceType: 'exchange_request',
+              isRequester: true
+            });
+          }
+        });
+      }
+
+      // 7. 交換申請（管理者承認/却下で未通知のもの - 両者）
+      const { data: adminRespondedRequests } = await supabase
+        .from("priority_exchange_request")
+        .select(`
+          id,
+          admin_response,
+          requester_staff_id,
+          target_staff_id,
+          requester_notified,
+          target_notified,
+          requester_application:requester_application_id(vacation_date),
+          requester:requester_staff_id(name),
+          target:target_staff_id(name)
+        `)
+        .in("admin_response", ["approved", "rejected"])
+        .or(`and(requester_staff_id.eq.${currentUser.staff_id},requester_notified.eq.false),and(target_staff_id.eq.${currentUser.staff_id},target_notified.eq.false)`);
+
+      if (adminRespondedRequests) {
+        adminRespondedRequests.forEach((req: any) => {
+          const isRequester = req.requester_staff_id === currentUser.staff_id;
+          const shouldNotify = isRequester ? !req.requester_notified : !req.target_notified;
+          if (!shouldNotify) return;
+
+          const partnerName = isRequester ? req.target?.name : req.requester?.name;
+          if (req.admin_response === 'approved') {
+            notifs.push({
+              id: req.id,
+              type: 'exchange_approved',
+              vacation_date: req.requester_application?.vacation_date || '',
+              message: `${partnerName}さんとの${req.requester_application?.vacation_date}の優先順位交換が承認・実行されました`,
+              sourceType: 'exchange_request',
+              isRequester
+            });
+          } else {
+            notifs.push({
+              id: req.id,
+              type: 'exchange_rejected',
+              vacation_date: req.requester_application?.vacation_date || '',
+              message: `${partnerName}さんとの${req.requester_application?.vacation_date}の優先順位交換が管理者により却下されました`,
+              sourceType: 'exchange_request',
+              isRequester
+            });
+          }
+        });
+      }
+
       setNotifications(notifs);
     };
 
@@ -293,15 +412,28 @@ export default function HomePage() {
 
   // 通知を既読にする
   const handleDismissNotification = async (notification: Notification) => {
-    const table = notification.sourceType === 'application' ? 'application' : 'cancellation_request';
+    if (notification.sourceType === 'exchange_request') {
+      // 交換申請の場合
+      const updateField = notification.isRequester ? 'requester_notified' : 'target_notified';
+      const { error } = await supabase
+        .from('priority_exchange_request')
+        .update({ [updateField]: true })
+        .eq('id', notification.id);
 
-    const { error } = await supabase
-      .from(table)
-      .update({ user_notified: true })
-      .eq('id', notification.id);
+      if (!error) {
+        setNotifications(prev => prev.filter(n => !(n.id === notification.id && n.sourceType === notification.sourceType && n.isRequester === notification.isRequester)));
+      }
+    } else {
+      const table = notification.sourceType === 'application' ? 'application' : 'cancellation_request';
 
-    if (!error) {
-      setNotifications(prev => prev.filter(n => !(n.id === notification.id && n.sourceType === notification.sourceType)));
+      const { error } = await supabase
+        .from(table)
+        .update({ user_notified: true })
+        .eq('id', notification.id);
+
+      if (!error) {
+        setNotifications(prev => prev.filter(n => !(n.id === notification.id && n.sourceType === notification.sourceType)));
+      }
     }
   };
 
@@ -355,47 +487,69 @@ export default function HomePage() {
         {/* Notifications */}
         {notifications.length > 0 && (
           <div className="space-y-3">
-            {notifications.map((notification) => (
-              <div
-                key={`${notification.sourceType}-${notification.id}`}
-                className={`rounded-xl border p-4 shadow-sm flex items-center justify-between ${
-                  notification.type.includes('approved')
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-red-50 border-red-200'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${
-                    notification.type.includes('approved')
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-red-100 text-red-600'
-                  }`}>
-                    {notification.type.includes('approved') ? (
-                      <Icons.CheckCircle />
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                    )}
-                  </div>
-                  <p className={`font-medium ${
-                    notification.type.includes('approved')
-                      ? 'text-green-800'
-                      : 'text-red-800'
-                  }`}>
-                    {notification.message}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDismissNotification(notification)}
-                  className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                    notification.type.includes('approved')
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-red-600 hover:bg-red-700 text-white'
-                  }`}
+            {notifications.map((notification) => {
+              // 通知タイプに応じた色を決定
+              const isPositive = notification.type.includes('approved') || notification.type === 'exchange_request_accepted';
+              const isInfo = notification.type === 'exchange_request_received';
+              const bgClass = isInfo
+                ? 'bg-blue-50 border-blue-200'
+                : isPositive
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200';
+              const iconBgClass = isInfo
+                ? 'bg-blue-100 text-blue-600'
+                : isPositive
+                  ? 'bg-green-100 text-green-600'
+                  : 'bg-red-100 text-red-600';
+              const textClass = isInfo
+                ? 'text-blue-800'
+                : isPositive
+                  ? 'text-green-800'
+                  : 'text-red-800';
+              const buttonClass = isInfo
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : isPositive
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-red-600 hover:bg-red-700 text-white';
+
+              return (
+                <div
+                  key={`${notification.sourceType}-${notification.id}-${notification.isRequester}`}
+                  className={`rounded-xl border p-4 shadow-sm flex items-center justify-between ${bgClass}`}
                 >
-                  了解
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${iconBgClass}`}>
+                      {isInfo ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                      ) : isPositive ? (
+                        <Icons.CheckCircle />
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                      )}
+                    </div>
+                    <p className={`font-medium ${textClass}`}>
+                      {notification.message}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {notification.type === 'exchange_request_received' && (
+                      <button
+                        onClick={() => router.push('/applications/exchange')}
+                        className="px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        確認する
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDismissNotification(notification)}
+                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${notification.type === 'exchange_request_received' ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : buttonClass}`}
+                    >
+                      {notification.type === 'exchange_request_received' ? '後で' : '了解'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -499,6 +653,17 @@ export default function HomePage() {
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-teal-600 transition-colors">年休カレンダー</h4>
               <p className="text-sm text-gray-500">全体の年休状況を確認</p>
+            </button>
+
+            <button
+              onClick={() => router.push("/applications/exchange")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7.5 7.5"/><path d="M3 3l7.5 7.5"/><path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7.5-7.5"/><path d="M3 21l7.5-7.5"/></svg>
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">優先順位交換</h4>
+              <p className="text-sm text-gray-500">抽選後の優先順位を交換</p>
             </button>
 
             <button

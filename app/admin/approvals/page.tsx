@@ -7,6 +7,11 @@ import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { approveCancellation, rejectCancellation } from "@/lib/cancellation";
 import { recalculatePriorities } from "@/lib/application";
+import {
+  getPendingExchangeRequestsForAdmin,
+  adminApproveExchangeRequest,
+  adminRejectExchangeRequest,
+} from "@/lib/priority-exchange-request";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
@@ -50,6 +55,7 @@ export default function ApprovalsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const [applications, setApplications] = useState<ApplicationWithCapacity[]>([]);
   const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
+  const [exchangeRequests, setExchangeRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -126,6 +132,10 @@ export default function ApprovalsPage() {
       } else {
         setCancellationRequests((cancellationsData as any[]) || []);
       }
+
+      // 交換申請（相手承諾済み・管理者承認待ち）を取得
+      const exchangeData = await getPendingExchangeRequestsForAdmin();
+      setExchangeRequests(exchangeData);
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
@@ -293,6 +303,75 @@ export default function ApprovalsPage() {
     }
   };
 
+  const handleApproveExchange = async (request: any) => {
+    const confirmed = await confirm({
+      title: "交換承認の確認",
+      message: `${request.requester?.name}さんと${request.target?.name}さんの優先順位交換を承認しますか？\n\n日付: ${request.requester_application?.vacation_date}\n${request.requester?.name}: 優先順位${request.requester_application?.priority} → ${request.target_application?.priority}\n${request.target?.name}: 優先順位${request.target_application?.priority} → ${request.requester_application?.priority}`,
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const user = getUser();
+      if (!user) {
+        alert("ユーザー情報の取得に失敗しました");
+        setProcessing(false);
+        return;
+      }
+
+      const result = await adminApproveExchangeRequest(request.id, user.staff_id);
+
+      if (!result.success) {
+        alert(result.error || "承認に失敗しました");
+      } else {
+        alert("交換申請を承認し、交換を実行しました");
+        await fetchApplications();
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRejectExchange = async (request: any) => {
+    const reason = prompt(`${request.requester?.name}さんと${request.target?.name}さんの交換申請を却下しますか？\n却下理由を入力してください（任意）：`);
+
+    if (reason === null) {
+      // キャンセルボタンが押された場合
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const user = getUser();
+      if (!user) {
+        alert("ユーザー情報の取得に失敗しました");
+        setProcessing(false);
+        return;
+      }
+
+      const result = await adminRejectExchangeRequest(request.id, user.staff_id, reason || undefined);
+
+      if (!result.success) {
+        alert(result.error || "却下に失敗しました");
+      } else {
+        alert("交換申請を却下しました");
+        await fetchApplications();
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const getPeriodLabel = (period: string): string => {
     switch (period) {
       case "full_day":
@@ -440,6 +519,112 @@ export default function ApprovalsPage() {
                             </button>
                             <button
                               onClick={() => handleRejectCancellation(request)}
+                              disabled={processing}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Icons.X />
+                              却下
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 優先順位交換承認セクション */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-1 bg-orange-600 rounded-full"></div>
+              <h2 className="text-2xl font-bold text-gray-900">優先順位交換承認待ち</h2>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-start gap-3">
+                <div className="text-orange-500 mt-0.5">
+                  <Icons.AlertCircle />
+                </div>
+                <p className="text-sm font-medium text-gray-600">
+                  両者が合意した優先順位交換申請を承認または却下できます。承認すると優先順位・レベル・ステータスが交換されます。
+                </p>
+              </div>
+            </div>
+
+            {exchangeRequests.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+                <div className="mx-auto h-12 w-12 text-gray-300 mb-4">
+                  <Icons.CheckCircle />
+                </div>
+                <p className="text-gray-500 font-medium">優先順位交換承認待ちはありません</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-orange-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          申請日時
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          日付
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          申請者
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          相手
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          申請理由
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          アクション
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {exchangeRequests.map((request) => (
+                        <tr key={request.id} className="hover:bg-orange-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(request.requested_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {request.requester_application?.vacation_date}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="font-bold text-gray-900">{request.requester?.name}</div>
+                            <div className="text-gray-500">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100">
+                                順位{request.requester_application?.priority} / Lv.{request.requester_application?.level}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <div className="font-bold text-gray-900">{request.target?.name}</div>
+                            <div className="text-gray-500">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100">
+                                順位{request.target_application?.priority} / Lv.{request.target_application?.level}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                            {request.request_reason || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                            <button
+                              onClick={() => handleApproveExchange(request)}
+                              disabled={processing}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <Icons.Check />
+                              承認
+                            </button>
+                            <button
+                              onClick={() => handleRejectExchange(request)}
                               disabled={processing}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
