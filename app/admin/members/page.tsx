@@ -13,6 +13,7 @@ type User = Database["public"]["Tables"]["user"]["Row"];
 
 type UserWithPoints = User & {
   remainingPoints: number | null;
+  usedPoints: number | null;
 };
 
 // Icons
@@ -58,6 +59,7 @@ export default function MembersPage() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
   const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
+  const [maxAnnualLeavePoints, setMaxAnnualLeavePoints] = useState<number | null>(null);
 
   useEffect(() => {
     const user = getUser();
@@ -113,22 +115,27 @@ export default function MembersPage() {
         .single();
 
       if (!settingData) {
-        setUsers((data || []).map(user => ({ ...user, remainingPoints: null })));
+        setMaxAnnualLeavePoints(null);
+        setUsers((data || []).map(user => ({ ...user, remainingPoints: null, usedPoints: null })));
         setLoading(false);
         return;
       }
+
+      setMaxAnnualLeavePoints(settingData.max_annual_leave_points);
 
       // 各ユーザーの残り得点を取得（指定年度で計算）
       const usersWithPoints: UserWithPoints[] = await Promise.all(
         (data || []).map(async (user) => {
           const pointsData = await calculateAnnualLeavePoints(user.staff_id, fiscalYear);
+          const usedPoints = pointsData ? pointsData.totalPoints : null;
           const maxPoints = Math.floor(
             (settingData.max_annual_leave_points * (user.point_retention_rate || 100)) / 100
           );
-          const remainingPoints = pointsData ? maxPoints - pointsData.totalPoints : null;
+          const remainingPoints = usedPoints !== null ? maxPoints - usedPoints : null;
           return {
             ...user,
-            remainingPoints
+            remainingPoints,
+            usedPoints
           };
         })
       );
@@ -288,11 +295,21 @@ export default function MembersPage() {
         console.error("Error:", error);
       } else {
         // ローカル状態を更新（再取得せず連続編集を可能に）
-        setUsers(prev => prev.map(u =>
-          u.staff_id === user.staff_id
-            ? { ...u, point_retention_rate: newRate }
-            : u
-        ));
+        setUsers(prev => prev.map(u => {
+          if (u.staff_id !== user.staff_id) return u;
+          // 最大得点を再計算
+          const newMaxPoints = maxAnnualLeavePoints
+            ? Math.floor((maxAnnualLeavePoints * newRate) / 100)
+            : null;
+          const newRemainingPoints = newMaxPoints !== null && u.usedPoints !== null
+            ? newMaxPoints - u.usedPoints
+            : null;
+          return {
+            ...u,
+            point_retention_rate: newRate,
+            remainingPoints: newRemainingPoints
+          };
+        }));
         // 編集状態をクリア
         setEditingRetentionRates(prev => {
           const newState = { ...prev };
