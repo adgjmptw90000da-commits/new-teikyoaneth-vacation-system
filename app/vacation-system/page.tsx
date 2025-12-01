@@ -45,7 +45,6 @@ export default function VacationSystemPage() {
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
-    isBeforePeriod: boolean;
     targetMonth: string;
     periodStart: string;
     periodEnd: string;

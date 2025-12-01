@@ -39,6 +39,7 @@ interface DayData {
   isEvent: boolean;
   eventName?: string;
   application?: Application;
+  isBeforeLotteryPeriod: boolean;
 }
 
 // Icons
@@ -86,7 +87,6 @@ export default function ApplicationCalendarPage() {
   const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
-    isBeforePeriod: boolean;
     targetMonth: string;
     periodStart: string;
     periodEnd: string;
@@ -237,6 +237,7 @@ export default function ApplicationCalendarPage() {
         const holiday = holidaysData?.find((h) => h.holiday_date === date);
         const conference = conferencesData?.find((c) => c.conference_date === date);
         const event = eventsData?.find((e) => e.event_date === date);
+        const beforeLottery = await isBeforeLotteryPeriod(date);
 
         days.push({
           date,
@@ -248,6 +249,7 @@ export default function ApplicationCalendarPage() {
           isEvent: !!event,
           eventName: event?.name,
           application: applicationsMap.get(date),
+          isBeforeLotteryPeriod: beforeLottery,
         });
       }
 
@@ -354,8 +356,8 @@ export default function ApplicationCalendarPage() {
 
   // 申請可能かをチェック
   const canApply = (day: DayData): boolean => {
-    // 抽選期間開始前は申請不可
-    if (lotteryPeriodInfo?.isBeforePeriod) return false;
+    // その日付の抽選期間開始前は申請不可
+    if (day.isBeforeLotteryPeriod) return false;
     // 既に申請済み
     if (day.application) return false;
     // 日曜日
