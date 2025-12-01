@@ -90,6 +90,7 @@ export default function ExchangePage() {
   const [targetApplications, setTargetApplications] = useState<any[]>([]);
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [exchangeConfirmTarget, setExchangeConfirmTarget] = useState<any>(null);
+  const [acceptConfirmRequest, setAcceptConfirmRequest] = useState<any>(null);
 
   // 確認ダイアログ
   const { confirm, ConfirmDialog } = useConfirm();
@@ -157,22 +158,44 @@ export default function ExchangePage() {
     }
   };
 
-  // 受け取った申請に応答
-  const handleRespond = async (requestId: number, response: 'accepted' | 'rejected') => {
-    const actionText = response === 'accepted' ? '承諾' : '拒否';
+  // 受け取った申請に応答（承諾の場合は詳細モーダル表示）
+  const handleRespond = async (request: any, response: 'accepted' | 'rejected') => {
+    if (response === 'accepted') {
+      // 承諾の場合は詳細モーダルを表示
+      setAcceptConfirmRequest(request);
+      return;
+    }
+
+    // 拒否の場合は確認ダイアログ
     const confirmed = await confirm({
-      title: `交換申請の${actionText}`,
-      message: `この交換申請を${actionText}しますか？`,
-      confirmText: actionText,
+      title: "交換申請の拒否",
+      message: "この交換申請を拒否しますか？",
+      confirmText: "拒否",
       cancelText: "キャンセル",
+      variant: "danger",
     });
 
     if (!confirmed) return;
 
-    const result = await respondToExchangeRequest(requestId, user.staff_id, response);
+    const result = await respondToExchangeRequest(request.id, user.staff_id, response);
 
     if (result.success) {
-      alert(`交換申請を${actionText}しました`);
+      alert("交換申請を拒否しました");
+      fetchData(user.staff_id);
+    } else {
+      alert(result.error || "エラーが発生しました");
+    }
+  };
+
+  // 受け取った申請を承諾実行
+  const handleAcceptConfirm = async () => {
+    if (!acceptConfirmRequest) return;
+
+    const result = await respondToExchangeRequest(acceptConfirmRequest.id, user.staff_id, 'accepted');
+
+    if (result.success) {
+      alert("交換申請を承諾しました");
+      setAcceptConfirmRequest(null);
       fetchData(user.staff_id);
     } else {
       alert(result.error || "エラーが発生しました");
@@ -309,13 +332,13 @@ export default function ExchangePage() {
 
                         <div className="flex gap-2 shrink-0">
                           <button
-                            onClick={() => handleRespond(request.id, 'accepted')}
+                            onClick={() => handleRespond(request, 'accepted')}
                             className="px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
                           >
                             承諾
                           </button>
                           <button
-                            onClick={() => handleRespond(request.id, 'rejected')}
+                            onClick={() => handleRespond(request, 'rejected')}
                             className="px-4 py-2 text-sm font-bold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
                           >
                             拒否
@@ -646,6 +669,90 @@ export default function ExchangePage() {
                 className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold transition-colors"
               >
                 交換申請する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 受け取った交換申請の承諾確認モーダル */}
+      {acceptConfirmRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">交換申請の承諾確認</h3>
+
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換前</h4>
+                <div className="space-y-2 bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">自分:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{user?.name || "自分"}</p>
+                      <p className="text-sm text-gray-600">レベル: {acceptConfirmRequest.target_application?.level}</p>
+                      <p className="text-sm text-gray-600">順位: {acceptConfirmRequest.target_application?.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(acceptConfirmRequest.target_application?.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{acceptConfirmRequest.requester?.name || "相手"}</p>
+                      <p className="text-sm text-gray-600">レベル: {acceptConfirmRequest.requester_application?.level}</p>
+                      <p className="text-sm text-gray-600">順位: {acceptConfirmRequest.requester_application?.priority}</p>
+                      <p className="text-sm text-gray-600">ステータス: {getStatusLabel(acceptConfirmRequest.requester_application?.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center">
+                <Icons.RefreshCw />
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-gray-700 mb-2">交換後（予定）</h4>
+                <div className="space-y-2 bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">自分:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{user?.name || "自分"}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {acceptConfirmRequest.requester_application?.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {acceptConfirmRequest.requester_application?.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(acceptConfirmRequest.requester_application?.status)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-gray-700 min-w-[40px]">相手:</span>
+                    <div>
+                      <p className="font-medium text-gray-900">{acceptConfirmRequest.requester?.name || "相手"}</p>
+                      <p className="text-sm text-blue-700 font-bold">レベル: {acceptConfirmRequest.target_application?.level}</p>
+                      <p className="text-sm text-blue-700 font-bold">順位: {acceptConfirmRequest.target_application?.priority}</p>
+                      <p className="text-sm text-blue-700 font-bold">ステータス: {getStatusLabel(acceptConfirmRequest.target_application?.status)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  承諾すると管理者の承認待ち状態になります。管理者が承認すると交換が実行されます。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setAcceptConfirmRequest(null)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleAcceptConfirm}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition-colors"
+              >
+                承諾する
               </button>
             </div>
           </div>
