@@ -256,10 +256,12 @@ export const adminRejectExchangeRequest = async (
 };
 
 /**
- * ユーザーの交換申請一覧を取得
+ * ユーザーの交換申請一覧を取得（今日以降のみ）
  */
 export const getExchangeRequestsForUser = async (staffId: string) => {
   try {
+    const today = new Date().toISOString().split('T')[0];
+
     // 受け取った交換申請（自分がtarget）
     const { data: receivedRequests, error: error1 } = await supabase
       .from('priority_exchange_request')
@@ -289,9 +291,17 @@ export const getExchangeRequestsForUser = async (staffId: string) => {
       return { receivedRequests: [], sentRequests: [] };
     }
 
+    // 今日以降の日付のみフィルター
+    const filteredReceived = receivedRequests?.filter(r =>
+      r.requester_application?.vacation_date >= today
+    ) || [];
+    const filteredSent = sentRequests?.filter(r =>
+      r.requester_application?.vacation_date >= today
+    ) || [];
+
     return {
-      receivedRequests: receivedRequests || [],
-      sentRequests: sentRequests || [],
+      receivedRequests: filteredReceived,
+      sentRequests: filteredSent,
     };
   } catch (error) {
     console.error('Error fetching exchange requests for user:', error);
@@ -364,16 +374,19 @@ export const getSameDateApplications = async (vacationDate: string, excludeStaff
 };
 
 /**
- * ユーザーの交換可能な申請一覧を取得
+ * ユーザーの交換可能な申請一覧を取得（今日以降のみ）
  */
 export const getExchangeableApplicationsForUser = async (staffId: string) => {
   try {
+    const today = new Date().toISOString().split('T')[0];
+
     const { data, error } = await supabase
       .from('application')
       .select('id, vacation_date, level, priority, status')
       .eq('staff_id', staffId)
       .in('status', EXCHANGEABLE_STATUSES)
       .not('priority', 'is', null)
+      .gte('vacation_date', today)
       .order('vacation_date', { ascending: true });
 
     if (error) {
