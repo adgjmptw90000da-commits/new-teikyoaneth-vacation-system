@@ -633,7 +633,7 @@ export default function ScheduleViewPage() {
             {/* A/B表切り替え */}
             {isPublished && (
               <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
-                <span className="text-sm font-medium text-gray-600 self-center mr-2">表示:</span>
+                <span className="text-sm font-medium text-gray-900 self-center mr-2">表示:</span>
                 <button
                   onClick={() => setSelectedTeam('A')}
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
@@ -659,7 +659,7 @@ export default function ScheduleViewPage() {
 
             {/* 公開日時表示 */}
             {isPublished && publishedAt && (
-              <div className="text-center text-xs text-gray-500 mt-2">
+              <div className="text-center text-xs text-gray-900 mt-2">
                 最終更新: {new Date(publishedAt).toLocaleString('ja-JP')}
               </div>
             )}
@@ -701,7 +701,7 @@ export default function ScheduleViewPage() {
               <h3 className="text-lg font-bold text-gray-700 mb-2">
                 {currentYear}年{currentMonth}月の予定表はまだ公開されていません
               </h3>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-900">
                 管理者が予定表をアップロードするまでお待ちください
               </p>
             </div>
@@ -727,17 +727,25 @@ export default function ScheduleViewPage() {
                           <span className="truncate block">{member.name}</span>
                         </th>
                       ))}
+                      {/* 右側日付列ヘッダー */}
+                      <th
+                        className="sticky right-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700 w-16"
+                      >
+                        日付
+                      </th>
                     </tr>
                     {/* AM/PM/夜勤 サブヘッダー */}
                     <tr className="bg-gray-50">
-                      <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-500"></th>
+                      <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-900"></th>
                       {filteredMembers.map((member, idx) => (
                         <React.Fragment key={`sub-${member.staff_id}`}>
-                          <th className={`border-y border-black border-l ${idx === 0 ? 'border-l-black' : 'border-l-black'} border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]`}>AM</th>
-                          <th className="border-y border-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
-                          <th className="border-y border-black border-r border-r-black px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
+                          <th className={`border-y border-black border-l ${idx === 0 ? 'border-l-black' : 'border-l-black'} border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]`}>AM</th>
+                          <th className="border-y border-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
+                          <th className="border-y border-black border-r border-r-black px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
                         </React.Fragment>
                       ))}
+                      {/* 右側日付列（空） */}
+                      <th className="sticky right-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-900"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -885,8 +893,27 @@ export default function ScheduleViewPage() {
                             </React.Fragment>
                           );
                         })}
+                        {/* 右側日付列 */}
+                        <td className={`sticky right-0 z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}>
+                          <div className="flex items-center gap-1">
+                            <span>{day.day}</span>
+                            <span className="text-[9px]">{WEEKDAYS[day.dayOfWeek]}</span>
+                          </div>
+                        </td>
                       </tr>
                     ))}
+                    {/* 下側メンバー名ヘッダー行 */}
+                    <tr className="bg-gray-100">
+                      <td className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700">
+                      </td>
+                      {filteredMembers.map(member => (
+                        <td key={`footer-name-${member.staff_id}`} colSpan={3}
+                          className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-700 text-center">
+                          <span className="truncate block">{member.name}</span>
+                        </td>
+                      ))}
+                      <td className="sticky right-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700" />
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -905,13 +932,13 @@ export default function ScheduleViewPage() {
                   <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[60px]">
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[50px]">
                           日付
                         </th>
                         {nameListConfigs.map((config) => (
                           <th
                             key={`name-list-header-${config.id}`}
-                            className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
+                            className="bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[70px] whitespace-nowrap"
                           >
                             {config.display_label}
                           </th>
@@ -927,7 +954,7 @@ export default function ScheduleViewPage() {
                             className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
                           >
                             <td
-                              className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold whitespace-nowrap ${
+                              className={`sticky left-0 z-10 border border-black px-1 py-1 text-center text-[10px] font-bold whitespace-nowrap ${
                                 day.isHoliday || day.dayOfWeek === 0
                                   ? 'bg-red-100 text-red-700'
                                   : day.dayOfWeek === 6
@@ -942,7 +969,7 @@ export default function ScheduleViewPage() {
                               return (
                                 <td
                                   key={`name-list-cell-${day.date}-${config.id}`}
-                                  className="border border-black px-2 py-1.5 text-sm text-gray-900"
+                                  className="border border-black px-1 py-1 text-[10px] text-gray-900"
                                 >
                                   {names.join('、')}
                                 </td>
@@ -952,10 +979,25 @@ export default function ScheduleViewPage() {
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr>
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[50px]">
+                          日付
+                        </th>
+                        {nameListConfigs.map((config) => (
+                          <th
+                            key={`name-list-footer-${config.id}`}
+                            className="bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[70px] whitespace-nowrap"
+                          >
+                            {config.display_label}
+                          </th>
+                        ))}
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-12 text-gray-900">
                   <p>名前一覧表の設定がありません。</p>
                   <p className="text-sm mt-2">管理者が「名前一覧表設定」から設定を追加してください。</p>
                 </div>

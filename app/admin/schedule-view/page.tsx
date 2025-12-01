@@ -260,6 +260,7 @@ export default function ScheduleViewPage() {
     target_period_am: boolean;
     target_period_pm: boolean;
     target_period_night: boolean;
+    target_teams: ('A' | 'B')[];
   }>({
     name: '',
     display_label: '',
@@ -269,7 +270,9 @@ export default function ScheduleViewPage() {
     target_period_am: true,
     target_period_pm: true,
     target_period_night: true,
+    target_teams: [],
   });
+  const [draggingNameListIndex, setDraggingNameListIndex] = useState<number | null>(null);
 
   // プリセット関連（一般シフト）
   const [shiftAssignPresets, setShiftAssignPresets] = useState<ShiftAssignPreset[]>([]);
@@ -288,6 +291,8 @@ export default function ScheduleViewPage() {
   // プリセット編集用
   const [editingShiftPreset, setEditingShiftPreset] = useState<ShiftAssignPreset | null>(null);
   const [editingDutyPreset, setEditingDutyPreset] = useState<DutyAssignPreset | null>(null);
+  const [draggingShiftPresetIndex, setDraggingShiftPresetIndex] = useState<number | null>(null);
+  const [draggingDutyPresetIndex, setDraggingDutyPresetIndex] = useState<number | null>(null);
 
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
@@ -853,6 +858,12 @@ export default function ScheduleViewPage() {
         // 出向中・休職中は除外
         if (member.isSecondment) return false;
         if (isDateInLeaveOfAbsence(day.date, member.leaveOfAbsence)) return false;
+
+        // チームフィルタ（空の場合は全員対象）
+        const targetTeams = (config.target_teams as ('A' | 'B')[]) || [];
+        if (targetTeams.length > 0 && !targetTeams.includes(member.team)) {
+          return false;
+        }
 
         // 対象のシフト/予定があるかチェック
         const schedules = member.schedules[day.date] || [];
@@ -3332,6 +3343,7 @@ export default function ScheduleViewPage() {
       target_period_am: true,
       target_period_pm: true,
       target_period_night: true,
+      target_teams: [],
     });
   };
 
@@ -3349,6 +3361,7 @@ export default function ScheduleViewPage() {
           target_period_am: newNameListConfig.target_period_am,
           target_period_pm: newNameListConfig.target_period_pm,
           target_period_night: newNameListConfig.target_period_night,
+          target_teams: newNameListConfig.target_teams,
           updated_at: new Date().toISOString(),
         }).eq("id", editingNameListConfig.id);
 
@@ -3370,6 +3383,7 @@ export default function ScheduleViewPage() {
           target_period_am: newNameListConfig.target_period_am,
           target_period_pm: newNameListConfig.target_period_pm,
           target_period_night: newNameListConfig.target_period_night,
+          target_teams: newNameListConfig.target_teams,
         }).select().single();
 
         if (error) throw error;
@@ -3377,9 +3391,10 @@ export default function ScheduleViewPage() {
           setNameListConfigs(prev => [...prev, data]);
         }
       }
-      setShowNameListConfigModal(false);
+      // 連続編集: モーダルは閉じずにフォームリセット
       setEditingNameListConfig(null);
       resetNameListConfigForm();
+      alert(editingNameListConfig ? '設定を更新しました。続けて編集できます。' : '設定を保存しました。続けて編集できます。');
     } catch (error) {
       console.error("名前一覧設定の保存に失敗:", error);
       alert("保存に失敗しました");
@@ -3416,6 +3431,86 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // 名前一覧設定の並べ替え
+  const handleReorderNameListConfig = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...nameListConfigs];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    // ローカル状態を即座に更新
+    setNameListConfigs(reordered);
+
+    // DBの display_order を更新
+    try {
+      const updates = reordered.map((config, index) => ({
+        id: config.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase.from("name_list_config")
+          .update({ display_order: update.display_order })
+          .eq("id", update.id);
+      }
+    } catch (error) {
+      console.error("名前一覧設定の並べ替えに失敗:", error);
+    }
+  };
+
+  // 一般シフトプリセットの並べ替え
+  const handleReorderShiftPreset = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...shiftAssignPresets];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    setShiftAssignPresets(reordered);
+
+    try {
+      const updates = reordered.map((preset, index) => ({
+        id: preset.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase.from("shift_assign_preset")
+          .update({ display_order: update.display_order })
+          .eq("id", update.id);
+      }
+    } catch (error) {
+      console.error("プリセットの並べ替えに失敗:", error);
+    }
+  };
+
+  // 当直プリセットの並べ替え
+  const handleReorderDutyPreset = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...dutyAssignPresets];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    setDutyAssignPresets(reordered);
+
+    try {
+      const updates = reordered.map((preset, index) => ({
+        id: preset.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase.from("duty_assign_preset")
+          .update({ display_order: update.display_order })
+          .eq("id", update.id);
+      }
+    } catch (error) {
+      console.error("当直プリセットの並べ替えに失敗:", error);
+    }
+  };
+
   // 名前一覧設定の編集モード開始
   const handleEditNameListConfig = (config: NameListConfig) => {
     setEditingNameListConfig(config);
@@ -3428,6 +3523,7 @@ export default function ScheduleViewPage() {
       target_period_am: config.target_period_am ?? true,
       target_period_pm: config.target_period_pm ?? true,
       target_period_night: config.target_period_night ?? true,
+      target_teams: (config.target_teams as ('A' | 'B')[]) || [],
     });
     setShowNameListConfigModal(true);
   };
@@ -3597,143 +3693,146 @@ export default function ScheduleViewPage() {
       {/* ツールバー */}
       <div className="bg-gray-50 border-b border-gray-200 sticky top-14 z-40 px-4 py-2">
         <div className="flex justify-between items-center">
-          {/* 左: メニュードロップダウン */}
-          <div className="relative" ref={toolMenuRef}>
+          {/* 左: よく使う機能ボタン + メニュードロップダウン */}
+          <div className="flex items-center gap-2">
+            {/* シフト自動割り振りボタン（直接表示） */}
             <button
-              onClick={() => setShowToolMenu(!showToolMenu)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
+              onClick={() => {
+                const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                const lastDate = new Date(currentYear, currentMonth, 0);
+                const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+                setAutoAssignConfig({
+                  nightShiftTypeId: null,
+                  dayAfterShiftTypeId: null,
+                  excludeNightShiftTypeIds: [],
+                  selectionMode: 'filter',
+                  filterTeams: [],
+                  filterNightShiftLevels: [],
+                  filterCanCardiac: null,
+                  filterCanObstetric: null,
+                  filterCanIcu: null,
+                  selectedMemberIds: [],
+                  dateSelectionMode: 'period',
+                  startDate: firstDay,
+                  endDate: endDay,
+                  targetWeekdays: [],
+                  includeHolidays: false,
+                  includePreHolidays: false,
+                  specificDates: [],
+                });
+                setAutoAssignPreview(null);
+                setShowAutoAssignModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded-lg transition-colors shadow-sm"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="4" x2="20" y1="12" y2="12" />
-                <line x1="4" x2="20" y1="6" y2="6" />
-                <line x1="4" x2="20" y1="18" y2="18" />
-              </svg>
-              メニュー
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+              自動割り振り
             </button>
-            {showToolMenu && (
-              <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                {/* シフト自動割り振り */}
-                <button
-                  onClick={() => {
-                    const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-                    const lastDate = new Date(currentYear, currentMonth, 0);
-                    const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
-                    setAutoAssignConfig({
-                      nightShiftTypeId: null,
-                      dayAfterShiftTypeId: null,
-                      excludeNightShiftTypeIds: [],
-                      selectionMode: 'filter',
-                      filterTeams: [],
-                      filterNightShiftLevels: [],
-                      filterCanCardiac: null,
-                      filterCanObstetric: null,
-                      filterCanIcu: null,
-                      selectedMemberIds: [],
-                      dateSelectionMode: 'period',
-                      startDate: firstDay,
-                      endDate: endDay,
-                      targetWeekdays: [],
-                      includeHolidays: false,
-                      includePreHolidays: false,
-                      specificDates: [],
-                    });
-                    setAutoAssignPreview(null);
-                    setShowAutoAssignModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                  シフト自動割り振り
-                </button>
-                {/* 割り振り取消 */}
-                <button
-                  onClick={() => {
-                    handleUndoAutoAssign();
-                    setShowToolMenu(false);
-                  }}
-                  disabled={isAutoAssigning}
-                  className="w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
-                  割り振り取消
-                </button>
-                {/* シフト一括削除 */}
-                <button
-                  onClick={() => {
-                    const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-                    const lastDate = new Date(currentYear, currentMonth, 0);
-                    const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
-                    setBulkDeleteConfig({
-                      shiftTypeId: null,
-                      startDate: firstDay,
-                      endDate: endDay,
-                    });
-                    setBulkDeletePreview(null);
-                    setShowBulkDeleteModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                  シフト一括削除
-                </button>
-                <div className="border-t border-gray-100 my-1"></div>
-                {/* カウント設定 */}
-                <button
-                  onClick={() => {
-                    resetCountConfigForm();
-                    setEditingCountConfig(null);
-                    setShowCountConfigModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
-                  カウント設定
-                </button>
-                {/* 名前一覧表設定 */}
-                <button
-                  onClick={() => {
-                    resetNameListConfigForm();
-                    setEditingNameListConfig(null);
-                    setShowNameListConfigModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
-                  名前一覧表設定
-                </button>
-                {/* 得点設定 */}
-                <button
-                  onClick={() => {
-                    resetScoreConfigForm();
-                    setEditingScoreConfig(null);
-                    setShowScoreConfigModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                  得点設定
-                </button>
-                {/* 非表示メンバー */}
-                <button
-                  onClick={() => {
-                    setShowHiddenMembersModal(true);
-                    setShowToolMenu(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
-                  非表示メンバー
-                </button>
-              </div>
-            )}
+
+            {/* カウント設定ボタン（直接表示） */}
+            <button
+              onClick={() => {
+                resetCountConfigForm();
+                setEditingCountConfig(null);
+                setShowCountConfigModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-300 hover:bg-purple-100 rounded-lg transition-colors shadow-sm"
+            >
+              <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+              カウント設定
+            </button>
+
+            {/* その他メニュードロップダウン */}
+            <div className="relative" ref={toolMenuRef}>
+              <button
+                onClick={() => setShowToolMenu(!showToolMenu)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" x2="20" y1="12" y2="12" />
+                  <line x1="4" x2="20" y1="6" y2="6" />
+                  <line x1="4" x2="20" y1="18" y2="18" />
+                </svg>
+                その他
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showToolMenu && (
+                <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  {/* 割り振り取消 */}
+                  <button
+                    onClick={() => {
+                      handleUndoAutoAssign();
+                      setShowToolMenu(false);
+                    }}
+                    disabled={isAutoAssigning}
+                    className="w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                    割り振り取消
+                  </button>
+                  {/* シフト一括削除 */}
+                  <button
+                    onClick={() => {
+                      const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                      const lastDate = new Date(currentYear, currentMonth, 0);
+                      const endDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
+                      setBulkDeleteConfig({
+                        shiftTypeId: null,
+                        startDate: firstDay,
+                        endDate: endDay,
+                      });
+                      setBulkDeletePreview(null);
+                      setShowBulkDeleteModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                    シフト一括削除
+                  </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  {/* 名前一覧表設定 */}
+                  <button
+                    onClick={() => {
+                      resetNameListConfigForm();
+                      setEditingNameListConfig(null);
+                      setShowNameListConfigModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
+                    名前一覧表設定
+                  </button>
+                  {/* 得点設定 */}
+                  <button
+                    onClick={() => {
+                      resetScoreConfigForm();
+                      setEditingScoreConfig(null);
+                      setShowScoreConfigModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                    得点設定
+                  </button>
+                  {/* 非表示メンバー */}
+                  <button
+                    onClick={() => {
+                      setShowHiddenMembersModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                    非表示メンバー
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 右: アップロードボタン */}
@@ -3849,7 +3948,7 @@ export default function ScheduleViewPage() {
 
             {/* 全体/A/B表切り替え */}
             <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
-              <span className="text-sm font-medium text-gray-600 self-center mr-2">表示:</span>
+              <span className="text-sm font-medium text-gray-900 self-center mr-2">表示:</span>
               <button
                 onClick={() => setSelectedTeam('all')}
                 className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
@@ -3918,18 +4017,25 @@ export default function ScheduleViewPage() {
                 <thead>
                   {/* メンバー名ヘッダー */}
                   <tr className="bg-gray-100">
-                    <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700 w-16">
+                    <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-900 w-16">
                       日付
                     </th>
                     {filteredMembers.map(member => (
                       <th
                         key={member.staff_id}
                         colSpan={3}
-                        className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-700 text-center w-[78px] min-w-[78px] max-w-[78px]"
+                        className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-900 text-center w-[78px] min-w-[78px] max-w-[78px]"
                       >
                         <span className="truncate block">{member.name}</span>
                       </th>
                     ))}
+                    {/* 右側日付列ヘッダー（カウントより内側） */}
+                    <th
+                      className="sticky z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-900 w-16"
+                      style={{ right: `${activeCountConfigs.length * 40}px` }}
+                    >
+                      日付
+                    </th>
                     {/* カウント列ヘッダー */}
                     {activeCountConfigs.map((config, index) => (
                       <th
@@ -3943,14 +4049,19 @@ export default function ScheduleViewPage() {
                   </tr>
                   {/* AM/PM/夜勤 サブヘッダー */}
                   <tr className="bg-gray-50">
-                    <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-500"></th>
+                    <th className="sticky left-0 z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-900"></th>
                     {filteredMembers.map(member => (
                       <React.Fragment key={`sub-${member.staff_id}`}>
-                        <th className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">AM</th>
-                        <th className="border-y border-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
-                        <th className="border-y border-black border-r border-r-black px-0 py-0.5 text-[8px] text-gray-500 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
+                        <th className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]">AM</th>
+                        <th className="border-y border-black border-r border-r-gray-300 px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]">PM</th>
+                        <th className="border-y border-black border-r border-r-black px-0 py-0.5 text-[8px] text-gray-900 w-[26px] min-w-[26px] max-w-[26px]">夜</th>
                       </React.Fragment>
                     ))}
+                    {/* 右側日付列サブヘッダー（空） */}
+                    <th
+                      className="sticky z-20 bg-gray-50 border border-black px-2 py-1 text-[8px] text-gray-900 w-16"
+                      style={{ right: `${activeCountConfigs.length * 40}px` }}
+                    />
                     {/* カウント列サブヘッダー（空） */}
                     {activeCountConfigs.map((config, index) => (
                       <th
@@ -4121,6 +4232,16 @@ export default function ScheduleViewPage() {
                           </React.Fragment>
                         );
                       })}
+                      {/* 右側日付列 */}
+                      <td
+                        className={`sticky z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}
+                        style={{ right: `${activeCountConfigs.length * 40}px` }}
+                      >
+                        <div className="flex items-center gap-1">
+                          <span>{day.day}</span>
+                          <span className="text-[9px]">{WEEKDAYS[day.dayOfWeek]}</span>
+                        </div>
+                      </td>
                       {/* カウント列データ */}
                       {activeCountConfigs.map((config, index) => (
                         <td
@@ -4133,6 +4254,36 @@ export default function ScheduleViewPage() {
                       ))}
                     </tr>
                   ))}
+                  {/* 下側メンバー名ヘッダー行 */}
+                  <tr className="bg-gray-100">
+                    <td className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700">
+
+                    </td>
+                    {filteredMembers.map(member => (
+                      <td
+                        key={`footer-name-${member.staff_id}`}
+                        colSpan={3}
+                        className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-700 text-center"
+                      >
+                        <span className="truncate block">{member.name}</span>
+                      </td>
+                    ))}
+                    <td
+                      className="sticky z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700"
+                      style={{ right: `${activeCountConfigs.length * 40}px` }}
+                    >
+
+                    </td>
+                    {activeCountConfigs.map((config, index) => (
+                      <td
+                        key={`footer-count-header-${config.id}`}
+                        className="sticky z-20 bg-purple-100 border border-black px-1 py-2 text-[9px] font-bold text-purple-800 text-center w-10 min-w-10 max-w-10"
+                        style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
+                      >
+                        <span className="truncate block" title={config.name}>{config.display_label}</span>
+                      </td>
+                    ))}
+                  </tr>
                   {/* 得点合計行 */}
                   {scoreConfigs.some(c => c.is_active) && (
                     <tr className="bg-yellow-50">
@@ -4155,6 +4306,11 @@ export default function ScheduleViewPage() {
                           </td>
                         </React.Fragment>
                       ))}
+                      {/* 右側日付列（空） */}
+                      <td
+                        className="sticky z-10 bg-yellow-100 border border-black px-2 py-1.5 text-[10px] font-bold text-yellow-800"
+                        style={{ right: `${activeCountConfigs.length * 40}px` }}
+                      />
                       {/* 既存の日付別カウント列分の空セル */}
                       {activeCountConfigs.map((countConfig, index) => (
                         <td
@@ -4189,6 +4345,11 @@ export default function ScheduleViewPage() {
                           </td>
                         </React.Fragment>
                       ))}
+                      {/* 右側日付列（空） */}
+                      <td
+                        className="sticky z-10 bg-orange-100 border border-black px-2 py-1.5 text-[10px] font-bold text-orange-800"
+                        style={{ right: `${activeCountConfigs.length * 40}px` }}
+                      />
                       {/* 既存の日付別カウント列分の空セル */}
                       {activeCountConfigs.map((countConfig, index) => (
                         <td
@@ -4234,13 +4395,13 @@ export default function ScheduleViewPage() {
                   <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[60px]">
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[50px]">
                           日付
                         </th>
                         {activeNameListConfigs.map((config) => (
                           <th
                             key={`name-list-header-${config.id}`}
-                            className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
+                            className="bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[70px] whitespace-nowrap"
                           >
                             {config.display_label}
                           </th>
@@ -4256,7 +4417,7 @@ export default function ScheduleViewPage() {
                             className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
                           >
                             <td
-                              className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold whitespace-nowrap ${
+                              className={`sticky left-0 z-10 border border-black px-1 py-1 text-center text-[10px] font-bold whitespace-nowrap ${
                                 day.isHoliday || day.dayOfWeek === 0
                                   ? 'bg-red-100 text-red-700'
                                   : day.dayOfWeek === 6
@@ -4271,7 +4432,7 @@ export default function ScheduleViewPage() {
                               return (
                                 <td
                                   key={`name-list-cell-${day.date}-${config.id}`}
-                                  className="border border-black px-2 py-1.5 text-sm text-gray-900"
+                                  className="border border-black px-1 py-1 text-[10px] text-gray-900"
                                 >
                                   {names.join('、')}
                                 </td>
@@ -4281,6 +4442,21 @@ export default function ScheduleViewPage() {
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr>
+                        <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[50px]">
+                          日付
+                        </th>
+                        {activeNameListConfigs.map((config) => (
+                          <th
+                            key={`name-list-footer-${config.id}`}
+                            className="bg-cyan-100 border border-black px-1.5 py-1 text-center text-[10px] font-bold text-gray-800 min-w-[70px] whitespace-nowrap"
+                          >
+                            {config.display_label}
+                          </th>
+                        ))}
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               ) : (
@@ -4385,7 +4561,7 @@ export default function ScheduleViewPage() {
                     </li>
                   ))}
                   {selectedCellDetails.schedules.length === 0 && selectedCellDetails.shifts.length === 0 && !selectedCellDetails.vacation && !selectedCellDetails.isResearchDay && selectedCellDetails.type === 'normal' && (
-                    <li className="text-xs text-gray-500">予定なし</li>
+                    <li className="text-xs text-gray-900">予定なし</li>
                   )}
                 </ul>
               </div>
@@ -4491,17 +4667,17 @@ export default function ScheduleViewPage() {
                     <div className="flex gap-2">
                       {/* AM */}
                       <div className="flex-1 text-center">
-                        <div className="text-[9px] text-gray-500 mb-0.5">AM</div>
+                        <div className="text-[9px] text-gray-900 mb-0.5">AM</div>
                         <span className="text-[9px] font-medium">{amLocation ? (amLocation.display_label || amLocation.name) : '-'}</span>
                       </div>
                       {/* PM */}
                       <div className="flex-1 text-center">
-                        <div className="text-[9px] text-gray-500 mb-0.5">PM</div>
+                        <div className="text-[9px] text-gray-900 mb-0.5">PM</div>
                         <span className="text-[9px] font-medium">{pmLocation ? (pmLocation.display_label || pmLocation.name) : '-'}</span>
                       </div>
                       {/* 夜勤 */}
                       <div className="flex-1 text-center">
-                        <div className="text-[9px] text-gray-500 mb-0.5">夜勤</div>
+                        <div className="text-[9px] text-gray-900 mb-0.5">夜勤</div>
                         <span className="text-[9px] font-medium">{nightLocation ? (nightLocation.display_label || nightLocation.name) : '-'}</span>
                       </div>
                     </div>
@@ -4759,7 +4935,7 @@ export default function ScheduleViewPage() {
                             />
                             <div>
                               <div className="text-sm font-medium text-gray-900">{config.display_label}</div>
-                              <div className="text-xs text-gray-500">{config.name}</div>
+                              <div className="text-xs text-gray-900">{config.name}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -4792,7 +4968,7 @@ export default function ScheduleViewPage() {
                   {/* 基本情報 */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">設定名（内部用）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">設定名（内部用）</label>
                       <input
                         type="text"
                         value={newCountConfig.name}
@@ -4802,7 +4978,7 @@ export default function ScheduleViewPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">表示ラベル（短い名前）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">表示ラベル（短い名前）</label>
                       <input
                         type="text"
                         value={newCountConfig.display_label}
@@ -4815,7 +4991,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: 予定タイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: 予定タイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: 予定タイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {scheduleTypes.map(type => (
                         <button
@@ -4843,7 +5019,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: シフトタイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: シフトタイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: シフトタイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {shiftTypes.map(type => (
                         <button
@@ -4871,7 +5047,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: 勤務場所 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: 勤務場所</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: 勤務場所</label>
                     <div className="flex flex-wrap gap-1">
                       {workLocationMaster.map(loc => (
                         <button
@@ -4899,7 +5075,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: 特殊タイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: 特殊タイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: 特殊タイプ</label>
                     <div className="flex flex-wrap gap-2">
                       {[
                         { key: 'vacation', label: '年休' },
@@ -4930,7 +5106,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象勤務時間帯 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象勤務時間帯</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象勤務時間帯</label>
                     <div className="flex gap-4">
                       {[
                         { key: 'target_period_am', label: 'AM' },
@@ -4959,7 +5135,7 @@ export default function ScheduleViewPage() {
 
                   {/* フィルタ: チーム */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: チーム</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">フィルタ: チーム</label>
                     <div className="flex gap-4">
                       {['A', 'B'].map(team => (
                         <label key={team} className="flex items-center gap-1">
@@ -4985,7 +5161,7 @@ export default function ScheduleViewPage() {
 
                   {/* フィルタ: 当直レベル */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: 当直レベル</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">フィルタ: 当直レベル</label>
                     <div className="flex gap-4">
                       {['なし', '上', '中', '下'].map(level => (
                         <label key={level} className="flex items-center gap-1">
@@ -5011,7 +5187,7 @@ export default function ScheduleViewPage() {
 
                   {/* フィルタ: 立場 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: 立場</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">フィルタ: 立場</label>
                     <div className="flex flex-wrap gap-3">
                       {['常勤', '非常勤', 'ローテーター', '研修医'].map(position => (
                         <label key={position} className="flex items-center gap-1">
@@ -5037,7 +5213,7 @@ export default function ScheduleViewPage() {
 
                   {/* フィルタ: スキル */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">フィルタ: スキル</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">フィルタ: スキル</label>
                     <div className="space-y-2">
                       {[
                         { key: 'filter_can_cardiac', label: '心外対応' },
@@ -5112,7 +5288,7 @@ export default function ScheduleViewPage() {
                             />
                             <div>
                               <div className="text-sm font-medium text-gray-900">{config.display_label}</div>
-                              <div className="text-xs text-gray-500">{config.name}</div>
+                              <div className="text-xs text-gray-900">{config.name}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -5145,7 +5321,7 @@ export default function ScheduleViewPage() {
                   {/* 基本情報 */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">設定名（内部用）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">設定名（内部用）</label>
                       <input
                         type="text"
                         value={newMemberCountConfig.name}
@@ -5155,7 +5331,7 @@ export default function ScheduleViewPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">表示ラベル（短い名前）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">表示ラベル（短い名前）</label>
                       <input
                         type="text"
                         value={newMemberCountConfig.display_label}
@@ -5168,7 +5344,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: 予定タイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: 予定タイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: 予定タイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {scheduleTypes.map(type => (
                         <button
@@ -5196,7 +5372,7 @@ export default function ScheduleViewPage() {
 
                   {/* カウント対象: シフトタイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">カウント対象: シフトタイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">カウント対象: シフトタイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {shiftTypes.map(type => (
                         <button
@@ -5226,7 +5402,7 @@ export default function ScheduleViewPage() {
 
                   {/* 日付フィルタ: 曜日 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象曜日（複数選択可）</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象曜日（複数選択可）</label>
                     <div className="flex gap-2">
                       {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
                         <button
@@ -5254,7 +5430,7 @@ export default function ScheduleViewPage() {
 
                   {/* 日付フィルタ: 祝日・祝前日 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">追加対象日</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">追加対象日</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
                         <input
@@ -5368,7 +5544,7 @@ export default function ScheduleViewPage() {
                             />
                             <div>
                               <div className="text-sm font-medium text-gray-900">{config.name}</div>
-                              <div className="text-xs text-gray-500">{config.points}点</div>
+                              <div className="text-xs text-gray-900">{config.points}点</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -5400,7 +5576,7 @@ export default function ScheduleViewPage() {
 
                   {/* 設定名 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">設定名</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">設定名</label>
                     <input
                       type="text"
                       value={newScoreConfig.name}
@@ -5412,7 +5588,7 @@ export default function ScheduleViewPage() {
 
                   {/* 対象シフトタイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象シフトタイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象シフトタイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {shiftTypes.map(type => (
                         <button
@@ -5442,7 +5618,7 @@ export default function ScheduleViewPage() {
 
                   {/* 対象曜日 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象曜日（複数選択可）</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象曜日（複数選択可）</label>
                     <div className="flex gap-2">
                       {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
                         <button
@@ -5470,7 +5646,7 @@ export default function ScheduleViewPage() {
 
                   {/* 祝日・祝前日 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">追加対象日</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">追加対象日</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
                         <input
@@ -5495,7 +5671,7 @@ export default function ScheduleViewPage() {
 
                   {/* 除外日 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">除外日</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">除外日</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
                         <input
@@ -5522,7 +5698,7 @@ export default function ScheduleViewPage() {
 
                   {/* 付与得点 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">付与得点</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">付与得点</label>
                     <input
                       type="number"
                       step="0.1"
@@ -5532,7 +5708,7 @@ export default function ScheduleViewPage() {
                       min="-100"
                       max="100"
                     />
-                    <span className="ml-2 text-sm text-gray-500">点</span>
+                    <span className="ml-2 text-sm text-gray-900">点</span>
                   </div>
                 </div>
               </div>
@@ -5596,14 +5772,41 @@ export default function ScheduleViewPage() {
                 {/* 既存の名前一覧設定一覧 */}
                 {!editingNameListConfig && nameListConfigs.length > 0 && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
+                    <h3 className="text-sm font-medium text-gray-700">登録済み設定（ドラッグで並べ替え）</h3>
                     <div className="space-y-1">
-                      {nameListConfigs.map(config => (
+                      {nameListConfigs.map((config, index) => (
                         <div
                           key={config.id}
-                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                          draggable
+                          onDragStart={() => setDraggingNameListIndex(index)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.add('bg-cyan-100', 'border-cyan-400');
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.classList.remove('bg-cyan-100', 'border-cyan-400');
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove('bg-cyan-100', 'border-cyan-400');
+                            if (draggingNameListIndex !== null) {
+                              handleReorderNameListConfig(draggingNameListIndex, index);
+                              setDraggingNameListIndex(null);
+                            }
+                          }}
+                          onDragEnd={() => setDraggingNameListIndex(null)}
+                          className={`flex items-center justify-between p-2 bg-gray-50 rounded-lg border-2 border-transparent cursor-grab active:cursor-grabbing transition-colors ${
+                            draggingNameListIndex === index ? 'opacity-50' : ''
+                          }`}
                         >
                           <div className="flex items-center gap-3">
+                            <div className="text-gray-400 cursor-grab">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                              </svg>
+                            </div>
                             <input
                               type="checkbox"
                               checked={config.is_active || false}
@@ -5612,7 +5815,7 @@ export default function ScheduleViewPage() {
                             />
                             <div>
                               <div className="text-sm font-medium text-gray-900">{config.display_label}</div>
-                              <div className="text-xs text-gray-500">{config.name}</div>
+                              <div className="text-xs text-gray-900">{config.name}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -5645,7 +5848,7 @@ export default function ScheduleViewPage() {
                   {/* 基本情報 */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">設定名（内部用）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">設定名（内部用）</label>
                       <input
                         type="text"
                         value={newNameListConfig.name}
@@ -5655,7 +5858,7 @@ export default function ScheduleViewPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">表示ラベル（列ヘッダー）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">表示ラベル（列ヘッダー）</label>
                       <input
                         type="text"
                         value={newNameListConfig.display_label}
@@ -5668,7 +5871,7 @@ export default function ScheduleViewPage() {
 
                   {/* 対象予定タイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象予定タイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象予定タイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {scheduleTypes.map(type => (
                         <button
@@ -5696,7 +5899,7 @@ export default function ScheduleViewPage() {
 
                   {/* 対象シフトタイプ */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象シフトタイプ</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象シフトタイプ</label>
                     <div className="flex flex-wrap gap-1">
                       {shiftTypes.map(type => (
                         <button
@@ -5724,7 +5927,7 @@ export default function ScheduleViewPage() {
 
                   {/* 対象時間帯 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象時間帯</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象時間帯</label>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
                         <input
@@ -5754,6 +5957,42 @@ export default function ScheduleViewPage() {
                         <span className="text-sm text-gray-700">夜勤帯</span>
                       </label>
                     </div>
+                  </div>
+
+                  {/* 対象チーム */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象チーム</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newNameListConfig.target_teams.includes('A')}
+                          onChange={(e) => setNewNameListConfig(prev => ({
+                            ...prev,
+                            target_teams: e.target.checked
+                              ? [...prev.target_teams, 'A']
+                              : prev.target_teams.filter(t => t !== 'A')
+                          }))}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span className="text-sm text-gray-700">A表</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newNameListConfig.target_teams.includes('B')}
+                          onChange={(e) => setNewNameListConfig(prev => ({
+                            ...prev,
+                            target_teams: e.target.checked
+                              ? [...prev.target_teams, 'B']
+                              : prev.target_teams.filter(t => t !== 'B')
+                          }))}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span className="text-sm text-gray-700">B表</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-900 mt-1">未選択の場合は全員対象</p>
                   </div>
                 </div>
               </div>
@@ -5848,12 +6087,87 @@ export default function ScheduleViewPage() {
               {/* 当直割り振りタブ */}
               {autoAssignMode === 'night_shift' && (
               <div className="p-4 space-y-4">
+                {/* プリセット選択（一番上に配置） */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setShowDutyPresetSaveModal(true)}
+                        className="px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                      >
+                        {editingDutyPreset ? '上書き保存' : '保存'}
+                      </button>
+                      <button
+                        onClick={() => setShowDutyPresetManageModal(true)}
+                        className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                      >
+                        管理
+                      </button>
+                    </div>
+                  </div>
+                  {editingDutyPreset && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-sm text-emerald-700">
+                        編集中: <strong>{editingDutyPreset.name}</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingDutyPreset(null);
+                          setDutyPresetSaveName('');
+                        }}
+                        className="text-xs text-emerald-600 hover:text-emerald-800"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  )}
+                  <select
+                    value={selectedDutyPresetId || ''}
+                    onChange={(e) => {
+                      const presetId = e.target.value ? Number(e.target.value) : null;
+                      setSelectedDutyPresetId(presetId);
+                      if (presetId) {
+                        const preset = dutyAssignPresets.find(p => p.id === presetId);
+                        if (preset) {
+                          setAutoAssignConfig(prev => ({
+                            ...prev,
+                            nightShiftTypeId: preset.night_shift_type_id,
+                            dayAfterShiftTypeId: preset.day_after_shift_type_id,
+                            excludeNightShiftTypeIds: preset.exclude_night_shift_type_ids || [],
+                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                            filterCanCardiac: preset.filter_can_cardiac,
+                            filterCanObstetric: preset.filter_can_obstetric,
+                            filterCanIcu: preset.filter_can_icu,
+                            selectedMemberIds: preset.selected_member_ids || [],
+                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                            targetWeekdays: preset.target_weekdays || [],
+                            includeHolidays: preset.include_holidays,
+                            includePreHolidays: preset.include_pre_holidays,
+                            excludeHolidays: preset.exclude_holidays || false,
+                            excludePreHolidays: preset.exclude_pre_holidays || false,
+                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                          }));
+                        }
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  >
+                    <option value="">プリセットを選択...</option>
+                    {dutyAssignPresets.map(preset => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* シフト選択 */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-gray-700">シフト選択</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">当直シフト *</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">当直シフト *</label>
                       <select
                         value={autoAssignConfig.nightShiftTypeId || ''}
                         onChange={(e) => setAutoAssignConfig(prev => ({ ...prev, nightShiftTypeId: e.target.value ? Number(e.target.value) : null }))}
@@ -5866,7 +6180,7 @@ export default function ScheduleViewPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">当直明けシフト *</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">当直明けシフト *</label>
                       <select
                         value={autoAssignConfig.dayAfterShiftTypeId || ''}
                         onChange={(e) => setAutoAssignConfig(prev => ({ ...prev, dayAfterShiftTypeId: e.target.value ? Number(e.target.value) : null }))}
@@ -5882,7 +6196,7 @@ export default function ScheduleViewPage() {
 
                   {/* 連続不可チェック対象の当直 */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                    <label className="block text-xs font-medium text-gray-900 mb-1">
                       連続不可チェック対象の当直
                       <span className="ml-1 text-gray-400 font-normal">（未選択時は割り振る当直のみ）</span>
                     </label>
@@ -5906,7 +6220,7 @@ export default function ScheduleViewPage() {
                         </label>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-900 mt-1">
                       選択した当直が前後2日以内にある場合、割り振り不可になります
                     </p>
                   </div>
@@ -5926,7 +6240,7 @@ export default function ScheduleViewPage() {
                         className="w-4 h-4 text-emerald-600 border-gray-300 focus:ring-emerald-500"
                       />
                       <span className="text-sm text-gray-700">回数ベース</span>
-                      <span className="text-xs text-gray-500">（同一シフト回数が少ない人から）</span>
+                      <span className="text-xs text-gray-900">（同一シフト回数が少ない人から）</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -5938,7 +6252,7 @@ export default function ScheduleViewPage() {
                         className="w-4 h-4 text-emerald-600 border-gray-300 focus:ring-emerald-500"
                       />
                       <span className="text-sm text-gray-700">得点ベース</span>
-                      <span className="text-xs text-gray-500">（総得点が低い人から）</span>
+                      <span className="text-xs text-gray-900">（総得点が低い人から）</span>
                     </label>
                   </div>
                 </div>
@@ -5973,7 +6287,7 @@ export default function ScheduleViewPage() {
                     <div className="space-y-3 pl-2 border-l-2 border-emerald-200">
                       {/* チーム */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">チーム</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">チーム</label>
                         <div className="flex gap-2">
                           {(['A', 'B'] as const).map(team => (
                             <button
@@ -6000,7 +6314,7 @@ export default function ScheduleViewPage() {
 
                       {/* 当直レベル */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">当直レベル</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
                         <div className="flex gap-2">
                           {['上', '中', '下'].map(level => (
                             <button
@@ -6033,7 +6347,7 @@ export default function ScheduleViewPage() {
                           { key: 'filterCanIcu', label: 'ICU' },
                         ].map(item => (
                           <div key={item.key}>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">{item.label}</label>
+                            <label className="block text-xs font-medium text-gray-900 mb-1">{item.label}</label>
                             <div className="flex gap-1">
                               <label className="flex items-center gap-1">
                                 <input
@@ -6094,7 +6408,7 @@ export default function ScheduleViewPage() {
                             className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
                           />
                           <span className="text-sm text-gray-700">{member.name}</span>
-                          <span className="text-xs text-gray-500">({member.team})</span>
+                          <span className="text-xs text-gray-900">({member.team})</span>
                         </label>
                       ))}
                     </div>
@@ -6108,7 +6422,7 @@ export default function ScheduleViewPage() {
                   {/* 期間指定 */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">開始日</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">開始日</label>
                       <input
                         type="date"
                         value={autoAssignConfig.startDate || ''}
@@ -6117,7 +6431,7 @@ export default function ScheduleViewPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">終了日</label>
                       <input
                         type="date"
                         value={autoAssignConfig.endDate || ''}
@@ -6129,7 +6443,7 @@ export default function ScheduleViewPage() {
 
                   {/* 日付選択モード */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">対象日選択方法</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">対象日選択方法</label>
                     <div className="flex gap-1">
                       <button
                         onClick={() => setAutoAssignConfig(prev => ({ ...prev, dateSelectionMode: 'period' }))}
@@ -6166,7 +6480,7 @@ export default function ScheduleViewPage() {
 
                   {/* 期間のみモードの説明 */}
                   {autoAssignConfig.dateSelectionMode === 'period' && (
-                    <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2 border border-gray-200">
+                    <div className="text-xs text-gray-900 bg-gray-50 rounded-lg p-2 border border-gray-200">
                       上記期間内の全日が対象になります
                     </div>
                   )}
@@ -6175,7 +6489,7 @@ export default function ScheduleViewPage() {
                   {autoAssignConfig.dateSelectionMode === 'weekday' && (
                     <>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">曜日（選択なしは全曜日）</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">曜日（選択なしは全曜日）</label>
                         <div className="flex gap-1">
                           {WEEKDAYS.map((day, idx) => (
                             <button
@@ -6261,7 +6575,7 @@ export default function ScheduleViewPage() {
                   {/* 個別日付選択モード */}
                   {autoAssignConfig.dateSelectionMode === 'specific' && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-900 mb-1">
                         日付をクリックして選択（選択: {(autoAssignConfig.specificDates || []).length}日）
                       </label>
                       <div className="max-h-80 overflow-y-auto bg-gray-50 rounded-lg p-3 border border-gray-200">
@@ -6387,81 +6701,6 @@ export default function ScheduleViewPage() {
                   )}
                 </div>
 
-                {/* プリセット選択 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => setShowDutyPresetSaveModal(true)}
-                        className="px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                      >
-                        {editingDutyPreset ? '上書き保存' : '保存'}
-                      </button>
-                      <button
-                        onClick={() => setShowDutyPresetManageModal(true)}
-                        className="px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                      >
-                        管理
-                      </button>
-                    </div>
-                  </div>
-                  {editingDutyPreset && (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
-                      <span className="text-sm text-emerald-700">
-                        編集中: <strong>{editingDutyPreset.name}</strong>
-                      </span>
-                      <button
-                        onClick={() => {
-                          setEditingDutyPreset(null);
-                          setDutyPresetSaveName('');
-                        }}
-                        className="text-xs text-emerald-600 hover:text-emerald-800"
-                      >
-                        キャンセル
-                      </button>
-                    </div>
-                  )}
-                  <select
-                    value={selectedDutyPresetId || ''}
-                    onChange={(e) => {
-                      const presetId = e.target.value ? Number(e.target.value) : null;
-                      setSelectedDutyPresetId(presetId);
-                      if (presetId) {
-                        const preset = dutyAssignPresets.find(p => p.id === presetId);
-                        if (preset) {
-                          setAutoAssignConfig(prev => ({
-                            ...prev,
-                            nightShiftTypeId: preset.night_shift_type_id,
-                            dayAfterShiftTypeId: preset.day_after_shift_type_id,
-                            excludeNightShiftTypeIds: preset.exclude_night_shift_type_ids || [],
-                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
-                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
-                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
-                            filterCanCardiac: preset.filter_can_cardiac,
-                            filterCanObstetric: preset.filter_can_obstetric,
-                            filterCanIcu: preset.filter_can_icu,
-                            selectedMemberIds: preset.selected_member_ids || [],
-                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
-                            targetWeekdays: preset.target_weekdays || [],
-                            includeHolidays: preset.include_holidays,
-                            includePreHolidays: preset.include_pre_holidays,
-                            excludeHolidays: preset.exclude_holidays || false,
-                            excludePreHolidays: preset.exclude_pre_holidays || false,
-                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
-                          }));
-                        }
-                      }
-                    }}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  >
-                    <option value="">プリセットを選択...</option>
-                    {dutyAssignPresets.map(preset => (
-                      <option key={preset.id} value={preset.id}>{preset.name}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* プレビュー実行ボタン */}
                 <div className="pt-2">
                   <button
@@ -6479,7 +6718,7 @@ export default function ScheduleViewPage() {
                     <h3 className="text-sm font-bold text-gray-700">プレビュー結果</h3>
 
                     {autoAssignPreview.assignments.length === 0 ? (
-                      <p className="text-sm text-gray-500">割り振り可能な組み合わせがありません</p>
+                      <p className="text-sm text-gray-900">割り振り可能な組み合わせがありません</p>
                     ) : (
                       <>
                         <div className="max-h-48 overflow-y-auto bg-gray-50 rounded-lg p-2 space-y-1">
@@ -6503,7 +6742,7 @@ export default function ScheduleViewPage() {
 
                         {/* サマリー */}
                         <div>
-                          <h4 className="text-xs font-medium text-gray-600 mb-1">割り振り回数サマリー</h4>
+                          <h4 className="text-xs font-medium text-gray-900 mb-1">割り振り回数サマリー</h4>
                           <div className="flex flex-wrap gap-2">
                             {Array.from(autoAssignPreview.summary.entries()).map(([staffId, count]) => {
                               const member = members.find(m => m.staff_id === staffId);
@@ -6545,11 +6784,82 @@ export default function ScheduleViewPage() {
               {/* 一般シフト割り振りタブ */}
               {autoAssignMode === 'general_shift' && (
               <div className="p-4 space-y-4">
+                {/* プリセット（一番上に配置） */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowPresetSaveModal(true)}
+                        className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                      >
+                        {editingShiftPreset ? '上書き保存' : '保存'}
+                      </button>
+                      <button
+                        onClick={() => setShowPresetManageModal(true)}
+                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        管理
+                      </button>
+                    </div>
+                  </div>
+                  {editingShiftPreset && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-sm text-blue-700">
+                        編集中: <strong>{editingShiftPreset.name}</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingShiftPreset(null);
+                          setPresetSaveName('');
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  )}
+                  <select
+                    value={selectedPresetId || ''}
+                    onChange={(e) => {
+                      const presetId = e.target.value ? Number(e.target.value) : null;
+                      setSelectedPresetId(presetId);
+                      if (presetId) {
+                        const preset = shiftAssignPresets.find(p => p.id === presetId);
+                        if (preset) {
+                          setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            shiftTypeId: preset.shift_type_id,
+                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
+                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
+                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
+                            selectedMemberIds: preset.selected_member_ids || [],
+                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
+                            targetWeekdays: preset.target_weekdays || [],
+                            includeHolidays: preset.include_holidays || false,
+                            includePreHolidays: preset.include_pre_holidays || false,
+                            excludeHolidays: preset.exclude_holidays || false,
+                            excludePreHolidays: preset.exclude_pre_holidays || false,
+                            exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
+                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                          }));
+                        }
+                      }
+                    }}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">プリセットを選択...</option>
+                    {shiftAssignPresets.map(preset => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* シフト選択 */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-gray-700">シフト選択</h3>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">割り振るシフト *</label>
+                    <label className="block text-xs font-medium text-gray-900 mb-1">割り振るシフト *</label>
                     <select
                       value={generalShiftConfig.shiftTypeId || ''}
                       onChange={(e) => setGeneralShiftConfig(prev => ({ ...prev, shiftTypeId: e.target.value ? Number(e.target.value) : null }))}
@@ -6588,7 +6898,7 @@ export default function ScheduleViewPage() {
                         className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                       />
                       <span className="text-sm text-gray-700">回数ベース</span>
-                      <span className="text-xs text-gray-500">（同一シフト回数が少ない人から）</span>
+                      <span className="text-xs text-gray-900">（同一シフト回数が少ない人から）</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -6600,7 +6910,7 @@ export default function ScheduleViewPage() {
                         className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                       />
                       <span className="text-sm text-gray-700">得点ベース</span>
-                      <span className="text-xs text-gray-500">（総得点が低い人から）</span>
+                      <span className="text-xs text-gray-900">（総得点が低い人から）</span>
                     </label>
                   </div>
                 </div>
@@ -6634,7 +6944,7 @@ export default function ScheduleViewPage() {
                   {generalShiftConfig.selectionMode === 'filter' && (
                     <div className="space-y-3 bg-gray-50 p-3 rounded-lg">
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">チーム</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">チーム</label>
                         <div className="flex gap-2">
                           {['A', 'B'].map(team => (
                             <label key={team} className="flex items-center gap-1">
@@ -6657,7 +6967,7 @@ export default function ScheduleViewPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">当直レベル</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
                         <div className="flex gap-2">
                           {['上', '中', '下', 'なし'].map(level => (
                             <label key={level} className="flex items-center gap-1">
@@ -6680,7 +6990,7 @@ export default function ScheduleViewPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">立場</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">立場</label>
                         <div className="flex flex-wrap gap-2">
                           {['常勤', '非常勤', 'ローテーター', '研修医'].map(position => (
                             <label key={position} className="flex items-center gap-1">
@@ -6704,7 +7014,7 @@ export default function ScheduleViewPage() {
                       </div>
                       {/* 医療対応・残り番フィルター */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">医療対応・残り番</label>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">医療対応・残り番</label>
                         <div className="grid grid-cols-4 gap-2">
                           {[
                             { key: 'filterCanCardiac' as const, label: '心外' },
@@ -6713,7 +7023,7 @@ export default function ScheduleViewPage() {
                             { key: 'filterCanRemainingDuty' as const, label: '残り番' },
                           ].map(item => (
                             <div key={item.key} className="flex flex-col">
-                              <span className="text-xs text-gray-500 mb-0.5">{item.label}</span>
+                              <span className="text-xs text-gray-900 mb-0.5">{item.label}</span>
                               <div className="flex gap-1">
                                 {[
                                   { value: null, label: '全' },
@@ -6736,7 +7046,7 @@ export default function ScheduleViewPage() {
                           ))}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-900">
                         対象者: {getTargetMembersForGeneralShift().length}名
                         {generalShiftConfig.filterTeams.length === 0 && generalShiftConfig.filterNightShiftLevels.length === 0 && generalShiftConfig.filterPositions.length === 0 && ' （フィルタ未設定: 全員対象）'}
                       </div>
@@ -6781,7 +7091,7 @@ export default function ScheduleViewPage() {
                   <h3 className="text-sm font-bold text-gray-700">対象日</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">開始日</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">開始日</label>
                       <input
                         type="date"
                         value={generalShiftConfig.startDate}
@@ -6790,7 +7100,7 @@ export default function ScheduleViewPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">終了日</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">終了日</label>
                       <input
                         type="date"
                         value={generalShiftConfig.endDate}
@@ -6836,7 +7146,7 @@ export default function ScheduleViewPage() {
 
                   {/* 期間のみモード */}
                   {generalShiftConfig.dateSelectionMode === 'period' && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-900">
                       上記期間内の全日が対象になります
                     </div>
                   )}
@@ -6844,7 +7154,7 @@ export default function ScheduleViewPage() {
                   {/* 期間＋曜日指定モード */}
                   {generalShiftConfig.dateSelectionMode === 'weekday' && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">曜日（選択なしは全曜日）</label>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">曜日（選択なしは全曜日）</label>
                       <div className="flex gap-1">
                         {WEEKDAYS.map((day, idx) => (
                           <button
@@ -6929,7 +7239,7 @@ export default function ScheduleViewPage() {
                   {/* 個別日付選択モード */}
                   {generalShiftConfig.dateSelectionMode === 'specific' && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                      <label className="block text-xs font-medium text-gray-900 mb-1">
                         日付をクリックして選択（選択: {(generalShiftConfig.specificDates || []).length}日）
                       </label>
                       <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-lg p-3 border border-gray-200">
@@ -7099,7 +7409,7 @@ export default function ScheduleViewPage() {
 
                       {/* 対象日（共通） */}
                       <div className="mb-2">
-                        <label className="block text-xs text-gray-500 mb-1">対象日</label>
+                        <label className="block text-xs text-gray-900 mb-1">対象日</label>
                         <div className="flex gap-2">
                           {[
                             { value: 'prev_day', label: '前日' },
@@ -7135,7 +7445,7 @@ export default function ScheduleViewPage() {
                         <>
                           {/* シフトタイプ除外 */}
                           <div className="mb-2">
-                            <label className="block text-xs text-gray-500 mb-1">除外シフト</label>
+                            <label className="block text-xs text-gray-900 mb-1">除外シフト</label>
                             <div className="flex flex-wrap gap-1">
                               {shiftTypes.map(st => (
                                 <label key={st.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
@@ -7165,7 +7475,7 @@ export default function ScheduleViewPage() {
 
                           {/* 予定タイプ除外 */}
                           <div className="mb-2">
-                            <label className="block text-xs text-gray-500 mb-1">除外予定</label>
+                            <label className="block text-xs text-gray-900 mb-1">除外予定</label>
                             <div className="flex flex-wrap gap-1">
                               {scheduleTypes.map(st => (
                                 <label key={st.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
@@ -7213,7 +7523,7 @@ export default function ScheduleViewPage() {
                                 }}
                                 className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                               />
-                              <span className="text-xs text-gray-500">年休を除外</span>
+                              <span className="text-xs text-gray-900">年休を除外</span>
                             </label>
                             {filter.exclude_vacation && (
                               <div className="flex gap-2 ml-5">
@@ -7254,7 +7564,7 @@ export default function ScheduleViewPage() {
                         <>
                           {/* 対象時間帯 */}
                           <div className="mb-2">
-                            <label className="block text-xs text-gray-500 mb-1">対象時間帯</label>
+                            <label className="block text-xs text-gray-900 mb-1">対象時間帯</label>
                             <div className="flex gap-2">
                               {[
                                 { value: 'am', label: 'AM' },
@@ -7288,7 +7598,7 @@ export default function ScheduleViewPage() {
 
                           {/* 勤務場所除外 */}
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">除外勤務場所</label>
+                            <label className="block text-xs text-gray-900 mb-1">除外勤務場所</label>
                             <div className="flex flex-wrap gap-1">
                               {workLocationMaster.map(loc => (
                                 <label key={loc.id} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
@@ -7321,77 +7631,6 @@ export default function ScheduleViewPage() {
                   ))}
                 </div>
 
-                {/* プリセット */}
-                <div className="space-y-3 border-t border-gray-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-700">プリセット</h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowPresetSaveModal(true)}
-                        className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                      >
-                        {editingShiftPreset ? '上書き保存' : '保存'}
-                      </button>
-                      <button
-                        onClick={() => setShowPresetManageModal(true)}
-                        className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        管理
-                      </button>
-                    </div>
-                  </div>
-                  {editingShiftPreset && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center justify-between">
-                      <span className="text-sm text-blue-700">
-                        編集中: <strong>{editingShiftPreset.name}</strong>
-                      </span>
-                      <button
-                        onClick={() => {
-                          setEditingShiftPreset(null);
-                          setPresetSaveName('');
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        キャンセル
-                      </button>
-                    </div>
-                  )}
-                  <select
-                    value={selectedPresetId || ''}
-                    onChange={(e) => {
-                      const presetId = e.target.value ? Number(e.target.value) : null;
-                      setSelectedPresetId(presetId);
-                      if (presetId) {
-                        const preset = shiftAssignPresets.find(p => p.id === presetId);
-                        if (preset) {
-                          setGeneralShiftConfig(prev => ({
-                            ...prev,
-                            shiftTypeId: preset.shift_type_id,
-                            selectionMode: (preset.selection_mode as 'filter' | 'individual') || 'filter',
-                            filterTeams: (preset.filter_teams || []) as ('A' | 'B')[],
-                            filterNightShiftLevels: preset.filter_night_shift_levels || [],
-                            selectedMemberIds: preset.selected_member_ids || [],
-                            dateSelectionMode: (preset.date_selection_mode as 'period' | 'weekday' | 'specific') || 'period',
-                            targetWeekdays: preset.target_weekdays || [],
-                            includeHolidays: preset.include_holidays || false,
-                            includePreHolidays: preset.include_pre_holidays || false,
-                            excludeHolidays: preset.exclude_holidays || false,
-                            excludePreHolidays: preset.exclude_pre_holidays || false,
-                            exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
-                            priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
-                          }));
-                        }
-                      }
-                    }}
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">プリセットを選択...</option>
-                    {shiftAssignPresets.map(preset => (
-                      <option key={preset.id} value={preset.id}>{preset.name}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* プレビューボタン */}
                 <div className="flex justify-center">
                   <button
@@ -7409,7 +7648,7 @@ export default function ScheduleViewPage() {
                     <h3 className="text-sm font-bold text-gray-700">プレビュー結果</h3>
 
                     {generalShiftPreview.assignments.length === 0 ? (
-                      <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+                      <div className="text-sm text-gray-900 text-center py-4 bg-gray-50 rounded-lg">
                         割り振り可能な日がありませんでした
                       </div>
                     ) : (
@@ -7493,7 +7732,7 @@ export default function ScheduleViewPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+              <div className="text-xs text-gray-900 bg-gray-50 p-3 rounded-lg">
                 <p className="font-medium mb-1">保存される設定:</p>
                 <ul className="space-y-1">
                   <li>・シフトタイプ: {shiftTypes.find(s => s.id === generalShiftConfig.shiftTypeId)?.name || '未選択'}</li>
@@ -7535,6 +7774,7 @@ export default function ScheduleViewPage() {
                       exclude_pre_holidays: generalShiftConfig.excludePreHolidays,
                       exclusion_filters: generalShiftConfig.exclusionFilters,
                       priority_mode: generalShiftConfig.priorityMode,
+                      exclude_night_shift_unavailable: generalShiftConfig.excludeNightShiftUnavailable,
                     };
 
                     let error;
@@ -7558,10 +7798,10 @@ export default function ScheduleViewPage() {
                       .order('display_order');
                     setShiftAssignPresets(presetsData || []);
 
+                    // 名前入力モーダルを閉じる（メインモーダルは開いたまま）
                     setShowPresetSaveModal(false);
                     setPresetSaveName('');
                     setEditingShiftPreset(null);
-                    alert(editingShiftPreset ? 'プリセットを更新しました' : 'プリセットを保存しました');
                   } catch (err) {
                     console.error('プリセット保存エラー:', err);
                     alert('プリセットの保存に失敗しました');
@@ -7583,24 +7823,56 @@ export default function ScheduleViewPage() {
           <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowPresetManageModal(false)} />
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
-              <h3 className="text-lg font-bold text-gray-800">プリセット管理</h3>
+              <h3 className="text-lg font-bold text-gray-800">プリセット管理（ドラッグで並べ替え）</h3>
             </div>
             <div className="p-4 overflow-y-auto flex-grow">
               {shiftAssignPresets.length === 0 ? (
-                <div className="text-center text-gray-500 py-8">
+                <div className="text-center text-gray-900 py-8">
                   保存されたプリセットがありません
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {shiftAssignPresets.map(preset => (
-                    <div key={preset.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex-grow">
-                        <div className="font-medium text-gray-800">{preset.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          シフト: {shiftTypes.find(s => s.id === preset.shift_type_id)?.name || '-'}
-                          {preset.exclusion_filters && Array.isArray(preset.exclusion_filters) && (
-                            <span className="ml-2">・除外フィルター: {preset.exclusion_filters.length}件</span>
-                          )}
+                  {shiftAssignPresets.map((preset, index) => (
+                    <div
+                      key={preset.id}
+                      draggable
+                      onDragStart={() => setDraggingShiftPresetIndex(index)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.add('bg-blue-100', 'border-blue-400');
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('bg-blue-100', 'border-blue-400');
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-blue-100', 'border-blue-400');
+                        if (draggingShiftPresetIndex !== null) {
+                          handleReorderShiftPreset(draggingShiftPresetIndex, index);
+                          setDraggingShiftPresetIndex(null);
+                        }
+                      }}
+                      onDragEnd={() => setDraggingShiftPresetIndex(null)}
+                      className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border-2 border-gray-200 cursor-grab active:cursor-grabbing transition-colors ${
+                        draggingShiftPresetIndex === index ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-grow">
+                        <div className="text-gray-400 cursor-grab">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-800">{preset.name}</div>
+                          <div className="text-xs text-gray-900 mt-1">
+                            シフト: {shiftTypes.find(s => s.id === preset.shift_type_id)?.name || '-'}
+                            {preset.exclusion_filters && Array.isArray(preset.exclusion_filters) && (
+                              <span className="ml-2">・除外フィルター: {preset.exclusion_filters.length}件</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -7623,6 +7895,7 @@ export default function ScheduleViewPage() {
                               excludePreHolidays: preset.exclude_pre_holidays || false,
                               exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
                               priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                              excludeNightShiftUnavailable: preset.exclude_night_shift_unavailable || false,
                             }));
                             setPresetSaveName(preset.name);
                             setShowPresetManageModal(false);
@@ -7694,7 +7967,7 @@ export default function ScheduleViewPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               </div>
-              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+              <div className="text-xs text-gray-900 bg-gray-50 p-3 rounded-lg">
                 <p className="font-medium mb-1">保存される設定:</p>
                 <ul className="space-y-1">
                   <li>・当直シフト: {shiftTypes.find(s => s.id === autoAssignConfig.nightShiftTypeId)?.name || '未選択'}</li>
@@ -7763,10 +8036,10 @@ export default function ScheduleViewPage() {
                       .order('display_order');
                     setDutyAssignPresets(presetsData || []);
 
+                    // 名前入力モーダルを閉じる（メインモーダルは開いたまま）
                     setShowDutyPresetSaveModal(false);
                     setDutyPresetSaveName('');
                     setEditingDutyPreset(null);
-                    alert(editingDutyPreset ? 'プリセットを更新しました' : 'プリセットを保存しました');
                   } catch (err) {
                     console.error('プリセット保存エラー:', err);
                     alert('プリセットの保存に失敗しました');
@@ -7788,22 +8061,54 @@ export default function ScheduleViewPage() {
           <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowDutyPresetManageModal(false)} />
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-gray-200 flex-shrink-0">
-              <h3 className="text-lg font-bold text-gray-800">当直プリセット管理</h3>
+              <h3 className="text-lg font-bold text-gray-800">当直プリセット管理（ドラッグで並べ替え）</h3>
             </div>
             <div className="p-4 overflow-y-auto flex-grow">
               {dutyAssignPresets.length === 0 ? (
-                <div className="text-center text-gray-500 py-8">
+                <div className="text-center text-gray-900 py-8">
                   保存されたプリセットがありません
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {dutyAssignPresets.map(preset => (
-                    <div key={preset.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex-grow">
-                        <div className="font-medium text-gray-800">{preset.name}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          当直: {shiftTypes.find(s => s.id === preset.night_shift_type_id)?.name || '-'}
-                          <span className="ml-2">・明け: {shiftTypes.find(s => s.id === preset.day_after_shift_type_id)?.name || '-'}</span>
+                  {dutyAssignPresets.map((preset, index) => (
+                    <div
+                      key={preset.id}
+                      draggable
+                      onDragStart={() => setDraggingDutyPresetIndex(index)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.add('bg-emerald-100', 'border-emerald-400');
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('bg-emerald-100', 'border-emerald-400');
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-emerald-100', 'border-emerald-400');
+                        if (draggingDutyPresetIndex !== null) {
+                          handleReorderDutyPreset(draggingDutyPresetIndex, index);
+                          setDraggingDutyPresetIndex(null);
+                        }
+                      }}
+                      onDragEnd={() => setDraggingDutyPresetIndex(null)}
+                      className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border-2 border-gray-200 cursor-grab active:cursor-grabbing transition-colors ${
+                        draggingDutyPresetIndex === index ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-grow">
+                        <div className="text-gray-400 cursor-grab">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                            <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-800">{preset.name}</div>
+                          <div className="text-xs text-gray-900 mt-1">
+                            当直: {shiftTypes.find(s => s.id === preset.night_shift_type_id)?.name || '-'}
+                            <span className="ml-2">・明け: {shiftTypes.find(s => s.id === preset.day_after_shift_type_id)?.name || '-'}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -7989,7 +8294,7 @@ export default function ScheduleViewPage() {
                         </table>
                       </div>
                     ) : (
-                      <div className="p-4 text-center text-gray-500">
+                      <div className="p-4 text-center text-gray-900">
                         削除対象のシフトが見つかりませんでした
                       </div>
                     )}
@@ -8047,7 +8352,7 @@ export default function ScheduleViewPage() {
               <div className="p-4 overflow-y-auto flex-1">
                 <p className="text-sm text-gray-600 mb-4">
                   予定表に表示しないメンバーを選択してください。<br />
-                  <span className="text-gray-500 text-xs">※非表示メンバーは当直・シフト自動割り振りからも除外されます</span>
+                  <span className="text-gray-900 text-xs">※非表示メンバーは当直・シフト自動割り振りからも除外されます</span>
                 </p>
 
                 <div className="space-y-4">

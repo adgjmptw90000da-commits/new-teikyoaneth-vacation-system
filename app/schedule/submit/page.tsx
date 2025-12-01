@@ -385,6 +385,7 @@ export default function ScheduleSubmitPage() {
             staff_id: user.staff_id,
             schedule_date: date,
             schedule_type_id: systemScheduleTypes.research_day!.id,
+            work_location_id: systemScheduleTypes.research_day!.default_work_location_id || null,
           }));
 
           await supabase.from("user_schedule").insert(records);
@@ -430,6 +431,7 @@ export default function ScheduleSubmitPage() {
             staff_id: user.staff_id,
             schedule_date: date,
             schedule_type_id: systemScheduleTypes.secondment!.id,
+            work_location_id: systemScheduleTypes.secondment!.default_work_location_id || null,
           }));
 
           await supabase.from("user_schedule").insert(records);
@@ -492,6 +494,7 @@ export default function ScheduleSubmitPage() {
             staff_id: user.staff_id,
             schedule_date: date,
             schedule_type_id: systemScheduleTypes.leave_of_absence!.id,
+            work_location_id: systemScheduleTypes.leave_of_absence!.default_work_location_id || null,
           }));
 
           await supabase.from("user_schedule").insert(records);
@@ -817,10 +820,13 @@ export default function ScheduleSubmitPage() {
     }
 
     try {
+      // schedule_typeからdefault_work_location_idを取得
+      const scheduleTypeData = scheduleTypes.find(t => t.id === typeId);
       const { error } = await supabase.from("user_schedule").insert({
         staff_id: user.staff_id,
         schedule_date: selectedDate,
         schedule_type_id: typeId,
+        work_location_id: scheduleTypeData?.default_work_location_id || null,
       });
 
       if (error) {
