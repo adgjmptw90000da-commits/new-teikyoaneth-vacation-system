@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { checkAnnualLeavePointsAvailable, calculateAnnualLeavePoints, getDefaultDisplayFiscalYear } from "@/lib/application";
+import { getDefaultDisplayFiscalYear } from "@/lib/application";
 import { useConfirm } from "@/components/ConfirmDialog";
 import type { Database } from "@/lib/database.types";
 
@@ -108,10 +108,10 @@ export default function MembersPage() {
         return;
       }
 
-      // 設定を取得
+      // 設定を取得（得点計算用の項目も含む）
       const { data: settingData } = await supabase
         .from("setting")
-        .select("max_annual_leave_points")
+        .select("max_annual_leave_points, level1_points, level2_points, level3_points")
         .eq("id", 1)
         .single();
 
@@ -130,26 +130,48 @@ export default function MembersPage() {
         .select('*')
         .eq('fiscal_year', fiscalYear);
 
-      // 各ユーザーの残り得点を取得（指定年度で計算）
-      const usersWithPoints: UserWithPoints[] = await Promise.all(
-        (data || []).map(async (user) => {
-          const pointsData = await calculateAnnualLeavePoints(user.staff_id, fiscalYear);
-          const usedPoints = pointsData ? pointsData.totalPoints : null;
-          // 年度別の割合があればそれを使用、なければuser.point_retention_rateを使用
-          const yearlyRate = yearlyRates?.find(r => r.staff_id === user.staff_id);
-          const effectiveRetentionRate = yearlyRate?.point_retention_rate ?? user.point_retention_rate ?? 100;
-          const maxPoints = Math.floor(
-            (settingData.max_annual_leave_points * effectiveRetentionRate) / 100
-          );
-          const remainingPoints = usedPoints !== null ? maxPoints - usedPoints : null;
-          return {
-            ...user,
-            remainingPoints,
-            usedPoints,
-            effectiveRetentionRate
-          };
-        })
-      );
+      // 年度の開始日と終了日を計算（4月1日〜翌年3月31日）
+      const fiscalYearStart = `${fiscalYear}-04-01`;
+      const fiscalYearEnd = `${fiscalYear + 1}-03-31`;
+
+      // 全ユーザーの申請を一括取得（パフォーマンス改善）
+      const { data: allApplications } = await supabase
+        .from('application')
+        .select('staff_id, level, period, status')
+        .gte('vacation_date', fiscalYearStart)
+        .lte('vacation_date', fiscalYearEnd)
+        .in('status', ['before_lottery', 'after_lottery', 'confirmed', 'pending_approval', 'pending_cancellation', 'cancelled_after_lottery']);
+
+      // 各ユーザーの残り得点を計算（DBクエリなし、JavaScriptで処理）
+      const usersWithPoints: UserWithPoints[] = (data || []).map((user) => {
+        // このユーザーの申請をフィルタリング
+        const userApps = allApplications?.filter(a => a.staff_id === user.staff_id) || [];
+
+        // 得点を計算
+        let usedPoints = 0;
+        userApps.forEach(app => {
+          const count = app.period === 'full_day' ? 1 : 0.5;
+          const pointsPerApp = app.level === 1 ? settingData.level1_points
+            : app.level === 2 ? settingData.level2_points
+            : settingData.level3_points;
+          usedPoints += count * pointsPerApp;
+        });
+
+        // 年度別の割合があればそれを使用、なければuser.point_retention_rateを使用
+        const yearlyRate = yearlyRates?.find(r => r.staff_id === user.staff_id);
+        const effectiveRetentionRate = yearlyRate?.point_retention_rate ?? user.point_retention_rate ?? 100;
+        const maxPoints = Math.floor(
+          (settingData.max_annual_leave_points * effectiveRetentionRate) / 100
+        );
+        const remainingPoints = maxPoints - usedPoints;
+
+        return {
+          ...user,
+          remainingPoints,
+          usedPoints,
+          effectiveRetentionRate
+        };
+      });
 
       setUsers(usersWithPoints);
     } catch (err) {
