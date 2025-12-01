@@ -57,6 +57,7 @@ type MemberCountConfig = Database["public"]["Tables"]["member_count_config"]["Ro
 type ScoreConfig = Database["public"]["Tables"]["score_config"]["Row"];
 type ShiftAssignPreset = Database["public"]["Tables"]["shift_assign_preset"]["Row"];
 type DutyAssignPreset = Database["public"]["Tables"]["duty_assign_preset"]["Row"];
+type NameListConfig = Database["public"]["Tables"]["name_list_config"]["Row"];
 
 // 除外フィルターの型定義
 type TargetDay = 'same_day' | 'prev_day' | 'next_day';
@@ -244,6 +245,30 @@ export default function ScheduleViewPage() {
     exclude_holiday: false,
     exclude_pre_holiday: false,
     points: 1,
+  });
+
+  // 名前一覧表設定
+  const [nameListConfigs, setNameListConfigs] = useState<NameListConfig[]>([]);
+  const [showNameListConfigModal, setShowNameListConfigModal] = useState(false);
+  const [editingNameListConfig, setEditingNameListConfig] = useState<NameListConfig | null>(null);
+  const [newNameListConfig, setNewNameListConfig] = useState<{
+    name: string;
+    display_label: string;
+    is_active: boolean;
+    target_schedule_type_ids: number[];
+    target_shift_type_ids: number[];
+    target_period_am: boolean;
+    target_period_pm: boolean;
+    target_period_night: boolean;
+  }>({
+    name: '',
+    display_label: '',
+    is_active: true,
+    target_schedule_type_ids: [],
+    target_shift_type_ids: [],
+    target_period_am: true,
+    target_period_pm: true,
+    target_period_night: true,
   });
 
   // プリセット関連（一般シフト）
@@ -532,6 +557,7 @@ export default function ScheduleViewPage() {
         { data: shiftAssignPresetsData },
         { data: dutyAssignPresetsData },
         { data: hiddenMembersData },
+        { data: nameListConfigsData },
       ] = await Promise.all([
         supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty, position").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
@@ -573,6 +599,7 @@ export default function ScheduleViewPage() {
         supabase.from("shift_assign_preset").select("*").order("display_order"),
         supabase.from("duty_assign_preset").select("*").order("display_order"),
         supabase.from("schedule_hidden_members").select("staff_id"),
+        supabase.from("name_list_config").select("*").order("display_order"),
       ]);
 
       // 確定済み日付のSetを作成
@@ -591,6 +618,7 @@ export default function ScheduleViewPage() {
       setScoreConfigs(scoreConfigsData || []);
       setShiftAssignPresets(shiftAssignPresetsData || []);
       setDutyAssignPresets(dutyAssignPresetsData || []);
+      setNameListConfigs(nameListConfigsData || []);
 
       // システム予約タイプからdisplaySettingsを構築
       const systemScheduleTypes = {
@@ -808,6 +836,64 @@ export default function ScheduleViewPage() {
 
       return false;
     }).length;
+  };
+
+  // アクティブな名前一覧設定
+  const activeNameListConfigs = useMemo(() => {
+    return nameListConfigs.filter(c => c.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+  }, [nameListConfigs]);
+
+  // 名前一覧計算: 指定された日付と設定に対して該当する人の名前リストを取得
+  const calculateNameList = (day: DayData, config: NameListConfig): string[] => {
+    return filteredMembers
+      .filter(member => {
+        // 出向中・休職中は除外
+        if (member.isSecondment) return false;
+        if (isDateInLeaveOfAbsence(day.date, member.leaveOfAbsence)) return false;
+
+        // 対象のシフト/予定があるかチェック
+        const schedules = member.schedules[day.date] || [];
+        const shifts = member.shifts[day.date] || [];
+
+        // 勤務時間帯フィルタの確認
+        const checkPeriod = (am: boolean, pm: boolean, night: boolean) => {
+          if (config.target_period_am && am) return true;
+          if (config.target_period_pm && pm) return true;
+          if (config.target_period_night && night) return true;
+          return false;
+        };
+
+        // 予定タイプチェック
+        if (config.target_schedule_type_ids && config.target_schedule_type_ids.length > 0) {
+          for (const schedule of schedules) {
+            if (config.target_schedule_type_ids.includes(schedule.schedule_type_id)) {
+              const hasAm = schedule.schedule_type.position_am;
+              const hasPm = schedule.schedule_type.position_pm;
+              const hasNight = schedule.schedule_type.position_night;
+              if (checkPeriod(hasAm, hasPm, hasNight)) {
+                return true;
+              }
+            }
+          }
+        }
+
+        // シフトタイプチェック
+        if (config.target_shift_type_ids && config.target_shift_type_ids.length > 0) {
+          for (const shift of shifts) {
+            if (config.target_shift_type_ids.includes(shift.shift_type_id)) {
+              const hasAm = shift.shift_type.position_am;
+              const hasPm = shift.shift_type.position_pm;
+              const hasNight = shift.shift_type.position_night;
+              if (checkPeriod(hasAm, hasPm, hasNight)) {
+                return true;
+              }
+            }
+          }
+        }
+
+        return false;
+      })
+      .map(member => member.name);
   };
 
   // 得点計算: 日付がカウント対象かどうか判定
@@ -3232,6 +3318,117 @@ export default function ScheduleViewPage() {
     setShowCountConfigModal(true);
   };
 
+  // 名前一覧設定のリセット
+  const resetNameListConfigForm = () => {
+    setNewNameListConfig({
+      name: '',
+      display_label: '',
+      is_active: true,
+      target_schedule_type_ids: [],
+      target_shift_type_ids: [],
+      target_period_am: true,
+      target_period_pm: true,
+      target_period_night: true,
+    });
+  };
+
+  // 名前一覧設定の保存
+  const handleSaveNameListConfig = async () => {
+    try {
+      if (editingNameListConfig) {
+        // 更新
+        const { error } = await supabase.from("name_list_config").update({
+          name: newNameListConfig.name,
+          display_label: newNameListConfig.display_label,
+          is_active: newNameListConfig.is_active,
+          target_schedule_type_ids: newNameListConfig.target_schedule_type_ids,
+          target_shift_type_ids: newNameListConfig.target_shift_type_ids,
+          target_period_am: newNameListConfig.target_period_am,
+          target_period_pm: newNameListConfig.target_period_pm,
+          target_period_night: newNameListConfig.target_period_night,
+          updated_at: new Date().toISOString(),
+        }).eq("id", editingNameListConfig.id);
+
+        if (error) throw error;
+
+        setNameListConfigs(prev => prev.map(c =>
+          c.id === editingNameListConfig.id ? { ...c, ...newNameListConfig } : c
+        ));
+      } else {
+        // 新規作成
+        const maxOrder = Math.max(0, ...nameListConfigs.map(c => c.display_order || 0));
+        const { data, error } = await supabase.from("name_list_config").insert({
+          name: newNameListConfig.name,
+          display_label: newNameListConfig.display_label,
+          is_active: newNameListConfig.is_active,
+          display_order: maxOrder + 1,
+          target_schedule_type_ids: newNameListConfig.target_schedule_type_ids,
+          target_shift_type_ids: newNameListConfig.target_shift_type_ids,
+          target_period_am: newNameListConfig.target_period_am,
+          target_period_pm: newNameListConfig.target_period_pm,
+          target_period_night: newNameListConfig.target_period_night,
+        }).select().single();
+
+        if (error) throw error;
+        if (data) {
+          setNameListConfigs(prev => [...prev, data]);
+        }
+      }
+      setShowNameListConfigModal(false);
+      setEditingNameListConfig(null);
+      resetNameListConfigForm();
+    } catch (error) {
+      console.error("名前一覧設定の保存に失敗:", error);
+      alert("保存に失敗しました");
+    }
+  };
+
+  // 名前一覧設定削除
+  const handleDeleteNameListConfig = async (id: number) => {
+    if (!confirm("この名前一覧設定を削除しますか？")) return;
+
+    try {
+      const { error } = await supabase.from("name_list_config").delete().eq("id", id);
+      if (error) throw error;
+      setNameListConfigs(prev => prev.filter(c => c.id !== id));
+    } catch (error) {
+      console.error("名前一覧設定の削除に失敗:", error);
+      alert("削除に失敗しました");
+    }
+  };
+
+  // 名前一覧設定の有効/無効切り替え
+  const handleToggleNameListConfig = async (id: number, isActive: boolean) => {
+    try {
+      const { error } = await supabase.from("name_list_config")
+        .update({ is_active: isActive, updated_at: new Date().toISOString() })
+        .eq("id", id);
+
+      if (error) throw error;
+      setNameListConfigs(prev => prev.map(c =>
+        c.id === id ? { ...c, is_active: isActive } : c
+      ));
+    } catch (error) {
+      console.error("名前一覧設定の更新に失敗:", error);
+    }
+  };
+
+  // 名前一覧設定の編集モード開始
+  const handleEditNameListConfig = (config: NameListConfig) => {
+    setEditingNameListConfig(config);
+    setNewNameListConfig({
+      name: config.name,
+      display_label: config.display_label,
+      is_active: config.is_active ?? true,
+      target_schedule_type_ids: config.target_schedule_type_ids || [],
+      target_shift_type_ids: config.target_shift_type_ids || [],
+      target_period_am: config.target_period_am ?? true,
+      target_period_pm: config.target_period_pm ?? true,
+      target_period_night: config.target_period_night ?? true,
+    });
+    setShowNameListConfigModal(true);
+  };
+
   // 得点設定の保存
   const handleSaveScoreConfig = async () => {
     try {
@@ -3494,6 +3691,19 @@ export default function ScheduleViewPage() {
                 >
                   <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
                   カウント設定
+                </button>
+                {/* 名前一覧表設定 */}
+                <button
+                  onClick={() => {
+                    resetNameListConfigForm();
+                    setEditingNameListConfig(null);
+                    setShowNameListConfigModal(true);
+                    setShowToolMenu(false);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2"
+                >
+                  <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
+                  名前一覧表設定
                 </button>
                 {/* 得点設定 */}
                 <button
@@ -3964,6 +4174,66 @@ export default function ScheduleViewPage() {
               </table>
             </div>
           </div>
+
+          {/* 名前一覧表 */}
+          {activeNameListConfigs.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mt-4">
+              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span className="w-3 h-3 bg-cyan-500 rounded-full"></span>
+                名前一覧表
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="border-collapse text-xs" style={{ borderSpacing: 0 }}>
+                  <thead>
+                    <tr>
+                      <th className="sticky left-0 z-20 bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[40px]">
+                        日
+                      </th>
+                      {activeNameListConfigs.map((config) => (
+                        <th
+                          key={`name-list-header-${config.id}`}
+                          className="bg-cyan-100 border border-black px-3 py-2 text-center text-sm font-bold text-gray-800 min-w-[120px] whitespace-nowrap"
+                        >
+                          {config.display_label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {daysData.map((day) => (
+                      <tr
+                        key={`name-list-row-${day.date}`}
+                        className={`${day.isHoliday || day.dayOfWeek === 0 ? 'bg-red-50' : day.dayOfWeek === 6 ? 'bg-blue-50' : 'bg-white'}`}
+                      >
+                        <td
+                          className={`sticky left-0 z-10 border border-black px-2 py-1.5 text-center text-sm font-bold ${
+                            day.isHoliday || day.dayOfWeek === 0
+                              ? 'bg-red-100 text-red-700'
+                              : day.dayOfWeek === 6
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-900'
+                          }`}
+                        >
+                          {day.day}
+                        </td>
+                        {activeNameListConfigs.map((config) => {
+                          const names = calculateNameList(day, config);
+                          return (
+                            <td
+                              key={`name-list-cell-${day.date}-${config.id}`}
+                              className="border border-black px-2 py-1.5 text-sm text-gray-900"
+                            >
+                              {names.join('、')}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -5227,6 +5497,227 @@ export default function ScheduleViewPage() {
                   className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {editingScoreConfig ? '更新' : '追加'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 名前一覧表設定モーダル */}
+      {showNameListConfigModal && (
+        <>
+          {/* オーバーレイ */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => {
+              setShowNameListConfigModal(false);
+              setEditingNameListConfig(null);
+              resetNameListConfigForm();
+            }}
+          />
+          {/* モーダル本体 */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900">
+                  {editingNameListConfig ? '名前一覧表設定を編集' : '名前一覧表設定'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowNameListConfigModal(false);
+                    setEditingNameListConfig(null);
+                    resetNameListConfigForm();
+                  }}
+                  className="text-gray-500 hover:text-gray-700 p-1"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4">
+                {/* 既存の名前一覧設定一覧 */}
+                {!editingNameListConfig && nameListConfigs.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
+                    <div className="space-y-1">
+                      {nameListConfigs.map(config => (
+                        <div
+                          key={config.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={config.is_active || false}
+                              onChange={(e) => handleToggleNameListConfig(config.id, e.target.checked)}
+                              className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{config.display_label}</div>
+                              <div className="text-xs text-gray-500">{config.name}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditNameListConfig(config)}
+                              className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                            >
+                              編集
+                            </button>
+                            <button
+                              onClick={() => handleDeleteNameListConfig(config.id)}
+                              className="px-2 py-1 text-xs font-medium text-red-700 bg-red-100 hover:bg-red-200 rounded transition-colors"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <hr className="my-4" />
+                  </div>
+                )}
+
+                {/* 新規追加/編集フォーム */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium text-gray-700">
+                    {editingNameListConfig ? '設定を編集' : '新規名前一覧設定'}
+                  </h3>
+
+                  {/* 基本情報 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">設定名（内部用）</label>
+                      <input
+                        type="text"
+                        value={newNameListConfig.name}
+                        onChange={(e) => setNewNameListConfig(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                        placeholder="例: 上当直担当"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">表示ラベル（列ヘッダー）</label>
+                      <input
+                        type="text"
+                        value={newNameListConfig.display_label}
+                        onChange={(e) => setNewNameListConfig(prev => ({ ...prev, display_label: e.target.value }))}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                        placeholder="例: 上当直"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 対象予定タイプ */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象予定タイプ</label>
+                    <div className="flex flex-wrap gap-1">
+                      {scheduleTypes.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setNewNameListConfig(prev => ({
+                              ...prev,
+                              target_schedule_type_ids: prev.target_schedule_type_ids.includes(type.id)
+                                ? prev.target_schedule_type_ids.filter(id => id !== type.id)
+                                : [...prev.target_schedule_type_ids, type.id]
+                            }));
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+                            newNameListConfig.target_schedule_type_ids.includes(type.id)
+                              ? 'ring-2 ring-cyan-500 border-cyan-500'
+                              : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: type.color, color: type.text_color || '#000000' }}
+                        >
+                          {type.display_label || type.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 対象シフトタイプ */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象シフトタイプ</label>
+                    <div className="flex flex-wrap gap-1">
+                      {shiftTypes.map(type => (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            setNewNameListConfig(prev => ({
+                              ...prev,
+                              target_shift_type_ids: prev.target_shift_type_ids.includes(type.id)
+                                ? prev.target_shift_type_ids.filter(id => id !== type.id)
+                                : [...prev.target_shift_type_ids, type.id]
+                            }));
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+                            newNameListConfig.target_shift_type_ids.includes(type.id)
+                              ? 'ring-2 ring-cyan-500 border-cyan-500'
+                              : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: type.color, color: type.text_color || '#000000' }}
+                        >
+                          {type.display_label || type.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 対象時間帯 */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">対象時間帯</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newNameListConfig.target_period_am}
+                          onChange={(e) => setNewNameListConfig(prev => ({ ...prev, target_period_am: e.target.checked }))}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span className="text-sm text-gray-700">AM</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newNameListConfig.target_period_pm}
+                          onChange={(e) => setNewNameListConfig(prev => ({ ...prev, target_period_pm: e.target.checked }))}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span className="text-sm text-gray-700">PM</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newNameListConfig.target_period_night}
+                          onChange={(e) => setNewNameListConfig(prev => ({ ...prev, target_period_night: e.target.checked }))}
+                          className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                        />
+                        <span className="text-sm text-gray-700">夜勤帯</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowNameListConfigModal(false);
+                    setEditingNameListConfig(null);
+                    resetNameListConfigForm();
+                  }}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleSaveNameListConfig}
+                  disabled={!newNameListConfig.name || !newNameListConfig.display_label || (newNameListConfig.target_schedule_type_ids.length === 0 && newNameListConfig.target_shift_type_ids.length === 0)}
+                  className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {editingNameListConfig ? '更新' : '追加'}
                 </button>
               </div>
             </div>

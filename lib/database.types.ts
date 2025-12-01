@@ -1129,6 +1129,50 @@ export interface Database {
           updated_at?: string
         }
       }
+      name_list_config: {
+        Row: {
+          id: number
+          name: string
+          display_label: string
+          is_active: boolean
+          display_order: number
+          target_schedule_type_ids: number[]
+          target_shift_type_ids: number[]
+          target_period_am: boolean
+          target_period_pm: boolean
+          target_period_night: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          target_period_am?: boolean
+          target_period_pm?: boolean
+          target_period_night?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string
+          is_active?: boolean
+          display_order?: number
+          target_schedule_type_ids?: number[]
+          target_shift_type_ids?: number[]
+          target_period_am?: boolean
+          target_period_pm?: boolean
+          target_period_night?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
