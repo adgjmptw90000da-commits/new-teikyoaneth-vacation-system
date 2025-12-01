@@ -3946,7 +3946,8 @@ export default function ScheduleViewPage() {
               })}
             </div>
 
-            {/* 全体/A/B表切り替え */}
+            {/* 全体/A/B表切り替え（名前一覧表では非表示） */}
+            {mainTab !== 'nameList' && (
             <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
               <span className="text-sm font-medium text-gray-900 self-center mr-2">表示:</span>
               <button
@@ -3980,6 +3981,7 @@ export default function ScheduleViewPage() {
                 B表 ({teamBCount}名)
               </button>
             </div>
+            )}
 
             {/* メインタブ切り替え（予定表/名前一覧表） */}
             <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
@@ -3995,13 +3997,12 @@ export default function ScheduleViewPage() {
               </button>
               <button
                 onClick={() => setMainTab('nameList')}
-                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
                   mainTab === 'nameList'
                     ? 'bg-cyan-600 text-white shadow-md'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                <span className="w-2 h-2 bg-cyan-400 rounded-full"></span>
                 名前一覧表
               </button>
             </div>
