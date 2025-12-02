@@ -193,6 +193,25 @@ export default function ApplicationCalendarPage() {
     await fetchPointsInfoForYear(user.staff_id, year);
   };
 
+  // settingを使って抽選期間開始前かをクライアント側で判定（DB呼び出しなし）
+  const isBeforeLotteryPeriodLocal = (vacationDate: string, settingData: Setting): boolean => {
+    const vacation = new Date(vacationDate);
+    const today = new Date();
+
+    const vacationYear = vacation.getFullYear();
+    const vacationMonth = vacation.getMonth();
+
+    let targetYear = vacationYear;
+    let targetMonth = vacationMonth - settingData.lottery_period_months;
+    while (targetMonth < 0) {
+      targetMonth += 12;
+      targetYear -= 1;
+    }
+
+    const startDate = new Date(targetYear, targetMonth, settingData.lottery_period_start_day);
+    return today < startDate;
+  };
+
   const fetchData = async (staffId: string) => {
     setLoading(true);
     try {
@@ -229,7 +248,7 @@ export default function ApplicationCalendarPage() {
         applicationsMap.set(app.vacation_date, app);
       });
 
-      // 日付ごとのデータを構築
+      // 日付ごとのデータを構築（同期処理で高速化）
       const days: DayData[] = [];
       for (let day = 1; day <= daysInMonth; day++) {
         const date = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -237,7 +256,8 @@ export default function ApplicationCalendarPage() {
         const holiday = holidaysData?.find((h) => h.holiday_date === date);
         const conference = conferencesData?.find((c) => c.conference_date === date);
         const event = eventsData?.find((e) => e.event_date === date);
-        const beforeLottery = await isBeforeLotteryPeriod(date);
+        // settingDataを使ってローカルで計算（DB呼び出しなし）
+        const beforeLottery = settingData ? isBeforeLotteryPeriodLocal(date, settingData) : false;
 
         days.push({
           date,
