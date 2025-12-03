@@ -8,7 +8,7 @@ import { setUser } from "@/lib/auth";
 import { validateStaffId, validatePassword } from "@/lib/validation";
 
 // メンテナンスモード設定（true: メンテナンス中 / false: 通常運用）
-const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE = false;
 
 // Icons
 const Icons = {
