@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -85,6 +85,7 @@ function AdminCalendarPageContent() {
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
   const [selectedApplications, setSelectedApplications] = useState<number[]>([]);
   const [exchangeDialogOpen, setExchangeDialogOpen] = useState(false);
+  const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
 
   // URLパラメータから年月を取得
   useEffect(() => {
@@ -598,45 +599,51 @@ function AdminCalendarPageContent() {
     router.push(`/admin/calendar?year=${newYear}&month=${newMonth}`);
   };
 
-  const handleMaxPeopleChange = async (date: string, value: string) => {
-    // ローカルステートを更新
-    setCapacities({ ...capacities, [date]: value });
+  const handleMaxPeopleChange = (date: string, value: string) => {
+    // ローカルステートを即座に更新（関数型で最新状態を参照）
+    setCapacities(prev => ({ ...prev, [date]: value }));
 
-    // 空欄の場合はnullに設定
-    if (value === "" || value === null) {
-      try {
-        const { error } = await supabase.from("calendar_management").upsert({
-          vacation_date: date,
-          max_people: null,
-        });
-
-        if (error) {
-          console.error("Error updating max_people:", error);
-          alert("マンパワーの更新に失敗しました");
-        }
-      } catch (err) {
-        console.error("Error:", err);
-      }
-      return;
+    // 既存のタイマーをクリア
+    if (debounceTimers.current[date]) {
+      clearTimeout(debounceTimers.current[date]);
     }
 
-    // 数値として有効なら自動保存
-    const maxPeople = parseInt(value);
-    if (!isNaN(maxPeople) && maxPeople >= 0) {
-      try {
-        const { error } = await supabase.from("calendar_management").upsert({
-          vacation_date: date,
-          max_people: maxPeople,
-        });
-
-        if (error) {
-          console.error("Error updating max_people:", error);
-          alert("マンパワーの更新に失敗しました");
+    // デバウンス: 500ms後にDB保存
+    debounceTimers.current[date] = setTimeout(async () => {
+      // 空欄の場合はnullに設定
+      if (value === "" || value === null) {
+        try {
+          const { error } = await supabase.from("calendar_management").upsert({
+            vacation_date: date,
+            max_people: null,
+          });
+          if (error) {
+            console.error("Error updating max_people:", error);
+            alert("マンパワーの更新に失敗しました");
+          }
+        } catch (err) {
+          console.error("Error:", err);
         }
-      } catch (err) {
-        console.error("Error:", err);
+        return;
       }
-    }
+
+      // 数値として有効なら保存
+      const maxPeople = parseInt(value);
+      if (!isNaN(maxPeople) && maxPeople >= 0) {
+        try {
+          const { error } = await supabase.from("calendar_management").upsert({
+            vacation_date: date,
+            max_people: maxPeople,
+          });
+          if (error) {
+            console.error("Error updating max_people:", error);
+            alert("マンパワーの更新に失敗しました");
+          }
+        } catch (err) {
+          console.error("Error:", err);
+        }
+      }
+    }, 500);
   };
 
   const getDateBackgroundColor = (day: DayData): string => {
