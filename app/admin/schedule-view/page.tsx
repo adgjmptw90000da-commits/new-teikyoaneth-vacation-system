@@ -607,7 +607,7 @@ export default function ScheduleViewPage() {
         supabase.from("score_config").select("*").order("display_order"),
         supabase.from("shift_assign_preset").select("*").order("display_order"),
         supabase.from("duty_assign_preset").select("*").order("display_order"),
-        supabase.from("schedule_hidden_members").select("staff_id"),
+        supabase.from("schedule_hidden_members").select("staff_id").eq("year", currentYear).eq("month", currentMonth),
         supabase.from("name_list_config").select("*").order("display_order"),
       ]);
 
@@ -2541,11 +2541,12 @@ export default function ScheduleViewPage() {
   const handleSaveHiddenMembers = async () => {
     setSavingHidden(true);
     try {
-      // 既存データを全削除
+      // 該当月のデータを削除
       const { error: deleteError } = await supabase
         .from("schedule_hidden_members")
         .delete()
-        .neq("id", 0); // 全件削除
+        .eq("year", currentYear)
+        .eq("month", currentMonth);
 
       if (deleteError) {
         alert("保存に失敗しました: " + deleteError.message);
@@ -2553,12 +2554,16 @@ export default function ScheduleViewPage() {
         return;
       }
 
-      // 新しいデータを挿入
+      // 新しいデータを挿入（year, month付き）
       if (hiddenMemberIds.size > 0) {
         const { error: insertError } = await supabase
           .from("schedule_hidden_members")
           .insert(
-            Array.from(hiddenMemberIds).map(staff_id => ({ staff_id }))
+            Array.from(hiddenMemberIds).map(staff_id => ({
+              staff_id,
+              year: currentYear,
+              month: currentMonth
+            }))
           );
 
         if (insertError) {
@@ -2568,7 +2573,7 @@ export default function ScheduleViewPage() {
         }
       }
 
-      alert("非表示メンバーを保存しました");
+      alert(`非表示メンバーを保存しました（${currentYear}年${currentMonth}月）`);
       setShowHiddenMembersModal(false);
       // データを再読み込みして画面を更新
       fetchData();
@@ -2577,6 +2582,30 @@ export default function ScheduleViewPage() {
       alert("エラーが発生しました");
     } finally {
       setSavingHidden(false);
+    }
+  };
+
+  // 前月の非表示メンバー設定をコピー
+  const handleCopyHiddenMembersFromPreviousMonth = async () => {
+    const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+
+    const { data, error } = await supabase
+      .from("schedule_hidden_members")
+      .select("staff_id")
+      .eq("year", prevYear)
+      .eq("month", prevMonth);
+
+    if (error) {
+      alert("前月の設定の取得に失敗しました");
+      return;
+    }
+
+    if (data && data.length > 0) {
+      setHiddenMemberIds(new Set(data.map(d => d.staff_id)));
+      alert(`${prevYear}年${prevMonth}月の設定をコピーしました（${data.length}名）`);
+    } else {
+      alert(`${prevYear}年${prevMonth}月の設定がありません`);
     }
   };
 
@@ -8370,7 +8399,7 @@ export default function ScheduleViewPage() {
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
                 <h2 className="text-lg font-bold text-gray-900">
-                  非表示メンバー設定
+                  非表示メンバー設定（{currentYear}年{currentMonth}月）
                 </h2>
                 <button
                   onClick={() => setShowHiddenMembersModal(false)}
@@ -8381,10 +8410,18 @@ export default function ScheduleViewPage() {
               </div>
 
               <div className="p-4 overflow-y-auto flex-1">
-                <p className="text-sm text-gray-600 mb-4">
-                  予定表に表示しないメンバーを選択してください。<br />
-                  <span className="text-gray-900 text-xs">※非表示メンバーは当直・シフト自動割り振りからも除外されます</span>
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm text-gray-600">
+                    予定表に表示しないメンバーを選択してください。<br />
+                    <span className="text-gray-900 text-xs">※非表示メンバーは当直・シフト自動割り振りからも除外されます</span>
+                  </p>
+                  <button
+                    onClick={handleCopyHiddenMembersFromPreviousMonth}
+                    className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md whitespace-nowrap ml-2"
+                  >
+                    前月の設定をコピー
+                  </button>
+                </div>
 
                 <div className="space-y-4">
                   {/* A表 */}

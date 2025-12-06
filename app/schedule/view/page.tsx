@@ -165,7 +165,7 @@ export default function ScheduleViewPage() {
           .eq("year", currentYear)
           .eq("month", currentMonth)
           .single(),
-        supabase.from("schedule_hidden_members").select("staff_id"),
+        supabase.from("schedule_hidden_members").select("staff_id").eq("year", currentYear).eq("month", currentMonth),
         supabase.from("name_list_config").select("*").eq("is_active", true).order("display_order"),
       ]);
 
