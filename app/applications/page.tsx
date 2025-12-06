@@ -42,6 +42,7 @@ export default function ApplicationsPage() {
   const [showLotteryPeriodApplications, setShowLotteryPeriodApplications] = useState(true);
   const [lotteryPeriodStatusMap, setLotteryPeriodStatusMap] = useState<Map<number, boolean>>(new Map());
   const { confirm, ConfirmDialog } = useConfirm();
+  const [showPastApplications, setShowPastApplications] = useState(false);
 
   useEffect(() => {
     const user = getUser();
@@ -65,24 +66,39 @@ export default function ApplicationsPage() {
 
     fetchSystemSettings();
     fetchApplications();
-  }, [router]);
+  }, [router, showPastApplications]);
+
+  // 現在の年度開始日を取得（4月1日）
+  const getFiscalYearStart = (): string => {
+    const today = new Date();
+    const year = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+    return `${year}-04-01`;
+  };
 
   const fetchApplications = async () => {
     const user = getUser();
     if (!user) return;
 
     try {
-      // 現在の月の初日を計算
+      // 開始日を決定
       const today = new Date();
-      const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const currentMonthStr = currentMonth.toISOString().split('T')[0];
+      let startDate: string;
+
+      if (showPastApplications) {
+        // 年度開始日から
+        startDate = getFiscalYearStart();
+      } else {
+        // 今月初日から
+        const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        startDate = currentMonth.toISOString().split('T')[0];
+      }
 
       // データを並列取得（パフォーマンス改善）
       const [
         { data, error },
         { data: setting }
       ] = await Promise.all([
-        supabase.from("application").select("*").eq("staff_id", user.staff_id).gte("vacation_date", currentMonthStr).order("vacation_date", { ascending: true }),
+        supabase.from("application").select("*").eq("staff_id", user.staff_id).gte("vacation_date", startDate).order("vacation_date", { ascending: true }),
         supabase.from("setting").select("*").eq("id", 1).single()
       ]);
 
@@ -438,7 +454,19 @@ export default function ApplicationsPage() {
       </nav>
 
       <main className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <p className="text-xs text-gray-500 mb-4">※期間外レベル3申請は抽選対象外のため抽選前から「抽選済み」と表示されます。</p>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-gray-500">※期間外レベル3申請は抽選対象外のため抽選前から「抽選済み」と表示されます。</p>
+          <button
+            onClick={() => setShowPastApplications(!showPastApplications)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+              showPastApplications
+                ? "bg-blue-100 text-blue-800 border-blue-300"
+                : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+            }`}
+          >
+            {showPastApplications ? "過去申請を非表示" : "過去申請を表示"}
+          </button>
+        </div>
         <div className="space-y-8">
           {applications.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
