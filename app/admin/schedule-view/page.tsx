@@ -1657,9 +1657,15 @@ export default function ScheduleViewPage() {
         return assignments.some(a => a.date === date && a.type === 'night_shift');
       };
 
-      // 全日を難易度順（当直可能人数が少ない順）にソートして割り振り
-      const sortedDates = sortByAvailableCount(targetDates);
-      for (const day of sortedDates) {
+      // 未割り振りの日を管理（毎回難易度を再計算して割り振り）
+      let remainingDates = [...targetDates];
+
+      while (remainingDates.length > 0) {
+        // 毎回再計算して最も難易度の高い日（割り振れる人数が少ない日）を取得
+        remainingDates = sortByAvailableCount(remainingDates);
+        const day = remainingDates.shift();
+        if (!day) break;
+
         // その日に既に当直が入っていたらスキップ
         if (isDayAlreadyAssigned(day.date)) continue;
 
@@ -2233,8 +2239,28 @@ export default function ScheduleViewPage() {
         return assignments.some(a => a.date === date);
       };
 
-      // 各日に割り振り
-      for (const day of targetDates) {
+      // 一般シフト用: 割り振れる人数の少ない日からソートする関数
+      const sortByAvailableCountGeneral = (dates: DayData[]) => {
+        return [...dates].sort((a, b) => {
+          const availableA = targetMembers.filter(m =>
+            canAssignGeneralShift(a.date, m, assignments, targetShiftType, a.dayOfWeek, a.isHoliday)
+          ).length;
+          const availableB = targetMembers.filter(m =>
+            canAssignGeneralShift(b.date, m, assignments, targetShiftType, b.dayOfWeek, b.isHoliday)
+          ).length;
+          return availableA - availableB;
+        });
+      };
+
+      // 未割り振りの日を管理（毎回難易度を再計算して割り振り）
+      let remainingDates = [...targetDates];
+
+      while (remainingDates.length > 0) {
+        // 毎回再計算して最も難易度の高い日（割り振れる人数が少ない日）を取得
+        remainingDates = sortByAvailableCountGeneral(remainingDates);
+        const day = remainingDates.shift();
+        if (!day) break;
+
         // その日に既にシフトが入っていたらスキップ
         if (isDayAlreadyAssignedGeneral(day.date)) continue;
 
