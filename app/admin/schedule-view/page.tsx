@@ -853,8 +853,9 @@ export default function ScheduleViewPage() {
   }, [nameListConfigs]);
 
   // 名前一覧計算: 指定された日付と設定に対して該当する人の名前リストを取得
+  // 常に全メンバー（A/B両方）を対象にする（予定表のA/Bフィルターとは独立）
   const calculateNameList = (day: DayData, config: NameListConfig): string[] => {
-    return filteredMembers
+    return members
       .filter(member => {
         // 出向中・休職中は除外
         if (member.isSecondment) return false;
