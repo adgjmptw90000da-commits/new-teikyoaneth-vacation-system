@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -44,38 +44,14 @@ export default function ApplicationsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const [showPastApplications, setShowPastApplications] = useState(false);
 
-  useEffect(() => {
-    const user = getUser();
-    if (!user) {
-      router.push("/auth/login");
-      return;
-    }
-
-    // システム表示設定を取得
-    const fetchSystemSettings = async () => {
-      const { data, error } = await supabase
-        .from("setting")
-        .select("show_lottery_period_applications")
-        .eq("id", 1)
-        .single();
-
-      if (!error && data) {
-        setShowLotteryPeriodApplications(data.show_lottery_period_applications ?? true);
-      }
-    };
-
-    fetchSystemSettings();
-    fetchApplications();
-  }, [router, showPastApplications]);
-
   // 現在の年度開始日を取得（4月1日）
-  const getFiscalYearStart = (): string => {
+  const getFiscalYearStart = useCallback((): string => {
     const today = new Date();
     const year = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
     return `${year}-04-01`;
-  };
+  }, []);
 
-  const fetchApplications = async () => {
+  const fetchApplications = useCallback(async () => {
     const user = getUser();
     if (!user) return;
 
@@ -148,7 +124,31 @@ export default function ApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showPastApplications, getFiscalYearStart]);
+
+  useEffect(() => {
+    const user = getUser();
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
+
+    // システム表示設定を取得
+    const fetchSystemSettings = async () => {
+      const { data, error } = await supabase
+        .from("setting")
+        .select("show_lottery_period_applications")
+        .eq("id", 1)
+        .single();
+
+      if (!error && data) {
+        setShowLotteryPeriodApplications(data.show_lottery_period_applications ?? true);
+      }
+    };
+
+    fetchSystemSettings();
+    fetchApplications();
+  }, [router, fetchApplications]);
 
   const canCancel = (app: Application): boolean => {
     // キャンセル不可条件:
