@@ -144,6 +144,7 @@ export default function ApplicationCalendarPage() {
     const currentUser = getUser();
     if (!currentUser) return;
     fetchData(currentUser.staff_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentYear, currentMonth]);
 
   // viewModeが変更されたらLocalStorageに保存

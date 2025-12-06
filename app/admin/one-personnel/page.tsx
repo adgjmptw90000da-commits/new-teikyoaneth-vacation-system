@@ -76,6 +76,7 @@ export default function OnePersonnelPage() {
     if (currentYear && currentMonth) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentYear, currentMonth]);
 
   const fetchData = async () => {

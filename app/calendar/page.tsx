@@ -103,6 +103,7 @@ export default function CalendarPage() {
 
     fetchSystemSettings();
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
   // viewModeが変更されたらLocalStorageに保存

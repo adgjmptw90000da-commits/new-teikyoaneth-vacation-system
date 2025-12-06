@@ -180,6 +180,7 @@ export default function ScheduleSubmitPage() {
     }
     setUser(currentUser);
     fetchData(currentUser.staff_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
   const fetchData = async (staffId: string) => {
@@ -416,6 +417,7 @@ export default function ScheduleSubmitPage() {
       }
       setLastSavedResearchDay({ year: currentYear, month: currentMonth, day: researchDay });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [researchDay, user, initialLoadComplete, currentYear, currentMonth]);
 
   // 出向中設定を保存（期間指定）

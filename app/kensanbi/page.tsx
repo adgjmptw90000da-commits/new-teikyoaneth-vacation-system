@@ -74,6 +74,7 @@ export default function KensanbiManagementPage() {
     if (user && targetYear && targetMonth) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, targetYear, targetMonth, selectedFiscalYear]);
 
   const fetchData = async () => {

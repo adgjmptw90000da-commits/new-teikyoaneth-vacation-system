@@ -123,6 +123,7 @@ function AdminCalendarPageContent() {
 
     fetchSystemSettings();
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
   const fetchData = async () => {

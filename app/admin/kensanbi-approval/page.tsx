@@ -80,6 +80,7 @@ export default function KensanbiApprovalPage() {
     if (targetYear && targetMonth) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetYear, targetMonth]);
 
   const fetchMembers = async () => {

@@ -517,6 +517,7 @@ export default function ScheduleViewPage() {
       return;
     }
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
   // メニュー外クリックで閉じる
@@ -2896,6 +2897,7 @@ export default function ScheduleViewPage() {
       isResearchDay,
       day,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCell, daysData]);
 
   // 立場の表示順
@@ -2919,6 +2921,7 @@ export default function ScheduleViewPage() {
         // 4. staff_idでソート
         return a.staff_id.localeCompare(b.staff_id);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, selectedTeam]);
 
   const teamACount = members.filter(m => m.team === 'A').length;
