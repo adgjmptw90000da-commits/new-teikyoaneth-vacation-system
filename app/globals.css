@@ -41,3 +41,12 @@ body {
     transform: translateY(0);
   }
 }
+
+/* 印刷時に背景色を反映 */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
