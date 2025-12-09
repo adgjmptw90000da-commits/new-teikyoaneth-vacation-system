@@ -589,7 +589,8 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={day.date}
-                      className={`min-h-[80px] sm:min-h-[100px] md:aspect-square rounded-lg p-1 sm:p-2 flex flex-col transition-all ${getDateBackgroundColor(day)} ${getDateBorderClass(day)}`}
+                      onClick={() => setSelectedDay(day)}
+                      className={`min-h-[80px] sm:min-h-[100px] md:aspect-square rounded-lg p-1 sm:p-2 flex flex-col transition-all cursor-pointer hover:shadow-md ${getDateBackgroundColor(day)} ${getDateBorderClass(day)}`}
                     >
                       {/* 日付と枠数 */}
                       <div className="flex items-start justify-between mb-0.5 sm:mb-1">
