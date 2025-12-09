@@ -54,12 +54,17 @@ export const createExchangeRequest = async (
     }
 
     // 既存の申請がないか確認
-    const { data: existingRequest } = await supabase
+    const { data: existingRequest, error: existingError } = await supabase
       .from('priority_exchange_request')
       .select('id')
       .or(`and(requester_application_id.eq.${requesterApplicationId},target_application_id.eq.${targetApplicationId}),and(requester_application_id.eq.${targetApplicationId},target_application_id.eq.${requesterApplicationId})`)
       .in('target_response', ['pending', 'accepted'])
       .in('admin_response', ['pending']);
+
+    if (existingError) {
+      console.error('Error checking existing request:', existingError);
+      return { success: false, error: '既存申請の確認中にエラーが発生しました' };
+    }
 
     if (existingRequest && existingRequest.length > 0) {
       return { success: false, error: '既に同じ申請ペアの交換申請が存在します' };
@@ -79,8 +84,12 @@ export const createExchangeRequest = async (
       .select('id')
       .single();
 
-    if (insertError || !newRequest) {
-      return { success: false, error: '交換申請の作成に失敗しました' };
+    if (insertError) {
+      console.error('Error inserting exchange request:', insertError);
+      return { success: false, error: `交換申請の作成に失敗しました: ${insertError.message}` };
+    }
+    if (!newRequest) {
+      return { success: false, error: '交換申請の作成に失敗しました（データなし）' };
     }
 
     return { success: true, requestId: newRequest.id };
