@@ -430,7 +430,7 @@ export default function ApplicationsPage() {
                 <Icons.List />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                年休申請一覧
+                年休申請履歴
               </h1>
             </div>
             <div className="flex items-center space-x-4">
