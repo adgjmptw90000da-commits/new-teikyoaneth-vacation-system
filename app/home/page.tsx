@@ -640,7 +640,7 @@ export default function HomePage() {
               <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.List />
               </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-purple-600 transition-colors">申請一覧</h4>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-purple-600 transition-colors">年休申請履歴</h4>
               <p className="text-sm text-gray-500">申請履歴の確認・キャンセル</p>
             </button>
 
