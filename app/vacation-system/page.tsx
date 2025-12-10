@@ -262,7 +262,7 @@ export default function VacationSystemPage() {
                 <Icons.Calendar />
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">年休申請カレンダー</h4>
-              <p className="text-sm text-gray-500">カレンダーから年休を申請</p>
+              <p className="text-sm text-gray-500">カレンダーで年休申請・キャンセル・履歴確認</p>
             </button>
 
             <button
