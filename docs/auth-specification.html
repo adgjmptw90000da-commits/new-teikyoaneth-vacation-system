@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>年休管理システム 仕様書</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Hiragino Kaku Gothic ProN', 'メイリオ', sans-serif;
+            background: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .slide {
+            min-height: 100vh;
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-bottom: 3px solid #3b82f6;
+            page-break-after: always;
+        }
+
+        .slide-title {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 80px;
+            text-align: center;
+        }
+
+        .slide-title h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+
+        .slide-title .subtitle {
+            font-size: 1.5rem;
+            opacity: 0.9;
+        }
+
+        h1 {
+            color: #1d4ed8;
+            font-size: 2rem;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #3b82f6;
+        }
+
+        h2 {
+            color: #1e40af;
+            font-size: 1.5rem;
+            margin: 25px 0 15px 0;
+        }
+
+        h3 {
+            color: #3b82f6;
+            font-size: 1.2rem;
+            margin: 20px 0 10px 0;
+        }
+
+        .content {
+            flex: 1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tr:nth-child(even) {
+            background: #f8fafc;
+        }
+
+        tr:hover {
+            background: #eff6ff;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border-left: 5px solid #3b82f6;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-left: 5px solid #f59e0b;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .success-box {
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            border-left: 5px solid #10b981;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .error-box {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            border-left: 5px solid #ef4444;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .flow-chart {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 30px 0;
+            gap: 10px;
+        }
+
+        .flow-step {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 150px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .flow-step.highlight {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .flow-step.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .flow-arrow {
+            font-size: 2rem;
+            color: #3b82f6;
+        }
+
+        .screenshot-placeholder {
+            background: #f1f5f9;
+            border: 2px dashed #94a3b8;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            color: #64748b;
+        }
+
+        .screenshot-placeholder .icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .level-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            margin: 2px;
+        }
+
+        .level-1 { background: #ef4444; }
+        .level-2 { background: #f59e0b; }
+        .level-3 { background: #10b981; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .status-before { background: #dbeafe; color: #1d4ed8; }
+        .status-after { background: #fef3c7; color: #d97706; }
+        .status-confirmed { background: #d1fae5; color: #059669; }
+        .status-cancelled { background: #f3f4f6; color: #6b7280; }
+        .status-withdrawn { background: #fee2e2; color: #dc2626; }
+
+        ul, ol {
+            margin: 15px 0 15px 30px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 20px 0;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .card h3 {
+            margin-top: 0;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+            margin: 20px 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 8px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #3b82f6;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 25px;
+            padding-left: 20px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 5px;
+            width: 16px;
+            height: 16px;
+            background: #3b82f6;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 0 0 3px #3b82f6;
+        }
+
+        .timeline-date {
+            font-weight: bold;
+            color: #1d4ed8;
+        }
+
+        .toc {
+            background: #f8fafc;
+            padding: 30px;
+            border-radius: 12px;
+            margin: 30px 0;
+        }
+
+        .toc h2 {
+            margin-top: 0;
+        }
+
+        .toc ol {
+            columns: 2;
+        }
+
+        .page-number {
+            text-align: right;
+            color: #94a3b8;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+
+        @media print {
+            .slide {
+                page-break-after: always;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- スライド1: タイトル -->
+<div class="slide slide-title">
+    <h1>年休管理システム</h1>
+    <p class="subtitle">操作マニュアル・仕様書</p>
+    <p style="margin-top: 40px; opacity: 0.8;">Version 1.0 | 2024年度版</p>
+</div>
+
+<!-- スライド2: 目次 -->
+<div class="slide">
+    <h1>目次</h1>
+    <div class="content">
+        <div class="toc">
+            <ol style="columns: 1; font-size: 1.1rem;">
+                <li style="margin: 15px 0;"><strong>新規登録・ログイン</strong>
+                    <ul>
+                        <li>システムへのアクセス方法</li>
+                        <li>新規ユーザー登録</li>
+                        <li>ログイン方法</li>
+                    </ul>
+                </li>
+                <li style="margin: 15px 0;"><strong>年休システム運用の基本知識</strong>
+                    <ul>
+                        <li>年休申請レベルの区分</li>
+                        <li>年休得点システム</li>
+                        <li>抽選参加可能期間</li>
+                        <li>ステータスの種類</li>
+                        <li>抽選・確定の仕組み</li>
+                        <li>キャンセルルール</li>
+                        <li>運用スケジュール</li>
+                    </ul>
+                </li>
+                <li style="margin: 15px 0;"><strong>システムの各機能</strong>
+                    <ul>
+                        <li>ホーム画面</li>
+                        <li>年休申請カレンダー</li>
+                        <li>年休申請履歴</li>
+                        <li>年休カレンダー</li>
+                        <li>優先順位交換</li>
+                        <li>個人情報設定</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+    </div>
+    <div class="page-number">2 / 16</div>
+</div>
+
+<!-- スライド3: システムへのアクセス -->
+<div class="slide">
+    <h1>1. 新規登録・ログイン</h1>
+    <div class="content">
+        <h2>システムへのアクセス</h2>
+
+        <div class="highlight-box">
+            <h3>アクセスURL</h3>
+            <p style="font-size: 1.3rem; font-family: monospace; margin-top: 10px;">
+                <a href="https://new-teikyoaneth-vacation-system.vercel.app/auth/login" target="_blank">
+                    https://new-teikyoaneth-vacation-system.vercel.app/auth/login
+                </a>
+            </p>
+        </div>
+
+        <div class="flow-chart">
+            <div class="flow-step">ログインページ<br>アクセス</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step">アカウント<br>有無確認</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step highlight">新規登録<br>or ログイン</div>
+        </div>
+
+        <div class="two-column">
+            <div class="card">
+                <h3>既にアカウントがある場合</h3>
+                <ol>
+                    <li>職員IDを入力</li>
+                    <li>パスワードを入力</li>
+                    <li>「ログイン」ボタンをクリック</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>初めて利用する場合</h3>
+                <ol>
+                    <li>「新規登録はこちら」をクリック</li>
+                    <li>組織コードを入力して認証</li>
+                    <li>必要情報を入力して登録</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="screenshot-placeholder">
+            <div class="icon">🖥️</div>
+            <p>ログイン画面のスクリーンショット</p>
+            <p style="font-size: 0.9rem;">職員IDとパスワードの入力フォームが表示されます</p>
+        </div>
+    </div>
+    <div class="page-number">3 / 16</div>
+</div>
+
+<!-- スライド4: 新規登録 -->
+<div class="slide">
+    <h1>新規ユーザー登録</h1>
+    <div class="content">
+        <h2>登録の流れ</h2>
+
+        <div class="flow-chart">
+            <div class="flow-step">新規登録<br>クリック</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step highlight">組織コード<br>入力</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step">ユーザー情報<br>入力</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step success">登録完了</div>
+        </div>
+
+        <div class="warning-box">
+            <h3>⚠️ 組織コードについて</h3>
+            <p>新規登録時には組織コードの入力が必要です。</p>
+            <p style="font-size: 1.2rem; font-weight: bold; margin-top: 10px;">
+                現在の組織コード: <code style="background: white; padding: 5px 15px; border-radius: 4px;">teikyo0629</code>
+            </p>
+            <p style="margin-top: 10px; color: #92400e;">※コードが変更されている場合は管理者にご確認ください</p>
+        </div>
+
+        <h2>登録時の入力項目</h2>
+        <table>
+            <tr>
+                <th>項目</th>
+                <th>入力内容</th>
+                <th>注意事項</th>
+            </tr>
+            <tr>
+                <td><strong>職員ID</strong></td>
+                <td>数字のみ</td>
+                <td>ログイン時に使用するID</td>
+            </tr>
+            <tr>
+                <td><strong>氏名</strong></td>
+                <td>フルネーム</td>
+                <td>姓と名の間にスペースは不要</td>
+            </tr>
+            <tr>
+                <td><strong>パスワード</strong></td>
+                <td>英数字6文字以上</td>
+                <td>大文字・小文字・数字の組み合わせ推奨</td>
+            </tr>
+            <tr>
+                <td><strong>パスワード確認</strong></td>
+                <td>パスワードを再入力</td>
+                <td>上記と同じ内容を入力</td>
+            </tr>
+        </table>
+
+        <div class="screenshot-placeholder">
+            <div class="icon">📝</div>
+            <p>新規登録フォームのスクリーンショット</p>
+        </div>
+    </div>
+    <div class="page-number">4 / 16</div>
+</div>
+
+<!-- スライド5: 年休レベル -->
+<div class="slide">
+    <h1>2. 年休システム運用の基本知識</h1>
+    <div class="content">
+        <h2>年休申請レベルの区分</h2>
+        <p>年休申請時には、希望の強さに応じて3つのレベルから選択します。</p>
+
+        <table>
+            <tr>
+                <th style="width: 15%;">レベル</th>
+                <th style="width: 25%;">意味</th>
+                <th style="width: 40%;">説明</th>
+                <th style="width: 20%;">優先度</th>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-1">レベル1</span></td>
+                <td><strong>必ず年休を取りたい</strong></td>
+                <td>冠婚葬祭、重要な予定など、必ず休みたい場合</td>
+                <td>最高優先</td>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-2">レベル2</span></td>
+                <td><strong>可能な限り年休を取りたい</strong></td>
+                <td>できれば休みたいが、調整可能な場合</td>
+                <td>中優先</td>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-3">レベル3</span></td>
+                <td><strong>余裕があれば年休を取りたい</strong></td>
+                <td>マンパワーに余裕があれば休みたい場合</td>
+                <td>低優先</td>
+            </tr>
+        </table>
+
+        <div class="highlight-box">
+            <h3>💡 ポイント</h3>
+            <ul>
+                <li>抽選時は <span class="level-badge level-1">レベル1</span> → <span class="level-badge level-2">レベル2</span> → <span class="level-badge level-3">レベル3</span> の順で優先されます</li>
+                <li>同じレベル内では抽選でランダムに順位が決まります</li>
+                <li>レベルが高いほど消費する年休得点も高くなります</li>
+            </ul>
+        </div>
+
+        <div class="two-column">
+            <div class="card" style="border-left: 5px solid #ef4444;">
+                <h3>レベル1を選ぶ場面</h3>
+                <ul>
+                    <li>結婚式への出席</li>
+                    <li>子供の入学式・卒業式</li>
+                    <li>既に予約済みの旅行</li>
+                    <li>重要な私用</li>
+                </ul>
+            </div>
+            <div class="card" style="border-left: 5px solid #10b981;">
+                <h3>レベル3を選ぶ場面</h3>
+                <ul>
+                    <li>特に予定はないが休めたら嬉しい</li>
+                    <li>連休を作りたい</li>
+                    <li>リフレッシュ目的</li>
+                    <li>調整可能な予定</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="page-number">5 / 16</div>
+</div>
+
+<!-- スライド6: 年休得点システム -->
+<div class="slide">
+    <h1>年休得点システム</h1>
+    <div class="content">
+        <h2>年休得点とは</h2>
+        <p>各ユーザーには年度ごとに「年休得点」が割り振られます。年休申請時にはこの得点を消費します。</p>
+
+        <div class="highlight-box">
+            <h3>📊 2026年度の得点付与ルール</h3>
+            <ul>
+                <li>本院に出勤予定の月数に比例して付与</li>
+                <li>最大：<strong style="font-size: 1.3rem;">24点</strong>（12ヶ月フル勤務の場合）</li>
+                <li>週3日勤務の場合：最大得点の2/3 = <strong>16点</strong></li>
+            </ul>
+        </div>
+
+        <h3>得点計算の例</h3>
+        <table>
+            <tr>
+                <th>勤務状況</th>
+                <th>計算方法</th>
+                <th>付与得点</th>
+            </tr>
+            <tr>
+                <td>12ヶ月フル勤務（週5日）</td>
+                <td>24点 × (12/12)</td>
+                <td><strong>24点</strong></td>
+            </tr>
+            <tr>
+                <td>9ヶ月本院、3ヶ月出向</td>
+                <td>24点 × (9/12)</td>
+                <td><strong>18点</strong></td>
+            </tr>
+            <tr>
+                <td>12ヶ月フル勤務（週3日）</td>
+                <td>24点 × (2/3)</td>
+                <td><strong>16点</strong></td>
+            </tr>
+            <tr>
+                <td>6ヶ月本院、6ヶ月出向（週3日）</td>
+                <td>24点 × (6/12) × (2/3)</td>
+                <td><strong>8点</strong></td>
+            </tr>
+        </table>
+
+        <h2>年休申請時の消費得点</h2>
+        <table>
+            <tr>
+                <th>レベル</th>
+                <th>全日</th>
+                <th>半日（午前/午後）</th>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-1">レベル1</span></td>
+                <td><strong>2点</strong></td>
+                <td><strong>1点</strong></td>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-2">レベル2</span></td>
+                <td><strong>1点</strong></td>
+                <td><strong>0.5点</strong></td>
+            </tr>
+            <tr>
+                <td><span class="level-badge level-3">レベル3</span></td>
+                <td><strong>0.1点</strong></td>
+                <td><strong>0.05点</strong></td>
+            </tr>
+        </table>
+
+        <div class="warning-box">
+            <h3>⚠️ 注意</h3>
+            <p>年休得点が不足している場合、年休申請はできません。</p>
+        </div>
+    </div>
+    <div class="page-number">6 / 16</div>
+</div>
+
+<!-- スライド7: 得点復活ルール -->
+<div class="slide">
+    <h1>年休得点の復活ルール</h1>
+    <div class="content">
+        <h2>得点が復活するケース</h2>
+        <p>消費した年休得点は、以下の場合に復活します。</p>
+
+        <table>
+            <tr>
+                <th style="width: 30%;">ケース</th>
+                <th style="width: 50%;">詳細</th>
+                <th style="width: 20%;">得点</th>
+            </tr>
+            <tr>
+                <td style="background: #d1fae5;">抽選前キャンセル</td>
+                <td>抽選参加可能期間内に自分でキャンセルした場合</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+            </tr>
+            <tr>
+                <td style="background: #d1fae5;">年休取り消し</td>
+                <td>確定後に取り消しになった場合</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+            </tr>
+            <tr>
+                <td style="background: #d1fae5;">管理者キャンセル</td>
+                <td>管理者都合で強制的にキャンセルされた場合</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+            </tr>
+            <tr>
+                <td style="background: #fee2e2;">抽選後キャンセル</td>
+                <td>抽選後に自分でキャンセルした場合</td>
+                <td style="color: #dc2626; font-weight: bold;">❌ 復活しない</td>
+            </tr>
+        </table>
+
+        <div class="two-column" style="margin-top: 30px;">
+            <div class="success-box">
+                <h3>✅ 得点が復活する</h3>
+                <ul>
+                    <li>抽選前にキャンセル</li>
+                    <li>年休取り消し</li>
+                    <li>管理者キャンセル</li>
+                </ul>
+            </div>
+            <div class="error-box">
+                <h3>❌ 得点が復活しない</h3>
+                <ul>
+                    <li>抽選後の自己キャンセル</li>
+                    <li>（得点は消費されたまま）</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="highlight-box" style="margin-top: 30px;">
+            <h3>💡 戦略的なポイント</h3>
+            <p>抽選後にキャンセルすると得点は戻らないため、申請は慎重に行いましょう。<br>
+            不確定な予定の場合は、<span class="level-badge level-3">レベル3</span>での申請を検討してください。</p>
+        </div>
+    </div>
+    <div class="page-number">7 / 16</div>
+</div>
+
+<!-- スライド8: 抽選参加可能期間 -->
+<div class="slide">
+    <h1>抽選参加可能期間</h1>
+    <div class="content">
+        <h2>抽選参加可能期間とは</h2>
+        <p>年休を申請できる期間のうち、抽選の対象となる期間を指します。</p>
+
+        <div class="highlight-box">
+            <h3>📅 期間の計算方法</h3>
+            <p style="font-size: 1.2rem;">
+                希望する年休月の<strong>4ヶ月前の1日〜24日 23:59</strong>まで
+            </p>
+        </div>
+
+        <h3>具体例</h3>
+        <table>
+            <tr>
+                <th>年休希望月</th>
+                <th>抽選参加可能期間</th>
+            </tr>
+            <tr>
+                <td>2026年6月</td>
+                <td>2026年2月1日 〜 2月24日 23:59</td>
+            </tr>
+            <tr>
+                <td>2026年7月</td>
+                <td>2026年3月1日 〜 3月24日 23:59</td>
+            </tr>
+            <tr>
+                <td>2026年8月</td>
+                <td>2026年4月1日 〜 4月24日 23:59</td>
+            </tr>
+            <tr>
+                <td>2026年12月</td>
+                <td>2026年8月1日 〜 8月24日 23:59</td>
+            </tr>
+        </table>
+
+        <h2>期間による申請レベルの制限</h2>
+        <table>
+            <tr>
+                <th>期間</th>
+                <th>申請可能レベル</th>
+                <th>抽選対象</th>
+            </tr>
+            <tr>
+                <td style="background: #dbeafe;">抽選参加可能期間内</td>
+                <td><span class="level-badge level-1">1</span> <span class="level-badge level-2">2</span> <span class="level-badge level-3">3</span> 全て可</td>
+                <td style="color: #059669; font-weight: bold;">◯ 対象</td>
+            </tr>
+            <tr>
+                <td style="background: #fef3c7;">抽選参加可能期間後</td>
+                <td><span class="level-badge level-3">3</span> のみ</td>
+                <td style="color: #dc2626; font-weight: bold;">✕ 対象外</td>
+            </tr>
+        </table>
+
+        <div class="warning-box">
+            <h3>⚠️ 重要</h3>
+            <p>抽選参加可能期間後に申請したレベル3は抽選対象外となり、申請順で順位が決まります。<br>
+            確実に年休を取りたい場合は、必ず抽選参加可能期間内に申請してください。</p>
+        </div>
+    </div>
+    <div class="page-number">8 / 16</div>
+</div>
+
+<!-- スライド9: 順位とステータス -->
+<div class="slide">
+    <h1>順位とステータス</h1>
+    <div class="content">
+        <h2>「順位」について</h2>
+        <p>順位はタイミングによって意味が異なります。</p>
+
+        <div class="two-column">
+            <div class="card" style="border-left: 5px solid #3b82f6;">
+                <h3>🎯 抽選前の順位</h3>
+                <p>申請が早い順に順位が割り振られます。</p>
+                <p style="color: #6b7280; font-size: 0.9rem;">（参考値であり、抽選でシャッフルされます）</p>
+            </div>
+            <div class="card" style="border-left: 5px solid #f59e0b;">
+                <h3>🎲 抽選後の順位</h3>
+                <p>実際に年休が優先される順番を示します。</p>
+                <p style="color: #6b7280; font-size: 0.9rem;">（確定処理はこの順位に基づいて行われます）</p>
+            </div>
+        </div>
+
+        <h2>ステータスの種類</h2>
+        <table>
+            <tr>
+                <th>ステータス</th>
+                <th>意味</th>
+                <th>得点状況</th>
+            </tr>
+            <tr>
+                <td><span class="status-badge status-before">抽選前</span></td>
+                <td>申請済みで抽選待ちの状態</td>
+                <td>申請中</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge status-after">抽選済み</span></td>
+                <td>抽選が完了し順位が確定した状態</td>
+                <td>申請中</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge status-confirmed">確定</span></td>
+                <td>年休取得が許可された状態</td>
+                <td>確定</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge status-withdrawn">取り消し</span></td>
+                <td>枠数オーバーで取り消しになった状態</td>
+                <td>カウント外</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge status-cancelled">キャンセル済み</span></td>
+                <td>抽選前に自分でキャンセルした状態</td>
+                <td>カウント外</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge" style="background: #fce7f3; color: #be185d;">抽選後キャンセル</span></td>
+                <td>抽選後に自分でキャンセルした状態</td>
+                <td>抽選後キャンセル</td>
+            </tr>
+            <tr>
+                <td><span class="status-badge" style="background: #e0e7ff; color: #4338ca;">管理者キャンセル</span></td>
+                <td>管理者都合でキャンセルされた状態</td>
+                <td>カウント外</td>
+            </tr>
+        </table>
+    </div>
+    <div class="page-number">9 / 16</div>
+</div>
+
+<!-- スライド10: 抽選と確定 -->
+<div class="slide">
+    <h1>抽選と確定の仕組み</h1>
+    <div class="content">
+        <h2>抽選について</h2>
+        <p>抽選参加可能期間内の申請について、以下のルールで順位をシャッフルします。</p>
+
+        <div class="highlight-box">
+            <h3>🎲 抽選ルール</h3>
+            <ol>
+                <li><span class="level-badge level-1">レベル1</span> → <span class="level-badge level-2">レベル2</span> → <span class="level-badge level-3">レベル3</span> の順番は保たれる</li>
+                <li>各レベル内で順位をランダムにシャッフル</li>
+                <li>期間外申請のレベル3は申請順のまま（シャッフルなし）</li>
+            </ol>
+        </div>
+
+        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>抽選イメージ</h3>
+            <div style="display: flex; justify-content: space-around; align-items: center; margin: 20px 0;">
+                <div style="text-align: center;">
+                    <p style="font-weight: bold; margin-bottom: 10px;">抽選前</p>
+                    <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div style="padding: 5px;"><span class="level-badge level-1">1</span> Aさん (1位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-1">1</span> Bさん (2位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-2">2</span> Cさん (3位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-3">3</span> Dさん (4位)</div>
+                    </div>
+                </div>
+                <div style="font-size: 2rem;">🎲→</div>
+                <div style="text-align: center;">
+                    <p style="font-weight: bold; margin-bottom: 10px;">抽選後</p>
+                    <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <div style="padding: 5px;"><span class="level-badge level-1">1</span> Bさん (1位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-1">1</span> Aさん (2位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-2">2</span> Cさん (3位)</div>
+                        <div style="padding: 5px;"><span class="level-badge level-3">3</span> Dさん (4位)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h2>確定について</h2>
+        <div class="two-column">
+            <div>
+                <ol>
+                    <li>管理者がマンパワーを確認</li>
+                    <li>各日の年休取得可能人数（枠数）を決定</li>
+                    <li>順位の高い申請から順番に確定</li>
+                    <li>枠数を超えた申請は「取り消し」に</li>
+                </ol>
+            </div>
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px;">
+                <p><strong>例：枠数3名の場合</strong></p>
+                <p style="color: #059669;">1〜3位 → ✅ 確定</p>
+                <p style="color: #dc2626;">4位以降 → ❌ 取り消し</p>
+            </div>
+        </div>
+    </div>
+    <div class="page-number">10 / 16</div>
+</div>
+
+<!-- スライド11: キャンセルルール -->
+<div class="slide">
+    <h1>キャンセルのルール</h1>
+    <div class="content">
+        <table>
+            <tr>
+                <th style="width: 25%;">タイミング</th>
+                <th style="width: 35%;">キャンセル可否</th>
+                <th style="width: 20%;">得点復活</th>
+                <th style="width: 20%;">備考</th>
+            </tr>
+            <tr>
+                <td><strong>抽選参加可能期間内</strong></td>
+                <td style="color: #059669;">全ての申請をキャンセル可能</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+                <td>自由にキャンセル可</td>
+            </tr>
+            <tr>
+                <td><strong>期間終了後〜抽選前</strong></td>
+                <td style="color: #d97706;">条件付きでキャンセル可能<br>（管理者の許可が必要）</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+                <td>下記条件参照</td>
+            </tr>
+            <tr>
+                <td><strong>抽選後</strong></td>
+                <td style="color: #059669;">全ての申請をキャンセル可能</td>
+                <td style="color: #dc2626; font-weight: bold;">❌ 復活しない</td>
+                <td>得点は消費されたまま</td>
+            </tr>
+            <tr>
+                <td><strong>管理者キャンセル</strong></td>
+                <td>管理者判断でキャンセル</td>
+                <td style="color: #059669; font-weight: bold;">✅ 復活</td>
+                <td>管理者都合の場合</td>
+            </tr>
+        </table>
+
+        <div class="warning-box">
+            <h3>⚠️ 抽選参加可能期間終了後〜抽選前のキャンセル条件</h3>
+            <p>以下の条件を<strong>全て</strong>満たす場合のみ、管理者の許可のもとキャンセル可能です。</p>
+            <ol>
+                <li><span class="level-badge level-1">レベル1</span>申請が<strong>3件以上</strong>ある日にレベル1申請をしている</li>
+                <li>その日を含む<strong>連続した年休申請</strong>をキャンセルする</li>
+            </ol>
+        </div>
+
+        <div class="two-column" style="margin-top: 20px;">
+            <div class="success-box">
+                <h3>💡 推奨される対応</h3>
+                <ul>
+                    <li>不確定な予定は<span class="level-badge level-3">レベル3</span>で申請</li>
+                    <li>抽選参加可能期間内に申請内容を確定</li>
+                    <li>キャンセルは期間内に行う</li>
+                </ul>
+            </div>
+            <div class="error-box">
+                <h3>❌ 避けるべき行動</h3>
+                <ul>
+                    <li>抽選後の安易なキャンセル</li>
+                    <li>不確定な予定を<span class="level-badge level-1">レベル1</span>で申請</li>
+                    <li>期間終了間際の駆け込み申請</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="page-number">11 / 16</div>
+</div>
+
+<!-- スライド12: 運用スケジュール -->
+<div class="slide">
+    <h1>運用スケジュール</h1>
+    <div class="content">
+        <h2>年休申請の月間フロー</h2>
+
+        <div class="timeline">
+            <div class="timeline-item">
+                <span class="timeline-date">対象月の4ヶ月前 1日〜24日 23:59</span>
+                <p><strong>抽選参加可能期間</strong><br>
+                全レベルの申請が可能。この期間の申請は抽選対象となります。</p>
+            </div>
+            <div class="timeline-item">
+                <span class="timeline-date">同月 25日</span>
+                <p><strong>年休申請状況公開</strong><br>
+                該当者の抽選前キャンセル受付開始</p>
+            </div>
+            <div class="timeline-item">
+                <span class="timeline-date">同月 28日</span>
+                <p><strong>抽選前キャンセルの承認 → 抽選実施</strong><br>
+                管理者によるキャンセル承認後、抽選が行われます</p>
+            </div>
+            <div class="timeline-item">
+                <span class="timeline-date">抽選後〜予定確認まで</span>
+                <p><strong>年休順位交換交渉期間</strong><br>
+                必要に応じて他のユーザーと順位の交換が可能</p>
+            </div>
+            <div class="timeline-item">
+                <span class="timeline-date">（日程は別途通知）</span>
+                <p><strong>予定確認 → 年休確定処理</strong><br>
+                管理者がマンパワーを確認し、年休を確定</p>
+            </div>
+        </div>
+
+        <h2>具体例：2026年6月分の年休申請</h2>
+        <table>
+            <tr>
+                <th>日程</th>
+                <th>イベント</th>
+            </tr>
+            <tr>
+                <td>2026年2月1日〜24日 23:59</td>
+                <td>抽選参加可能期間（6月分）</td>
+            </tr>
+            <tr>
+                <td>2026年2月25日</td>
+                <td>6月分の年休申請状況公開、該当者のキャンセル受付</td>
+            </tr>
+            <tr>
+                <td>2026年2月28日</td>
+                <td>抽選前キャンセル承認 → 抽選実施</td>
+            </tr>
+            <tr>
+                <td>以降</td>
+                <td>順位交換交渉 → 予定確認 → 確定処理</td>
+            </tr>
+        </table>
+    </div>
+    <div class="page-number">12 / 16</div>
+</div>
+
+<!-- スライド13: システム構造概要 -->
+<div class="slide">
+    <h1>3. システムの各機能</h1>
+    <div class="content">
+        <h2>ホーム画面の構成</h2>
+
+        <div class="screenshot-placeholder">
+            <div class="icon">🏠</div>
+            <p>ホーム画面のスクリーンショット</p>
+        </div>
+
+        <div class="two-column">
+            <div>
+                <h3>表示される情報</h3>
+                <ul>
+                    <li><strong>抽選参加可能期間</strong>の表示</li>
+                    <li><strong>年休得点状況</strong>の表示
+                        <ul>
+                            <li>現在の年度</li>
+                            <li>前年度・翌年度も確認可能</li>
+                        </ul>
+                    </li>
+                    <li>通知（承認結果、交換依頼など）</li>
+                </ul>
+            </div>
+            <div>
+                <h3>メニュー一覧</h3>
+                <ul>
+                    <li>📅 年休申請カレンダー</li>
+                    <li>📋 年休申請履歴</li>
+                    <li>🗓️ 年休カレンダー</li>
+                    <li>🔄 優先順位交換</li>
+                    <li>⚙️ 個人情報設定</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="warning-box">
+            <h3>⚠️ 年度選択時の注意</h3>
+            <p>年休得点状況を確認する際は、<strong>年度を間違えないよう</strong>注意してください。<br>
+            現在の年度とその前後1年分を確認できます。</p>
+        </div>
+    </div>
+    <div class="page-number">13 / 16</div>
+</div>
+
+<!-- スライド14: 年休申請カレンダー -->
+<div class="slide">
+    <h1>年休申請カレンダー</h1>
+    <div class="content">
+        <h2>機能概要</h2>
+        <p>カレンダー形式で年休の申請・キャンセル・履歴確認ができます。</p>
+
+        <div class="screenshot-placeholder">
+            <div class="icon">📅</div>
+            <p>年休申請カレンダーのスクリーンショット</p>
+            <p style="font-size: 0.9rem;">+ボタンがある日のみ申請可能です</p>
+        </div>
+
+        <div class="two-column">
+            <div class="card">
+                <h3>主な機能</h3>
+                <ul>
+                    <li>月別カレンダー表示</li>
+                    <li>年休申請の作成</li>
+                    <li>申請内容の確認</li>
+                    <li>キャンセル処理</li>
+                    <li>レイアウト切り替え（リスト/カレンダー）</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3>表示内容</h3>
+                <ul>
+                    <li>ログインユーザーの申請のみ表示</li>
+                    <li>キャンセル済みの申請は非表示</li>
+                    <li>申請可能日には「+」ボタン表示</li>
+                    <li>祝日・イベント表示</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="highlight-box">
+            <h3>📝 申請時の入力項目</h3>
+            <table style="margin: 10px 0; box-shadow: none;">
+                <tr>
+                    <td><strong>期間</strong></td>
+                    <td>全日 / 午前 / 午後</td>
+                </tr>
+                <tr>
+                    <td><strong>レベル</strong></td>
+                    <td><span class="level-badge level-1">1</span> <span class="level-badge level-2">2</span> <span class="level-badge level-3">3</span></td>
+                </tr>
+                <tr>
+                    <td><strong>備考</strong></td>
+                    <td>任意（理由などを記載可）</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    <div class="page-number">14 / 16</div>
+</div>
+
+<!-- スライド15: 年休申請履歴・年休カレンダー -->
+<div class="slide">
+    <h1>年休申請履歴・年休カレンダー</h1>
+    <div class="content">
+        <div class="two-column">
+            <div>
+                <h2>年休申請履歴</h2>
+                <div class="screenshot-placeholder" style="padding: 20px;">
+                    <div class="icon">📋</div>
+                    <p>申請履歴画面</p>
+                </div>
+                <div class="card">
+                    <h3>機能</h3>
+                    <ul>
+                        <li>年度内の全申請履歴を確認</li>
+                        <li>キャンセル済みも含めて表示</li>
+                        <li>デフォルト：現在月以降を表示</li>
+                        <li>「過去の申請を表示」で全期間確認可</li>
+                        <li>ログインユーザーの申請のみ</li>
+                    </ul>
+                </div>
+            </div>
+            <div>
+                <h2>年休カレンダー</h2>
+                <div class="screenshot-placeholder" style="padding: 20px;">
+                    <div class="icon">🗓️</div>
+                    <p>全員の年休カレンダー</p>
+                </div>
+                <div class="card">
+                    <h3>機能</h3>
+                    <ul>
+                        <li>医局員全員の年休申請を確認</li>
+                        <li>リスト表示/カレンダー表示切替</li>
+                        <li>ステータス別の色分け表示：
+                            <ul>
+                                <li><span style="color: #f97316;">●</span> 抽選済み</li>
+                                <li><span style="color: #ef4444;">●</span> 確定済み</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="page-number">15 / 16</div>
+</div>
+
+<!-- スライド16: 優先順位交換・個人情報設定 -->
+<div class="slide">
+    <h1>優先順位交換・個人情報設定</h1>
+    <div class="content">
+        <div class="two-column">
+            <div>
+                <h2>🔄 優先順位交換</h2>
+                <p>抽選後に他のユーザーと年休の順位を交換する機能です。</p>
+
+                <div class="card" style="margin-top: 15px;">
+                    <h3>交換の流れ</h3>
+                    <ol>
+                        <li>交換相手と事前に相談</li>
+                        <li>間の順位の人全員の承諾を得る</li>
+                        <li>順位が低いユーザーが申請</li>
+                        <li>順位が高いユーザーが承認</li>
+                        <li>管理者が最終承認</li>
+                        <li>順位が交換される</li>
+                    </ol>
+                </div>
+
+                <div class="warning-box" style="margin-top: 15px;">
+                    <h3>⚠️ 注意点</h3>
+                    <p>順位が交換される際、<strong>年休申請のレベルも交換</strong>されます。</p>
+                    <p>これにより<strong>消費得点も変化</strong>するため注意が必要です。</p>
+                </div>
+            </div>
+            <div>
+                <h2>⚙️ 個人情報設定</h2>
+                <p>自分のアカウント情報を変更できます。</p>
+
+                <div class="card" style="margin-top: 15px;">
+                    <h3>変更可能な項目</h3>
+                    <table style="box-shadow: none;">
+                        <tr>
+                            <td><strong>氏名</strong></td>
+                            <td>フルネームの変更</td>
+                        </tr>
+                        <tr>
+                            <td><strong>パスワード</strong></td>
+                            <td>ログインパスワードの変更</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="screenshot-placeholder" style="margin-top: 15px; padding: 30px;">
+                    <div class="icon">⚙️</div>
+                    <p>個人情報設定画面</p>
+                </div>
+
+                <div class="highlight-box" style="margin-top: 15px;">
+                    <h3>💡 セキュリティのヒント</h3>
+                    <p>パスワードは定期的に変更することをお勧めします。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="page-number">16 / 16</div>
+</div>
+
+<!-- 最終スライド -->
+<div class="slide slide-title" style="background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);">
+    <h1 style="font-size: 2.5rem;">ご不明点がありましたら<br>管理者までお問い合わせください</h1>
+    <p class="subtitle" style="margin-top: 40px;">年休管理システム 操作マニュアル</p>
+</div>
+
+</body>
+</html>
