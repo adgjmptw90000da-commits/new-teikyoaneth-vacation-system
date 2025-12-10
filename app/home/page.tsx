@@ -74,6 +74,7 @@ export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
+  const [pendingExchangeCount, setPendingExchangeCount] = useState<number>(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
@@ -201,6 +202,18 @@ export default function HomePage() {
     };
 
     fetchPendingApprovals();
+
+    // 優先順位交換の未対応件数を取得（自分がtargetで未応答のもの）
+    const fetchPendingExchangeCount = async () => {
+      const { count } = await supabase
+        .from("priority_exchange_request")
+        .select("id", { count: "exact", head: true })
+        .eq("target_staff_id", currentUser.staff_id)
+        .eq("target_response", "pending");
+      setPendingExchangeCount(count || 0);
+    };
+
+    fetchPendingExchangeCount();
 
     // 通知を取得（自分の申請で承認/却下されたが未確認のもの）
     const fetchNotifications = async () => {
@@ -659,8 +672,13 @@ export default function HomePage() {
               onClick={() => router.push("/applications/exchange")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 text-left"
             >
-              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform relative">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M21 3l-7.5 7.5"/><path d="M3 3l7.5 7.5"/><path d="M16 21h5v-5"/><path d="M8 21H3v-5"/><path d="M21 21l-7.5-7.5"/><path d="M3 21l7.5-7.5"/></svg>
+                {pendingExchangeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                    {pendingExchangeCount}
+                  </span>
+                )}
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">優先順位交換</h4>
               <p className="text-sm text-gray-500">抽選後の優先順位を交換</p>

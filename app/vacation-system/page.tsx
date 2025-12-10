@@ -44,6 +44,7 @@ export default function VacationSystemPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
+  const [pendingExchangeCount, setPendingExchangeCount] = useState<number>(0);
   const [lotteryPeriodInfo, setLotteryPeriodInfo] = useState<{
     isWithinPeriod: boolean;
     targetMonth: string;
@@ -155,7 +156,18 @@ export default function VacationSystemPage() {
       setPendingApprovalsCount(totalCount);
     };
 
+    // 優先順位交換の未対応件数を取得（自分がtargetで未応答のもの）
+    const fetchPendingExchangeCount = async () => {
+      const { count } = await supabase
+        .from("priority_exchange_request")
+        .select("id", { count: "exact", head: true })
+        .eq("target_staff_id", currentUser.staff_id)
+        .eq("target_response", "pending");
+      setPendingExchangeCount(count || 0);
+    };
+
     fetchPendingApprovals();
+    fetchPendingExchangeCount();
   }, [router]);
 
   if (!user) {
@@ -302,8 +314,13 @@ export default function VacationSystemPage() {
               onClick={() => router.push("/applications/exchange")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-300 transition-all duration-200 text-left"
             >
-              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+              <div className="bg-orange-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform relative">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3l4 4-4 4" /><path d="M20 7H4" /><path d="M8 21l-4-4 4-4" /><path d="M4 17h16" /></svg>
+                {pendingExchangeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm animate-pulse">
+                    {pendingExchangeCount}
+                  </span>
+                )}
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">優先順位交換</h4>
               <p className="text-sm text-gray-500">抽選後の優先順位を交換申請</p>
