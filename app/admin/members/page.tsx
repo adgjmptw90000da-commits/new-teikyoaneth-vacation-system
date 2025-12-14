@@ -665,7 +665,7 @@ export default function MembersPage() {
                           onKeyDown={(e) => handleAnnualLeavePointsKeyDown(e, user)}
                           disabled={processing}
                           placeholder={`${maxAnnualLeavePoints ?? 0}`}
-                          className={`w-20 px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 transition-all ${
+                          className={`w-20 px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                             user.annualLeavePoints === null
                               ? 'border-gray-200 text-gray-500 bg-gray-50'
                               : 'border-gray-300 text-gray-900'
