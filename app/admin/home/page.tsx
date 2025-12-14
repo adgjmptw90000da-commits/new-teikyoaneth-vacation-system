@@ -108,25 +108,18 @@ export default function AdminHomePage() {
     const pointsData = await calculateAnnualLeavePoints(staffId, fiscalYear);
     if (!pointsData) return;
 
-    const { data: userData } = await supabase
-      .from("user")
-      .select("point_retention_rate")
-      .eq("staff_id", staffId)
-      .single();
-
-    // 年度別の割合を取得（なければuser.point_retention_rateを使用）
-    const { data: yearlyRate } = await supabase
-      .from("user_point_retention_rate")
-      .select("point_retention_rate")
+    // 年度別の個別得点設定を取得
+    const { data: userPoints } = await supabase
+      .from("user_annual_leave_points")
+      .select("annual_leave_points")
       .eq("staff_id", staffId)
       .eq("fiscal_year", fiscalYear)
       .single();
 
-    const effectiveRate = yearlyRate?.point_retention_rate ?? userData?.point_retention_rate ?? 100;
-
-    const maxPoints = Math.floor(
-      (settingData.max_annual_leave_points * effectiveRate) / 100
-    );
+    // 個別設定があればその値、なければデフォルト値
+    const maxPoints = userPoints?.annual_leave_points
+      ?? settingData.max_annual_leave_points
+      ?? 0;
 
     setPointsInfo({
       level1PendingCount: pointsData.level1PendingCount,

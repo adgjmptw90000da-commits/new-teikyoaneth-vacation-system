@@ -1103,12 +1103,12 @@ export interface Database {
           updated_at?: string
         }
       }
-      user_point_retention_rate: {
+      user_annual_leave_points: {
         Row: {
           id: number
           staff_id: string
           fiscal_year: number
-          point_retention_rate: number
+          annual_leave_points: number
           created_at: string
           updated_at: string
         }
@@ -1116,7 +1116,7 @@ export interface Database {
           id?: number
           staff_id: string
           fiscal_year: number
-          point_retention_rate?: number
+          annual_leave_points?: number
           created_at?: string
           updated_at?: string
         }
@@ -1124,7 +1124,7 @@ export interface Database {
           id?: number
           staff_id?: string
           fiscal_year?: number
-          point_retention_rate?: number
+          annual_leave_points?: number
           created_at?: string
           updated_at?: string
         }

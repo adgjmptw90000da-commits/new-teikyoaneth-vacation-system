@@ -1174,36 +1174,23 @@ export const checkAnnualLeavePointsAvailable = async (
       return null;
     }
 
-    const { data: user, error: userError } = await supabase
-      .from('user')
-      .select('point_retention_rate')
-      .eq('staff_id', staffId)
-      .single();
-
-    if (userError || !user) {
-      console.error('Failed to fetch user:', userError);
-      return null;
-    }
-
     // 年度を決定: vacationDate指定時はその年度、未指定時はデフォルト年度
     const fiscalYear = vacationDate
       ? getFiscalYearFromUsageDate(vacationDate)
       : await getDefaultDisplayFiscalYear();
 
-    // 年度別の割合を取得（なければuser.point_retention_rateを使用）
-    const { data: yearlyRate } = await supabase
-      .from('user_point_retention_rate')
-      .select('point_retention_rate')
+    // 年度別の個別得点設定を取得
+    const { data: userPoints } = await supabase
+      .from('user_annual_leave_points')
+      .select('annual_leave_points')
       .eq('staff_id', staffId)
       .eq('fiscal_year', fiscalYear)
       .single();
 
-    const effectiveRate = yearlyRate?.point_retention_rate ?? user.point_retention_rate ?? 100;
-
-    // 個人の利用可能上限を計算
-    const maxPoints = Math.floor(
-      (setting.max_annual_leave_points * effectiveRate) / 100
-    );
+    // 個人の利用可能上限を計算（個別設定があればその値、なければデフォルト値）
+    const maxPoints = userPoints?.annual_leave_points
+      ?? setting.max_annual_leave_points
+      ?? 0;
 
     // 対象年度の消費得点を計算
     const pointsData = await calculateAnnualLeavePoints(

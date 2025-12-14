@@ -14,7 +14,7 @@ type User = Database["public"]["Tables"]["user"]["Row"];
 type UserWithPoints = User & {
   remainingPoints: number | null;
   usedPoints: number | null;
-  effectiveRetentionRate: number; // この年度での実効割合
+  annualLeavePoints: number | null; // この年度での年休得点（個別設定値、nullならデフォルト）
 };
 
 // Icons
@@ -55,8 +55,8 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ staff_id: string } | null>(null);
-  const [editingRetentionRates, setEditingRetentionRates] = useState<{ [key: string]: number }>({});
-  const [sortColumn, setSortColumn] = useState<'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints' | null>(null);
+  const [editingAnnualLeavePoints, setEditingAnnualLeavePoints] = useState<{ [key: string]: string }>({});
+  const [sortColumn, setSortColumn] = useState<'staff_id' | 'name' | 'created_at' | 'annualLeavePoints' | 'remainingPoints' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
   const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
@@ -117,16 +117,16 @@ export default function MembersPage() {
 
       if (!settingData) {
         setMaxAnnualLeavePoints(null);
-        setUsers((data || []).map(user => ({ ...user, remainingPoints: null, usedPoints: null, effectiveRetentionRate: user.point_retention_rate ?? 100 })));
+        setUsers((data || []).map(user => ({ ...user, remainingPoints: null, usedPoints: null, annualLeavePoints: null })));
         setLoading(false);
         return;
       }
 
       setMaxAnnualLeavePoints(settingData.max_annual_leave_points);
 
-      // 年度別の割合を取得
-      const { data: yearlyRates } = await supabase
-        .from('user_point_retention_rate')
+      // 年度別の個別得点設定を取得
+      const { data: yearlyPoints } = await supabase
+        .from('user_annual_leave_points')
         .select('*')
         .eq('fiscal_year', fiscalYear);
 
@@ -157,19 +157,17 @@ export default function MembersPage() {
           usedPoints += count * pointsPerApp;
         });
 
-        // 年度別の割合があればそれを使用、なければuser.point_retention_rateを使用
-        const yearlyRate = yearlyRates?.find(r => r.staff_id === user.staff_id);
-        const effectiveRetentionRate = yearlyRate?.point_retention_rate ?? user.point_retention_rate ?? 100;
-        const maxPoints = Math.floor(
-          (settingData.max_annual_leave_points * effectiveRetentionRate) / 100
-        );
+        // 年度別の個別設定があればそれを使用、なければデフォルト値
+        const yearlyPoint = yearlyPoints?.find(r => r.staff_id === user.staff_id);
+        const annualLeavePoints = yearlyPoint?.annual_leave_points ?? null;
+        const maxPoints = annualLeavePoints ?? settingData.max_annual_leave_points;
         const remainingPoints = maxPoints - usedPoints;
 
         return {
           ...user,
           remainingPoints,
           usedPoints,
-          effectiveRetentionRate
+          annualLeavePoints
         };
       });
 
@@ -278,24 +276,26 @@ export default function MembersPage() {
     }
   };
 
-  const handleRetentionRateChange = (staffId: string, value: string) => {
-    const numValue = value === "" ? 0 : Number(value);
-    setEditingRetentionRates(prev => ({
+  const handleAnnualLeavePointsChange = (staffId: string, value: string) => {
+    setEditingAnnualLeavePoints(prev => ({
       ...prev,
-      [staffId]: numValue
+      [staffId]: value
     }));
   };
 
-  const handleRetentionRateBlur = async (user: UserWithPoints) => {
-    const newRate = editingRetentionRates[user.staff_id];
+  const handleAnnualLeavePointsBlur = async (user: UserWithPoints) => {
+    const editedValue = editingAnnualLeavePoints[user.staff_id];
 
     // 編集中の値がない場合は何もしない
-    if (newRate === undefined) return;
+    if (editedValue === undefined) return;
 
-    // 元の値と同じ場合は何もしない（年度別の実効割合と比較）
-    if (newRate === user.effectiveRetentionRate) {
-      // 編集状態をクリア
-      setEditingRetentionRates(prev => {
+    // 空欄の場合は削除（デフォルト値に戻す）
+    const newPoints = editedValue === "" ? null : Number(editedValue);
+
+    // 元の値と同じ場合は何もしない
+    const currentPoints = user.annualLeavePoints;
+    if (newPoints === currentPoints) {
+      setEditingAnnualLeavePoints(prev => {
         const newState = { ...prev };
         delete newState[user.staff_id];
         return newState;
@@ -303,11 +303,10 @@ export default function MembersPage() {
       return;
     }
 
-    // バリデーション
-    if (newRate < 0 || newRate > 100) {
-      alert("得点保持率は0〜100の範囲で入力してください");
-      // 元の値に戻す
-      setEditingRetentionRates(prev => {
+    // バリデーション（得点は0以上、上限なし）
+    if (newPoints !== null && (newPoints < 0 || !Number.isInteger(newPoints))) {
+      alert("年休得点は0以上の整数で入力してください");
+      setEditingAnnualLeavePoints(prev => {
         const newState = { ...prev };
         delete newState[user.staff_id];
         return newState;
@@ -320,44 +319,72 @@ export default function MembersPage() {
     setProcessing(true);
 
     try {
-      // 年度別テーブルにupsert
-      const { error } = await supabase
-        .from("user_point_retention_rate")
-        .upsert({
-          staff_id: user.staff_id,
-          fiscal_year: selectedFiscalYear,
-          point_retention_rate: newRate,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'staff_id,fiscal_year'
-        });
+      if (newPoints === null) {
+        // 空欄の場合は削除
+        const { error } = await supabase
+          .from("user_annual_leave_points")
+          .delete()
+          .eq("staff_id", user.staff_id)
+          .eq("fiscal_year", selectedFiscalYear);
 
-      if (error) {
-        alert("得点保持率の更新に失敗しました");
-        console.error("Error:", error);
+        if (error) {
+          alert("年休得点の更新に失敗しました");
+          console.error("Error:", error);
+        } else {
+          // ローカル状態を更新
+          setUsers(prev => prev.map(u => {
+            if (u.staff_id !== user.staff_id) return u;
+            const newMaxPoints = maxAnnualLeavePoints ?? 0;
+            const newRemainingPoints = u.usedPoints !== null
+              ? newMaxPoints - u.usedPoints
+              : null;
+            return {
+              ...u,
+              annualLeavePoints: null,
+              remainingPoints: newRemainingPoints
+            };
+          }));
+          setEditingAnnualLeavePoints(prev => {
+            const newState = { ...prev };
+            delete newState[user.staff_id];
+            return newState;
+          });
+        }
       } else {
-        // ローカル状態を更新（再取得せず連続編集を可能に）
-        setUsers(prev => prev.map(u => {
-          if (u.staff_id !== user.staff_id) return u;
-          // 最大得点を再計算
-          const newMaxPoints = maxAnnualLeavePoints
-            ? Math.floor((maxAnnualLeavePoints * newRate) / 100)
-            : null;
-          const newRemainingPoints = newMaxPoints !== null && u.usedPoints !== null
-            ? newMaxPoints - u.usedPoints
-            : null;
-          return {
-            ...u,
-            effectiveRetentionRate: newRate,
-            remainingPoints: newRemainingPoints
-          };
-        }));
-        // 編集状態をクリア
-        setEditingRetentionRates(prev => {
-          const newState = { ...prev };
-          delete newState[user.staff_id];
-          return newState;
-        });
+        // 年度別テーブルにupsert
+        const { error } = await supabase
+          .from("user_annual_leave_points")
+          .upsert({
+            staff_id: user.staff_id,
+            fiscal_year: selectedFiscalYear,
+            annual_leave_points: newPoints,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'staff_id,fiscal_year'
+          });
+
+        if (error) {
+          alert("年休得点の更新に失敗しました");
+          console.error("Error:", error);
+        } else {
+          // ローカル状態を更新
+          setUsers(prev => prev.map(u => {
+            if (u.staff_id !== user.staff_id) return u;
+            const newRemainingPoints = u.usedPoints !== null
+              ? newPoints - u.usedPoints
+              : null;
+            return {
+              ...u,
+              annualLeavePoints: newPoints,
+              remainingPoints: newRemainingPoints
+            };
+          }));
+          setEditingAnnualLeavePoints(prev => {
+            const newState = { ...prev };
+            delete newState[user.staff_id];
+            return newState;
+          });
+        }
       }
     } catch (err) {
       console.error("Error:", err);
@@ -367,13 +394,12 @@ export default function MembersPage() {
     }
   };
 
-  const handleRetentionRateKeyDown = async (e: React.KeyboardEvent, user: UserWithPoints) => {
+  const handleAnnualLeavePointsKeyDown = async (e: React.KeyboardEvent, user: UserWithPoints) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      await handleRetentionRateBlur(user);
+      await handleAnnualLeavePointsBlur(user);
     } else if (e.key === "Escape") {
-      // Escキーで編集をキャンセル
-      setEditingRetentionRates(prev => {
+      setEditingAnnualLeavePoints(prev => {
         const newState = { ...prev };
         delete newState[user.staff_id];
         return newState;
@@ -390,7 +416,7 @@ export default function MembersPage() {
     return isCurrentUser(user) || (user.is_admin && getAdminCount() === 1);
   };
 
-  const handleSort = (column: 'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints') => {
+  const handleSort = (column: 'staff_id' | 'name' | 'created_at' | 'annualLeavePoints' | 'remainingPoints') => {
     if (sortColumn === column) {
       // 同じ列をクリックした場合は方向を反転
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -421,9 +447,9 @@ export default function MembersPage() {
           aValue = new Date(a.created_at).getTime();
           bValue = new Date(b.created_at).getTime();
           break;
-        case 'point_retention_rate':
-          aValue = a.point_retention_rate ?? 100;
-          bValue = b.point_retention_rate ?? 100;
+        case 'annualLeavePoints':
+          aValue = a.annualLeavePoints ?? maxAnnualLeavePoints ?? 0;
+          bValue = b.annualLeavePoints ?? maxAnnualLeavePoints ?? 0;
           break;
         case 'remainingPoints':
           aValue = a.remainingPoints ?? -1;
@@ -439,7 +465,7 @@ export default function MembersPage() {
     });
   };
 
-  const getSortIcon = (column: 'staff_id' | 'name' | 'created_at' | 'point_retention_rate' | 'remainingPoints') => {
+  const getSortIcon = (column: 'staff_id' | 'name' | 'created_at' | 'annualLeavePoints' | 'remainingPoints') => {
     if (sortColumn !== column) {
       return <Icons.ArrowUpDown />;
     }
@@ -558,11 +584,11 @@ export default function MembersPage() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     <button
-                      onClick={() => handleSort('point_retention_rate')}
+                      onClick={() => handleSort('annualLeavePoints')}
                       className="flex items-center gap-2 hover:text-gray-700 transition-colors"
                     >
-                      得点保持率
-                      {getSortIcon('point_retention_rate')}
+                      年休得点
+                      {getSortIcon('annualLeavePoints')}
                     </button>
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
@@ -632,15 +658,22 @@ export default function MembersPage() {
                         <input
                           type="number"
                           min="0"
-                          max="100"
-                          value={editingRetentionRates[user.staff_id] ?? user.effectiveRetentionRate}
-                          onChange={(e) => handleRetentionRateChange(user.staff_id, e.target.value)}
-                          onBlur={() => handleRetentionRateBlur(user)}
-                          onKeyDown={(e) => handleRetentionRateKeyDown(e, user)}
+                          step="1"
+                          value={editingAnnualLeavePoints[user.staff_id] ?? (user.annualLeavePoints ?? maxAnnualLeavePoints ?? '')}
+                          onChange={(e) => handleAnnualLeavePointsChange(user.staff_id, e.target.value)}
+                          onBlur={() => handleAnnualLeavePointsBlur(user)}
+                          onKeyDown={(e) => handleAnnualLeavePointsKeyDown(e, user)}
                           disabled={processing}
-                          className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 transition-all"
+                          placeholder={`${maxAnnualLeavePoints ?? 0}`}
+                          className={`w-20 px-3 py-1.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 transition-all ${
+                            user.annualLeavePoints === null
+                              ? 'border-gray-200 text-gray-500 bg-gray-50'
+                              : 'border-gray-300 text-gray-900'
+                          }`}
                         />
-                        <span className="text-gray-600 font-medium">%</span>
+                        <span className="text-gray-600 font-medium text-xs">
+                          {user.annualLeavePoints === null ? '(既定)' : '点'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
