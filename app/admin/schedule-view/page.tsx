@@ -1,11 +1,17 @@
 // @ts-nocheck
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Database, DisplaySettings } from "@/lib/database.types";
+
+// キーボードナビゲーション用の型
+type FocusedCell = {
+  date: string;
+  memberId: string;
+} | null;
 
 // デフォルトの表示設定（12月予定表の色に合わせる - パステル調）
 const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -130,6 +136,9 @@ const Icons = {
   ),
   Trash: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg>
+  ),
+  Keyboard: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
   ),
 };
 
@@ -320,6 +329,11 @@ export default function ScheduleViewPage() {
   // ツールバーメニュー
   const [showToolMenu, setShowToolMenu] = useState(false);
   const toolMenuRef = useRef<HTMLDivElement>(null);
+
+  // キーボードナビゲーション用
+  const [focusedCell, setFocusedCell] = useState<FocusedCell>(null);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
@@ -2980,6 +2994,107 @@ export default function ScheduleViewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, selectedTeam]);
 
+  // ========== キーボードナビゲーション機能 ==========
+
+  // 矢印キーナビゲーション
+  const handleArrowNavigation = useCallback((key: string, e: React.KeyboardEvent) => {
+    e.preventDefault();
+
+    if (!focusedCell) {
+      // フォーカスがなければ最初のセルにフォーカス
+      if (daysData.length > 0 && filteredMembers.length > 0) {
+        setFocusedCell({ date: daysData[0].date, memberId: filteredMembers[0].staff_id });
+      }
+      return;
+    }
+
+    const currentDateIndex = daysData.findIndex(d => d.date === focusedCell.date);
+    const currentMemberIndex = filteredMembers.findIndex(m => m.staff_id === focusedCell.memberId);
+
+    if (currentDateIndex === -1 || currentMemberIndex === -1) return;
+
+    let newDateIndex = currentDateIndex;
+    let newMemberIndex = currentMemberIndex;
+
+    switch (key) {
+      case 'ArrowUp':
+        newDateIndex = Math.max(0, currentDateIndex - 1);
+        break;
+      case 'ArrowDown':
+        newDateIndex = Math.min(daysData.length - 1, currentDateIndex + 1);
+        break;
+      case 'ArrowLeft':
+        newMemberIndex = Math.max(0, currentMemberIndex - 1);
+        break;
+      case 'ArrowRight':
+        newMemberIndex = Math.min(filteredMembers.length - 1, currentMemberIndex + 1);
+        break;
+    }
+
+    setFocusedCell({
+      date: daysData[newDateIndex].date,
+      memberId: filteredMembers[newMemberIndex].staff_id,
+    });
+  }, [focusedCell, daysData, filteredMembers]);
+
+  // キーボードでセルを開く
+  const handleOpenCellWithKeyboard = useCallback(() => {
+    if (!focusedCell) return;
+
+    const member = filteredMembers.find(m => m.staff_id === focusedCell.memberId);
+    if (!member) return;
+
+    // テーブルコンテナからポップアップ位置を計算
+    const container = tableContainerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      setPopupPosition({ x: rect.left + 100, y: rect.top + 100 });
+    }
+
+    setSelectedCell({ date: focusedCell.date, member });
+    setShowModal(true);
+  }, [focusedCell, filteredMembers]);
+
+  // メインキーボードハンドラ
+  const handleTableKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // モーダル表示中はスキップ
+    if (showModal) return;
+
+    const key = e.key;
+
+    // 矢印キーナビゲーション
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+      handleArrowNavigation(key, e);
+      return;
+    }
+
+    // Enter: セルを開く
+    if (key === 'Enter') {
+      e.preventDefault();
+      handleOpenCellWithKeyboard();
+      return;
+    }
+
+    // Escape: フォーカス解除
+    if (key === 'Escape') {
+      e.preventDefault();
+      setFocusedCell(null);
+      return;
+    }
+
+    // ?: ヘルプ表示
+    if (key === '?' || (e.shiftKey && key === '/')) {
+      e.preventDefault();
+      setShowShortcutHelp(true);
+      return;
+    }
+  }, [showModal, handleArrowNavigation, handleOpenCellWithKeyboard]);
+
+  // テーブルクリック時にフォーカスを当てる
+  const handleTableClick = useCallback(() => {
+    tableContainerRef.current?.focus();
+  }, []);
+
   const teamACount = members.filter(m => m.team === 'A').length;
   const teamBCount = members.filter(m => m.team === 'B').length;
 
@@ -4072,7 +4187,13 @@ export default function ScheduleViewPage() {
           <>
           {/* テーブル */}
           <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div
+              ref={tableContainerRef}
+              tabIndex={0}
+              onKeyDown={handleTableKeyDown}
+              onClick={handleTableClick}
+              className="overflow-x-auto outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset"
+            >
               <table className="border-collapse table-fixed w-auto">
                 <thead>
                   {/* メンバー名ヘッダー */}
@@ -4148,6 +4269,8 @@ export default function ScheduleViewPage() {
                       {/* メンバーごとのセル */}
                       {filteredMembers.map(member => {
                         const content = getCellContent(day.date, member, day.dayOfWeek, day.isHoliday);
+                        const isFocused = focusedCell?.date === day.date && focusedCell?.memberId === member.staff_id;
+                        const focusStyle = isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {};
 
                         // 出向中・休職中の場合
                         if (content.type === 'secondment' || content.type === 'leave') {
@@ -4163,8 +4286,8 @@ export default function ScheduleViewPage() {
                               key={`${day.date}-${member.staff_id}`}
                               colSpan={3}
                               onClick={(e) => handleCellClick(e, day.date, member)}
-                              className="border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80"
-                              style={{ backgroundColor: bgColor }}
+                              className={`border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80 ${isFocused ? 'relative' : ''}`}
+                              style={{ backgroundColor: bgColor, ...focusStyle }}
                             >
                               <span
                                 className="text-[9px] font-bold"
@@ -4183,8 +4306,8 @@ export default function ScheduleViewPage() {
                               key={`${day.date}-${member.staff_id}`}
                               colSpan={3}
                               onClick={(e) => handleCellClick(e, day.date, member)}
-                              className="border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80"
-                              style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member) }}
+                              className={`border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80 ${isFocused ? 'relative' : ''}`}
+                              style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...focusStyle }}
                             >
                               <span
                                 className="text-[9px] font-bold"
@@ -4204,8 +4327,8 @@ export default function ScheduleViewPage() {
                               <td
                                 colSpan={2}
                                 onClick={(e) => handleCellClick(e, day.date, member)}
-                                className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 overflow-hidden"
-                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member) }}
+                                className={`border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 overflow-hidden ${isFocused ? 'relative' : ''}`}
+                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
                               >
                                 <span
                                   className="text-[9px] font-bold whitespace-nowrap"
@@ -4218,7 +4341,7 @@ export default function ScheduleViewPage() {
                               <td
                                 onClick={(e) => handleCellClick(e, day.date, member)}
                                 className="border-y border-black border-r border-r-black px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
+                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
                               >
                                 {content.night ? (
                                   <span
@@ -4243,8 +4366,8 @@ export default function ScheduleViewPage() {
                             {/* AM セル */}
                             <td
                               onClick={(e) => handleCellClick(e, day.date, member)}
-                              className="border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                              style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
+                              className={`border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden ${isFocused ? 'relative' : ''}`}
+                              style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
                             >
                               {content.am && (
                                 <span
@@ -4259,7 +4382,7 @@ export default function ScheduleViewPage() {
                             <td
                               onClick={(e) => handleCellClick(e, day.date, member)}
                               className="border-y border-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                              style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
+                              style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
                             >
                               {content.pm && (
                                 <span
@@ -4274,7 +4397,7 @@ export default function ScheduleViewPage() {
                             <td
                               onClick={(e) => handleCellClick(e, day.date, member)}
                               className="border-y border-black border-r border-r-black px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                              style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member) }}
+                              style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
                             >
                               {content.night ? (
                                 <span
@@ -8491,6 +8614,79 @@ export default function ScheduleViewPage() {
           </div>
         </>
       )}
+
+      {/* ショートカットヘルプモーダル */}
+      {showShortcutHelp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowShortcutHelp(false)}>
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icons.Keyboard />
+                <h2 className="text-lg font-bold text-gray-900">キーボードショートカット</h2>
+              </div>
+              <button
+                onClick={() => setShowShortcutHelp(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <Icons.X />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* ナビゲーション */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">ナビゲーション</h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">↑↓</span><span>日付を移動</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">←→</span><span>メンバーを移動</span></div>
+                </div>
+              </div>
+
+              {/* 操作 */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">操作</h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Enter</span><span>セルを開く（編集）</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Escape</span><span>フォーカス解除</span></div>
+                </div>
+              </div>
+
+              {/* ヘルプ */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">ヘルプ</h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">?</span><span>このヘルプを表示</span></div>
+                </div>
+              </div>
+
+              {/* 使い方 */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-600">
+                  テーブルをクリックしてフォーカスを当てると、キーボードでセルを移動できます。
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200">
+              <button
+                onClick={() => setShowShortcutHelp(false)}
+                className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* キーボードヘルプボタン（右下固定） */}
+      <button
+        onClick={() => setShowShortcutHelp(true)}
+        className="fixed bottom-4 right-4 bg-white border border-gray-200 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 text-gray-600 hover:text-indigo-600 z-40"
+        title="キーボードショートカット (?)"
+      >
+        <Icons.Keyboard />
+      </button>
     </div>
   );
 }
