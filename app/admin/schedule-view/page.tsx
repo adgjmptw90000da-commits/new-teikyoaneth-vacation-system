@@ -4950,9 +4950,6 @@ export default function ScheduleViewPage() {
                           <span>{day.day}</span>
                           <span className="text-[9px]">{WEEKDAYS[day.dayOfWeek]}</span>
                         </div>
-                        {day.isHoliday && (
-                          <div className="text-[7px] text-red-500 truncate max-w-[50px]">{day.holidayName}</div>
-                        )}
                       </td>
                       {/* メンバーごとのセル */}
                       {filteredMembers.map(member => {
