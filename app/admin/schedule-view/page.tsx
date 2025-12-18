@@ -3679,12 +3679,6 @@ export default function ScheduleViewPage() {
       return;
     }
 
-    // Enter: セルを開く
-    if (key === 'Enter') {
-      e.preventDefault();
-      handleOpenCellWithKeyboard();
-      return;
-    }
 
     // Escape: フォーカス解除
     if (key === 'Escape') {
@@ -10401,14 +10395,6 @@ export default function ScheduleViewPage() {
         </div>
       )}
 
-      {/* キーボードヘルプボタン（右下固定） */}
-      <button
-        onClick={() => setShowShortcutHelp(true)}
-        className="fixed bottom-4 right-4 bg-white border border-gray-200 rounded-full p-3 shadow-lg hover:shadow-xl transition-all hover:scale-105 text-gray-600 hover:text-indigo-600 z-40"
-        title="キーボードショートカット (?)"
-      >
-        <Icons.Keyboard />
-      </button>
     </div>
   );
 }
