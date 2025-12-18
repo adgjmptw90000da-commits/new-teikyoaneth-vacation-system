@@ -1141,7 +1141,7 @@ export default function ScheduleSubmitPage() {
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {tabMonth}月
+                    {tabYear}年{tabMonth}月
                   </button>
                 );
               })}

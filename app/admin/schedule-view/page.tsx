@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import type { Database, DisplaySettings } from "@/lib/database.types";
+import type { Database, DisplaySettings, ShortcutConfig } from "@/lib/database.types";
 
 // キーボードナビゲーション用の型
 type FocusedCell = {
@@ -331,9 +331,22 @@ export default function ScheduleViewPage() {
   const toolMenuRef = useRef<HTMLDivElement>(null);
 
   // キーボードナビゲーション用
+  const [keyboardMode, setKeyboardMode] = useState(false);
   const [focusedCell, setFocusedCell] = useState<FocusedCell>(null);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [keyboardError, setKeyboardError] = useState<string | null>(null);
+  const [showShortcutConfigModal, setShowShortcutConfigModal] = useState(false);
+  const [shortcutConfig, setShortcutConfig] = useState<ShortcutConfig>({}); // キー -> {type, id}
+  const [keyboardPanelOptions, setKeyboardPanelOptions] = useState({
+    showStatus: true,      // 登録状況
+    showSchedule: true,    // 予定
+    showShift: true,       // シフト
+    showWorkLocation: true, // 勤務場所
+    showShortcut: false    // ショートカット
+  });
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const keyboardPanelRef = useRef<HTMLDivElement>(null);
+  const [keyboardPanelHeight, setKeyboardPanelHeight] = useState(0);
 
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
@@ -368,6 +381,9 @@ export default function ScheduleViewPage() {
     excludePreHolidays: boolean;
     specificDates: string[]; // 個別選択した日付
     priorityMode: 'count' | 'score'; // 回数ベース or 得点ベース
+    // 割り振り回数制限
+    maxAssignmentsPerMember: number | null; // nullは制限なし
+    maxAssignmentsMode: 'execution' | 'monthly'; // この実行での回数 or 月間総回数
   }>(() => {
     // 初期値計算
     const now = new Date();
@@ -399,6 +415,8 @@ export default function ScheduleViewPage() {
       excludePreHolidays: false,
       specificDates: [],
       priorityMode: 'count',
+      maxAssignmentsPerMember: null,
+      maxAssignmentsMode: 'execution',
     };
   });
   const [autoAssignPreview, setAutoAssignPreview] = useState<{
@@ -431,6 +449,9 @@ export default function ScheduleViewPage() {
     exclusionFilters: ExclusionFilter[];
     excludeNightShiftUnavailable: boolean; // 当直不可（×）の日は割り振らない
     priorityMode: 'count' | 'score'; // 回数ベース or 得点ベース
+    // 割り振り回数制限
+    maxAssignmentsPerMember: number | null; // nullは制限なし
+    maxAssignmentsMode: 'execution' | 'monthly'; // この実行での回数 or 月間総回数
   }>(() => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -463,6 +484,8 @@ export default function ScheduleViewPage() {
       exclusionFilters: [],
       excludeNightShiftUnavailable: false,
       priorityMode: 'count',
+      maxAssignmentsPerMember: null,
+      maxAssignmentsMode: 'execution',
     };
   });
   const [generalShiftPreview, setGeneralShiftPreview] = useState<{
@@ -473,9 +496,25 @@ export default function ScheduleViewPage() {
   // シフト一括削除用の設定
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [bulkDeleteConfig, setBulkDeleteConfig] = useState<{
-    shiftTypeId: number | null;
+    shiftTypeIds: number[];
+    selectionMode: 'filter' | 'individual';
+    filterTeams: ('A' | 'B')[];
+    filterNightShiftLevels: string[];
+    filterPositions: string[];
+    filterCanCardiac: boolean | null;
+    filterCanObstetric: boolean | null;
+    filterCanIcu: boolean | null;
+    filterCanRemainingDuty: boolean | null;
+    selectedMemberIds: string[];
+    dateSelectionMode: 'period' | 'weekday' | 'specific';
     startDate: string;
     endDate: string;
+    targetWeekdays: number[];
+    includeHolidays: boolean;
+    includePreHolidays: boolean;
+    excludeHolidays: boolean;
+    excludePreHolidays: boolean;
+    specificDates: string[];
   }>(() => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -485,9 +524,25 @@ export default function ScheduleViewPage() {
     const lastDate = new Date(year, month, 0);
     const endDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`;
     return {
-      shiftTypeId: null,
+      shiftTypeIds: [],
+      selectionMode: 'filter',
+      filterTeams: [],
+      filterNightShiftLevels: [],
+      filterPositions: [],
+      filterCanCardiac: null,
+      filterCanObstetric: null,
+      filterCanIcu: null,
+      filterCanRemainingDuty: null,
+      selectedMemberIds: [],
+      dateSelectionMode: 'period',
       startDate: firstDay,
       endDate: endDay,
+      targetWeekdays: [],
+      includeHolidays: false,
+      includePreHolidays: false,
+      excludeHolidays: false,
+      excludePreHolidays: false,
+      specificDates: [],
     };
   });
   const [bulkDeletePreview, setBulkDeletePreview] = useState<{
@@ -516,7 +571,9 @@ export default function ScheduleViewPage() {
       ...prev,
       startDate: firstDay,
       endDate: endDay,
+      specificDates: [],
     }));
+    setBulkDeletePreview(null);
   }, [currentYear, currentMonth]);
 
   useEffect(() => {
@@ -550,6 +607,78 @@ export default function ScheduleViewPage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showToolMenu]);
+
+  // キーボードモードパネルの高さを計測
+  useEffect(() => {
+    if (!keyboardMode || !keyboardPanelRef.current) {
+      setKeyboardPanelHeight(0);
+      return;
+    }
+
+    const updateHeight = () => {
+      if (keyboardPanelRef.current) {
+        setKeyboardPanelHeight(keyboardPanelRef.current.offsetHeight);
+      }
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(keyboardPanelRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [keyboardMode, keyboardPanelOptions]);
+
+  // フォーカスセルが変更されたら自動スクロール
+  useEffect(() => {
+    if (!focusedCell || !tableContainerRef.current) return;
+
+    const cellId = `${focusedCell.date}-${focusedCell.memberId}`;
+    const cell = tableContainerRef.current.querySelector(`[data-cell-id="${cellId}"]`) as HTMLElement;
+    if (!cell) return;
+
+    const container = tableContainerRef.current;
+    const cellRect = cell.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // ヘッダー行の高さ（得点行 + 名前行 + AM/PM/夜行）
+    const hasScoreRow = scoreConfigs.some(c => c.is_active);
+    const headerHeight = hasScoreRow ? 90 : 60;
+
+    // 縦方向のスクロール（コンテナ内スクロール）
+    const visibleTop = containerRect.top + headerHeight;
+    const visibleBottom = containerRect.bottom - 20;
+
+    if (cellRect.bottom > visibleBottom) {
+      // セルが下に隠れている場合
+      const scrollAmount = cellRect.bottom - visibleBottom + 30;
+      container.scrollTop += scrollAmount;
+    } else if (cellRect.top < visibleTop) {
+      // セルがヘッダーに隠れている場合
+      const scrollAmount = cellRect.top - visibleTop - 10;
+      container.scrollTop += scrollAmount;
+    }
+
+    // 横方向のスクロール（コンテナをスクロール）
+    const dateColumnWidth = 50; // 日付列の幅
+    const leftBoundary = containerRect.left + dateColumnWidth + 80; // 左側の余裕
+    // 右側: 固定カウント列の幅（各40px）+ 右日付列（50px）+ 余裕を考慮
+    const activeCountWidth = countConfigs.filter(c => c.is_active).length * 40;
+    const rightFixedWidth = activeCountWidth + 50 + 30; // カウント列 + 右日付列 + 余裕
+    const rightBoundary = containerRect.right - rightFixedWidth;
+
+    if (cellRect.right > rightBoundary) {
+      // セルが右の固定列に隠れる場合
+      const scrollAmount = cellRect.right - rightBoundary + 100;
+      container.scrollLeft += scrollAmount;
+    } else if (cellRect.left < leftBoundary) {
+      // セルが日付列に近い場合
+      const scrollAmount = cellRect.left - leftBoundary - 50;
+      container.scrollLeft += scrollAmount;
+    }
+  }, [focusedCell, scoreConfigs, countConfigs]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -605,7 +734,7 @@ export default function ScheduleViewPage() {
           .gte("vacation_date", startDate)
           .lte("vacation_date", endDate)
           .in("status", ["after_lottery", "confirmed"]),
-        supabase.from("setting").select("display_settings").single(),
+        supabase.from("setting").select("display_settings, shortcut_config").single(),
         supabase.from("schedule_publish").select("*").eq("year", currentYear).eq("month", currentMonth).maybeSingle(),
         supabase.from("calendar_management")
           .select("vacation_date, status")
@@ -679,6 +808,11 @@ export default function ScheduleViewPage() {
         setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...settingData.display_settings, ...systemDisplaySettings });
       } else {
         setDisplaySettings({ ...DEFAULT_DISPLAY_SETTINGS, ...systemDisplaySettings });
+      }
+
+      // ショートカット設定を読み込み
+      if (settingData?.shortcut_config) {
+        setShortcutConfig(settingData.shortcut_config as ShortcutConfig);
       }
 
       // 公開状態を設定
@@ -1571,6 +1705,7 @@ export default function ScheduleViewPage() {
 
       // 各メンバーの当直回数カウンタ初期化（既存の当直シフトをカウント）
       const assignmentCount = new Map<string, number>();
+      const existingCounts = new Map<string, number>(); // 既存回数を別途記録（execution modeチェック用）
       targetMembers.forEach(m => {
         // 既存の当直シフト数をカウント（対象期間内）
         let existingCount = 0;
@@ -1586,7 +1721,25 @@ export default function ScheduleViewPage() {
           });
         }
         assignmentCount.set(m.staff_id, existingCount);
+        existingCounts.set(m.staff_id, existingCount);
       });
+
+      // 最大回数制限チェック関数
+      const isWithinMaxAssignments = (memberId: string): boolean => {
+        if (autoAssignConfig.maxAssignmentsPerMember === null) return true;
+
+        const currentCount = assignmentCount.get(memberId) || 0;
+        const existingCount = existingCounts.get(memberId) || 0;
+
+        if (autoAssignConfig.maxAssignmentsMode === 'execution') {
+          // この実行での新規割り当て回数のみチェック
+          const newAssignCount = currentCount - existingCount;
+          return newAssignCount < autoAssignConfig.maxAssignmentsPerMember;
+        } else {
+          // 月間総回数（既存 + 新規）をチェック
+          return currentCount < autoAssignConfig.maxAssignmentsPerMember;
+        }
+      };
 
       // 結果格納用
       const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
@@ -1594,8 +1747,12 @@ export default function ScheduleViewPage() {
       // 当直可能人数の少ない日からソートする関数
       const sortByAvailableCount = (dates: DayData[]) => {
         return [...dates].sort((a, b) => {
-          const availableA = targetMembers.filter(m => canAssignNightShift(a.date, m, assignments, a)).length;
-          const availableB = targetMembers.filter(m => canAssignNightShift(b.date, m, assignments, b)).length;
+          const availableA = targetMembers.filter(m =>
+            canAssignNightShift(a.date, m, assignments, a) && isWithinMaxAssignments(m.staff_id)
+          ).length;
+          const availableB = targetMembers.filter(m =>
+            canAssignNightShift(b.date, m, assignments, b) && isWithinMaxAssignments(m.staff_id)
+          ).length;
           return availableA - availableB;
         });
       };
@@ -1684,7 +1841,9 @@ export default function ScheduleViewPage() {
         // その日に既に当直が入っていたらスキップ
         if (isDayAlreadyAssigned(day.date)) continue;
 
-        const availableMembers = targetMembers.filter(m => canAssignNightShift(day.date, m, assignments, day));
+        const availableMembers = targetMembers.filter(m =>
+          canAssignNightShift(day.date, m, assignments, day) && isWithinMaxAssignments(m.staff_id)
+        );
         if (availableMembers.length > 0) {
           const selected = selectLeastAssigned(availableMembers, assignments);
           if (selected) {
@@ -2168,6 +2327,7 @@ export default function ScheduleViewPage() {
 
       // 各メンバーのシフト回数カウンタ初期化（既存のシフトをカウント）
       const assignmentCount = new Map<string, number>();
+      const existingCounts = new Map<string, number>(); // 既存回数を別途記録（execution modeチェック用）
       targetMembers.forEach(m => {
         let existingCount = 0;
         if (m.shifts) {
@@ -2181,7 +2341,25 @@ export default function ScheduleViewPage() {
           });
         }
         assignmentCount.set(m.staff_id, existingCount);
+        existingCounts.set(m.staff_id, existingCount);
       });
+
+      // 最大回数制限チェック関数
+      const isWithinMaxAssignments = (memberId: string): boolean => {
+        if (generalShiftConfig.maxAssignmentsPerMember === null) return true;
+
+        const currentCount = assignmentCount.get(memberId) || 0;
+        const existingCount = existingCounts.get(memberId) || 0;
+
+        if (generalShiftConfig.maxAssignmentsMode === 'execution') {
+          // この実行での新規割り当て回数のみチェック
+          const newAssignCount = currentCount - existingCount;
+          return newAssignCount < generalShiftConfig.maxAssignmentsPerMember;
+        } else {
+          // 月間総回数（既存 + 新規）をチェック
+          return currentCount < generalShiftConfig.maxAssignmentsPerMember;
+        }
+      };
 
       // 結果格納用
       const assignments: { date: string; staffId: string; staffName: string }[] = [];
@@ -2258,10 +2436,12 @@ export default function ScheduleViewPage() {
       const sortByAvailableCountGeneral = (dates: DayData[]) => {
         return [...dates].sort((a, b) => {
           const availableA = targetMembers.filter(m =>
-            canAssignGeneralShift(a.date, m, assignments, targetShiftType, a.dayOfWeek, a.isHoliday)
+            canAssignGeneralShift(a.date, m, assignments, targetShiftType, a.dayOfWeek, a.isHoliday) &&
+            isWithinMaxAssignments(m.staff_id)
           ).length;
           const availableB = targetMembers.filter(m =>
-            canAssignGeneralShift(b.date, m, assignments, targetShiftType, b.dayOfWeek, b.isHoliday)
+            canAssignGeneralShift(b.date, m, assignments, targetShiftType, b.dayOfWeek, b.isHoliday) &&
+            isWithinMaxAssignments(m.staff_id)
           ).length;
           return availableA - availableB;
         });
@@ -2279,7 +2459,10 @@ export default function ScheduleViewPage() {
         // その日に既にシフトが入っていたらスキップ
         if (isDayAlreadyAssignedGeneral(day.date)) continue;
 
-        const availableMembers = targetMembers.filter(m => canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday));
+        const availableMembers = targetMembers.filter(m =>
+          canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday) &&
+          isWithinMaxAssignments(m.staff_id)
+        );
         if (availableMembers.length > 0) {
           const selected = selectLeastAssignedForGeneral(availableMembers, assignments);
           if (selected) {
@@ -2354,35 +2537,161 @@ export default function ScheduleViewPage() {
   // シフト一括削除
   // ========================================
 
+  // シフト一括削除: 対象メンバー取得
+  const getTargetMembersForBulkDelete = useCallback(() => {
+    const {
+      selectionMode = 'filter',
+      filterTeams = [],
+      filterNightShiftLevels = [],
+      filterPositions = [],
+      filterCanCardiac = null,
+      filterCanObstetric = null,
+      filterCanIcu = null,
+      filterCanRemainingDuty = null,
+      selectedMemberIds = [],
+    } = bulkDeleteConfig || {};
+
+    if (selectionMode === 'individual') {
+      return members.filter(m => selectedMemberIds.includes(m.staff_id));
+    }
+
+    // フィルターモード
+    return members.filter(member => {
+      // チームフィルター
+      if (filterTeams.length > 0 && !filterTeams.includes(member.team)) return false;
+      // 当直レベルフィルター
+      if (filterNightShiftLevels.length > 0) {
+        const level = member.nightShiftLevel || 'なし';
+        if (!filterNightShiftLevels.includes(level)) return false;
+      }
+      // 立場フィルター
+      if (filterPositions.length > 0 && !filterPositions.includes(member.position)) return false;
+      // 心外対応フィルター
+      if (filterCanCardiac !== null && member.can_cardiac !== filterCanCardiac) return false;
+      // 産科対応フィルター
+      if (filterCanObstetric !== null && member.can_obstetric !== filterCanObstetric) return false;
+      // ICU対応フィルター
+      if (filterCanIcu !== null && member.can_icu !== filterCanIcu) return false;
+      // 残り番対応フィルター
+      if (filterCanRemainingDuty !== null && member.can_remaining_duty !== filterCanRemainingDuty) return false;
+
+      return true;
+    });
+  }, [bulkDeleteConfig, members]);
+
+  // シフト一括削除: 対象日取得
+  const getTargetDaysForBulkDelete = useCallback(() => {
+    const {
+      dateSelectionMode = 'period',
+      startDate = '',
+      endDate = '',
+      targetWeekdays = [],
+      includeHolidays = false,
+      includePreHolidays = false,
+      excludeHolidays = false,
+      excludePreHolidays = false,
+      specificDates = [],
+    } = bulkDeleteConfig || {};
+
+    // 期間データを生成
+    let baseDays: DayData[] = [];
+    if (startDate && endDate) {
+      baseDays = generateDaysForPeriod(startDate, endDate);
+    } else {
+      baseDays = daysData;
+    }
+
+    // 祝前日を計算
+    const holidaySet = new Set(holidays.map(h => h.holiday_date));
+    const preHolidaySet = new Set<string>();
+    holidaySet.forEach(hDate => {
+      const d = new Date(hDate);
+      d.setDate(d.getDate() - 1);
+      const preDate = d.toISOString().split('T')[0];
+      preHolidaySet.add(preDate);
+    });
+
+    switch (dateSelectionMode) {
+      case 'period':
+        return baseDays;
+
+      case 'specific':
+        const specificSet = new Set(specificDates);
+        return baseDays.filter(day => specificSet.has(day.date));
+
+      case 'weekday':
+        return baseDays.filter(day => {
+          // 祝日・祝前日の追加/除外オプション
+          const isPreHoliday = preHolidaySet.has(day.date);
+
+          // 除外チェック
+          if (excludeHolidays && day.isHoliday) return false;
+          if (excludePreHolidays && isPreHoliday) return false;
+
+          // 追加チェック
+          if (includeHolidays && day.isHoliday) return true;
+          if (includePreHolidays && isPreHoliday) return true;
+
+          // 曜日指定がない場合は全曜日対象
+          if (targetWeekdays.length === 0) return true;
+
+          // 曜日チェック
+          return targetWeekdays.includes(day.dayOfWeek);
+        });
+
+      default:
+        return baseDays;
+    }
+  }, [bulkDeleteConfig, daysData, holidays, generateDaysForPeriod]);
+
   // シフト一括削除: プレビュー
   const handleBulkDeletePreview = async () => {
-    if (!bulkDeleteConfig.shiftTypeId) {
+    if ((bulkDeleteConfig?.shiftTypeIds || []).length === 0) {
       alert('削除するシフトタイプを選択してください');
       return;
     }
 
     setIsBulkDeleting(true);
     try {
+      // 対象メンバーと対象日を取得
+      const targetMembers = getTargetMembersForBulkDelete();
+      const targetDays = getTargetDaysForBulkDelete();
+
+      if (targetMembers.length === 0) {
+        alert('対象メンバーが0人です。フィルター条件を確認してください。');
+        setIsBulkDeleting(false);
+        return;
+      }
+
+      if (targetDays.length === 0) {
+        alert('対象日が0日です。期間を確認してください。');
+        setIsBulkDeleting(false);
+        return;
+      }
+
+      const targetMemberIds = targetMembers.map(m => m.staff_id);
+      const targetDates = targetDays.map(d => d.date);
+
       // 期間内のシフトを取得
       const { data: shifts, error } = await supabase
         .from('user_shift')
         .select('id, shift_date, staff_id, shift_type_id')
-        .eq('shift_type_id', bulkDeleteConfig.shiftTypeId)
-        .gte('shift_date', bulkDeleteConfig.startDate)
-        .lte('shift_date', bulkDeleteConfig.endDate);
+        .in('shift_type_id', bulkDeleteConfig?.shiftTypeIds || [])
+        .in('staff_id', targetMemberIds)
+        .in('shift_date', targetDates);
 
       if (error) throw error;
 
       // メンバー情報とシフトタイプ情報を付与
-      const targetShiftType = shiftTypes.find(st => st.id === bulkDeleteConfig.shiftTypeId);
       const previewShifts = (shifts || []).map(shift => {
         const member = members.find(m => m.staff_id === shift.staff_id);
+        const shiftType = shiftTypes.find(st => st.id === shift.shift_type_id);
         return {
           id: shift.id,
           date: shift.shift_date,
           staffId: shift.staff_id,
           staffName: member?.name || shift.staff_id,
-          shiftName: targetShiftType?.display_label || targetShiftType?.name || '不明',
+          shiftName: shiftType?.display_label || shiftType?.name || '不明',
         };
       }).sort((a, b) => a.date.localeCompare(b.date) || a.staffName.localeCompare(b.staffName));
 
@@ -2777,6 +3086,248 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // キーボードショートカットでシフト追加（focusedCell使用）
+  const handleAddShiftByKeyboard = async (shiftIndex: number) => {
+    setKeyboardError(null); // エラーをクリア
+
+    if (!focusedCell) {
+      setKeyboardError('セルを選択してください');
+      return;
+    }
+
+    // shiftIndex は 0-8 (1-9キーに対応)
+    if (shiftIndex < 0 || shiftIndex >= shiftTypes.length) {
+      setKeyboardError('無効なシフトです');
+      return;
+    }
+
+    const shiftType = shiftTypes[shiftIndex];
+    const member = members.find(m => m.staff_id === focusedCell.memberId);
+    if (!member) return;
+
+    const day = daysData.find(d => d.date === focusedCell.date);
+    if (!day) return;
+
+    // 追加可能かチェック（勤務帯重複）
+    const content = getCellContent(focusedCell.date, member, day.dayOfWeek, day.isHoliday);
+
+    // 出向中・休職中はスキップ
+    if (content.type === 'secondment') {
+      setKeyboardError('出向中のため追加できません');
+      return;
+    }
+    if (content.type === 'leave') {
+      setKeyboardError('休職中のため追加できません');
+      return;
+    }
+
+    // 勤務帯重複チェック
+    const isAmOccupied = content.isResearchDay || content.am;
+    const isPmOccupied = content.isResearchDay || content.pm;
+    const isNightOccupied = content.night;
+
+    if (shiftType.position_am && isAmOccupied) {
+      setKeyboardError(`${shiftType.name}: AM枠が埋まっています`);
+      return;
+    }
+    if (shiftType.position_pm && isPmOccupied) {
+      setKeyboardError(`${shiftType.name}: PM枠が埋まっています`);
+      return;
+    }
+    if (shiftType.position_night && isNightOccupied) {
+      setKeyboardError(`${shiftType.name}: 夜勤枠が埋まっています`);
+      return;
+    }
+
+    // 月間上限チェック
+    if (shiftType.monthly_limit) {
+      const currentCount = getMonthlyShiftTypeCount(member, shiftType.id);
+      if (currentCount >= shiftType.monthly_limit) {
+        setKeyboardError(`${shiftType.name}の月間上限（${shiftType.monthly_limit}回）に達しています`);
+        return;
+      }
+    }
+
+    try {
+      const workLocationId = shiftType.default_work_location_id || null;
+      const { data, error } = await supabase.from("user_shift").insert({
+        staff_id: member.staff_id,
+        shift_date: focusedCell.date,
+        shift_type_id: shiftType.id,
+        work_location_id: workLocationId,
+      }).select("*, shift_type(*)").single();
+
+      if (error) {
+        setKeyboardError("シフトの追加に失敗しました: " + error.message);
+      } else if (data) {
+        setMembers(prev => prev.map(m => {
+          if (m.staff_id !== member.staff_id) return m;
+          const newShifts = { ...m.shifts };
+          if (!newShifts[focusedCell.date]) {
+            newShifts[focusedCell.date] = [];
+          }
+          newShifts[focusedCell.date] = [...newShifts[focusedCell.date], data];
+          return { ...m, shifts: newShifts };
+        }));
+      }
+    } catch (err) {
+      console.error("Error adding shift by keyboard:", err);
+      setKeyboardError("シフトの追加中にエラーが発生しました");
+    }
+  };
+
+  // キーボードモード用: 予定追加
+  const handleAddScheduleByKeyboard = async (scheduleTypeId: number) => {
+    setKeyboardError(null);
+
+    if (!focusedCell) {
+      setKeyboardError('セルを選択してください');
+      return;
+    }
+
+    const scheduleType = scheduleTypes.find(t => t.id === scheduleTypeId);
+    if (!scheduleType) {
+      setKeyboardError('無効な予定タイプです');
+      return;
+    }
+
+    const member = members.find(m => m.staff_id === focusedCell.memberId);
+    if (!member) return;
+
+    const day = daysData.find(d => d.date === focusedCell.date);
+    if (!day) return;
+
+    const content = getCellContent(focusedCell.date, member, day.dayOfWeek, day.isHoliday);
+
+    // 出向中・休職中はスキップ
+    if (content.type === 'secondment') {
+      setKeyboardError('出向中のため追加できません');
+      return;
+    }
+    if (content.type === 'leave') {
+      setKeyboardError('休職中のため追加できません');
+      return;
+    }
+
+    // 勤務帯重複チェック
+    const isAmOccupied = content.isResearchDay || content.am;
+    const isPmOccupied = content.isResearchDay || content.pm;
+    const isNightOccupied = content.night;
+
+    if (scheduleType.position_am && isAmOccupied) {
+      setKeyboardError(`${scheduleType.name}: AM枠が埋まっています`);
+      return;
+    }
+    if (scheduleType.position_pm && isPmOccupied) {
+      setKeyboardError(`${scheduleType.name}: PM枠が埋まっています`);
+      return;
+    }
+    if (scheduleType.position_night && isNightOccupied) {
+      setKeyboardError(`${scheduleType.name}: 夜勤枠が埋まっています`);
+      return;
+    }
+
+    // 月間上限チェック
+    if (scheduleType.monthly_limit) {
+      const currentCount = getMonthlyScheduleTypeCount(member, scheduleTypeId);
+      if (currentCount >= scheduleType.monthly_limit) {
+        setKeyboardError(`${scheduleType.name}の月間上限（${scheduleType.monthly_limit}回）に達しています`);
+        return;
+      }
+    }
+
+    try {
+      const workLocationId = scheduleType.default_work_location_id || null;
+      const { data, error } = await supabase.from("user_schedule").insert({
+        staff_id: member.staff_id,
+        schedule_date: focusedCell.date,
+        schedule_type_id: scheduleTypeId,
+        work_location_id: workLocationId,
+      }).select("*, schedule_type(*)").single();
+
+      if (error) {
+        setKeyboardError("予定の追加に失敗しました: " + error.message);
+      } else if (data) {
+        setMembers(prev => prev.map(m => {
+          if (m.staff_id !== member.staff_id) return m;
+          const newSchedules = { ...m.schedules };
+          if (!newSchedules[focusedCell.date]) {
+            newSchedules[focusedCell.date] = [];
+          }
+          newSchedules[focusedCell.date] = [...newSchedules[focusedCell.date], data];
+          return { ...m, schedules: newSchedules };
+        }));
+      }
+    } catch (err) {
+      console.error("Error adding schedule by keyboard:", err);
+      setKeyboardError("予定の追加中にエラーが発生しました");
+    }
+  };
+
+  // キーボードモード用: 予定削除
+  const handleDeleteScheduleByKeyboard = async (scheduleId: number) => {
+    if (!focusedCell) return;
+
+    const member = members.find(m => m.staff_id === focusedCell.memberId);
+    if (!member) return;
+
+    try {
+      const { error } = await supabase.from("user_schedule").delete().eq("id", scheduleId);
+      if (error) {
+        setKeyboardError("予定の削除に失敗しました: " + error.message);
+      } else {
+        setMembers(prev => prev.map(m => {
+          if (m.staff_id !== member.staff_id) return m;
+          const newSchedules = { ...m.schedules };
+          if (newSchedules[focusedCell.date]) {
+            newSchedules[focusedCell.date] = newSchedules[focusedCell.date].filter(s => s.id !== scheduleId);
+          }
+          return { ...m, schedules: newSchedules };
+        }));
+      }
+    } catch (err) {
+      console.error("Error deleting schedule by keyboard:", err);
+      setKeyboardError("予定の削除中にエラーが発生しました");
+    }
+  };
+
+  // キーボードモード用: シフト削除
+  const handleDeleteShiftByKeyboard = async (shiftId: number) => {
+    if (!focusedCell) return;
+
+    const member = members.find(m => m.staff_id === focusedCell.memberId);
+    if (!member) return;
+
+    try {
+      const { error } = await supabase.from("user_shift").delete().eq("id", shiftId);
+      if (error) {
+        setKeyboardError("シフトの削除に失敗しました: " + error.message);
+      } else {
+        setMembers(prev => prev.map(m => {
+          if (m.staff_id !== member.staff_id) return m;
+          const newShifts = { ...m.shifts };
+          if (newShifts[focusedCell.date]) {
+            newShifts[focusedCell.date] = newShifts[focusedCell.date].filter(s => s.id !== shiftId);
+          }
+          return { ...m, shifts: newShifts };
+        }));
+      }
+    } catch (err) {
+      console.error("Error deleting shift by keyboard:", err);
+      setKeyboardError("シフトの削除中にエラーが発生しました");
+    }
+  };
+
+  // ショートカット設定をデータベースに保存
+  const saveShortcutConfig = async (config: ShortcutConfig) => {
+    setShortcutConfig(config);
+    try {
+      await supabase.from("setting").update({ shortcut_config: config }).eq("id", 1);
+    } catch (err) {
+      console.error("Error saving shortcut config:", err);
+    }
+  };
+
   // シフト追加
   const handleAddShift = async (typeId: number) => {
     if (!selectedCell) return;
@@ -2848,6 +3399,32 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // キーボードショートカットで勤務場所変更（focusedCell使用）
+  const handleChangeWorkLocationByKeyboard = async (date: string, member: MemberData, workLocationId: number) => {
+    try {
+      const { error } = await supabase.from("user_work_location").upsert({
+        staff_id: member.staff_id,
+        work_date: date,
+        work_location_id: workLocationId,
+      }, {
+        onConflict: 'staff_id,work_date',
+      });
+
+      if (error) {
+        alert("勤務場所の変更に失敗しました: " + error.message);
+      } else {
+        setMembers(prev => prev.map(m => {
+          if (m.staff_id !== member.staff_id) return m;
+          const newWorkLocations = { ...m.workLocations };
+          newWorkLocations[date] = workLocationId;
+          return { ...m, workLocations: newWorkLocations };
+        }));
+      }
+    } catch (err) {
+      console.error("Error changing work location by keyboard:", err);
+    }
+  };
+
   // 勤務場所変更
   const handleChangeWorkLocation = async (workLocationId: number) => {
     if (!selectedCell) return;
@@ -2908,6 +3485,40 @@ export default function ScheduleViewPage() {
 
   // セルクリック
   const handleCellClick = (e: React.MouseEvent, date: string, member: MemberData) => {
+    if (keyboardMode) {
+      // キーボードモード: セル選択のみ
+      tableContainerRef.current?.focus();
+      setFocusedCell({ date, memberId: member.staff_id });
+    } else {
+      // 従来モード: モーダルを開く
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      let x = rect.right + 8;
+      let y = rect.top;
+
+      const maxPopupHeight = window.innerHeight * 0.8;
+      const popupWidth = 288;
+
+      if (x + popupWidth > window.innerWidth) {
+        x = rect.left - popupWidth - 8;
+      }
+      if (x < 10) {
+        x = Math.max(10, rect.left);
+      }
+      if (y + maxPopupHeight > window.innerHeight - 20) {
+        y = Math.max(20, window.innerHeight - maxPopupHeight - 20);
+      }
+      if (y < 20) {
+        y = 20;
+      }
+
+      setPopupPosition({ x, y });
+      setSelectedCell({ date, member });
+      setShowModal(true);
+    }
+  };
+
+  // セルダブルクリック（モーダルを開く）
+  const handleCellDoubleClick = (e: React.MouseEvent, date: string, member: MemberData) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     // クリックしたセルの右上に表示
     let x = rect.right + 8;
@@ -3088,7 +3699,30 @@ export default function ScheduleViewPage() {
       setShowShortcutHelp(true);
       return;
     }
-  }, [showModal, handleArrowNavigation, handleOpenCellWithKeyboard]);
+
+    // ショートカットキー: 設定されているもののみ有効
+    if (focusedCell) {
+      const upperKey = key.toUpperCase();
+      const config = shortcutConfig[upperKey];
+      if (config) {
+        e.preventDefault();
+        if (config.type === 'shift') {
+          const shiftIndex = shiftTypes.findIndex(t => t.id === config.id);
+          if (shiftIndex >= 0) {
+            handleAddShiftByKeyboard(shiftIndex);
+          }
+        } else if (config.type === 'schedule') {
+          handleAddScheduleByKeyboard(config.id);
+        } else if (config.type === 'workLocation') {
+          const member = members.find(m => m.staff_id === focusedCell.memberId);
+          if (member) {
+            handleChangeWorkLocationByKeyboard(focusedCell.date, member, config.id);
+          }
+        }
+        return;
+      }
+    }
+  }, [showModal, handleArrowNavigation, handleOpenCellWithKeyboard, focusedCell, handleAddShiftByKeyboard, handleAddScheduleByKeyboard, handleChangeWorkLocationByKeyboard, shortcutConfig, shiftTypes, members]);
 
   // テーブルクリック時にフォーカスを当てる
   const handleTableClick = useCallback(() => {
@@ -4004,13 +4638,104 @@ export default function ScheduleViewPage() {
                     <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
                     非表示メンバー
                   </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  {/* ショートカット設定 */}
+                  <button
+                    onClick={() => {
+                      setShowShortcutConfigModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                    ショートカット設定
+                  </button>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 右: アップロードボタン */}
-          <div className="flex items-center gap-2">
+          {/* 中央: 表示切替 + メインタブ */}
+          <div className="flex items-center gap-3">
+            {/* 全体/A/B表切り替え（名前一覧表では非表示） */}
+            {mainTab !== 'nameList' && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-medium text-gray-500">表示:</span>
+                <button
+                  onClick={() => setSelectedTeam('all')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all ${
+                    selectedTeam === 'all'
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                >
+                  全体({teamACount + teamBCount})
+                </button>
+                <button
+                  onClick={() => setSelectedTeam('A')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all ${
+                    selectedTeam === 'A'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                >
+                  A({teamACount})
+                </button>
+                <button
+                  onClick={() => setSelectedTeam('B')}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-all ${
+                    selectedTeam === 'B'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                >
+                  B({teamBCount})
+                </button>
+              </div>
+            )}
+            {/* メインタブ */}
+            <div className="flex gap-1">
+              <button
+                onClick={() => setMainTab('schedule')}
+                className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                  mainTab === 'schedule'
+                    ? 'bg-gray-800 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                予定表
+              </button>
+              <button
+                onClick={() => setMainTab('nameList')}
+                className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                  mainTab === 'nameList'
+                    ? 'bg-cyan-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-300'
+                }`}
+              >
+                名前一覧表
+              </button>
+            </div>
+          </div>
+
+          {/* 右: キーボード操作 + アップロードボタン */}
+          <div className="flex items-center gap-4">
+            {/* キーボード操作モード切り替え */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={keyboardMode}
+                onChange={(e) => {
+                  setKeyboardMode(e.target.checked);
+                  if (!e.target.checked) {
+                    setFocusedCell(null);
+                  }
+                }}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <span className="text-sm font-medium text-gray-700">キーボード操作</span>
+            </label>
+
             {isPublished ? (
               <>
                 <button
@@ -4043,142 +4768,78 @@ export default function ScheduleViewPage() {
 
       <main className="max-w-full mx-auto py-4 px-4 sm:px-6 lg:px-8">
         <div className="space-y-4">
-          {/* 月選択 */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <div className="flex justify-between items-center mb-4">
-              <button
-                onClick={() => changeMonth(-1)}
-                className="flex items-center gap-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 text-sm font-medium transition-colors"
-              >
-                <Icons.ChevronLeft />
-                <span className="hidden sm:inline">前月</span>
-              </button>
-              <div className="text-center">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {currentYear}年{currentMonth}月
-                </h2>
-                {/* 公開状態バッジ */}
-                <div className="mt-1">
-                  {isPublished && publishedAt ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                      最終更新: {new Date(publishedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-full">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                      非公開
-                    </span>
-                  )}
-                </div>
-                {/* 予定提出ロック */}
-                <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer">
+          {/* 月選択ヘッダー */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2">
+            <div className="flex items-center gap-4">
+              {/* 左: 年月ナビ */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => changeMonth(-1)}
+                  className="p-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition-colors"
+                >
+                  <Icons.ChevronLeft />
+                </button>
+                <span className="text-sm font-bold text-gray-900 min-w-[90px] text-center">{currentYear}年{currentMonth}月</span>
+                <button
+                  onClick={() => changeMonth(1)}
+                  className="p-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition-colors"
+                >
+                  <Icons.ChevronRight />
+                </button>
+              </div>
+
+              {/* 中央: 月タブ */}
+              <div className="flex items-center gap-1">
+                {[0, 1, 2, 3, 4].map(offset => {
+                  const now = new Date();
+                  const targetMonth = now.getMonth() + offset;
+                  const tabYear = now.getFullYear() + Math.floor(targetMonth / 12);
+                  const tabMonth = (targetMonth % 12) + 1;
+                  const isActive = tabYear === currentYear && tabMonth === currentMonth;
+
+                  return (
+                    <button
+                      key={offset}
+                      onClick={() => {
+                        setCurrentYear(tabYear);
+                        setCurrentMonth(tabMonth);
+                      }}
+                      className={`px-2 py-1 rounded whitespace-nowrap text-xs font-medium transition-all ${isActive
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tabYear}年{tabMonth}月
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 右: 公開状態 + ロック */}
+              <div className="flex items-center gap-3 ml-auto">
+                {isPublished && publishedAt ? (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 rounded-full">
+                    <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+                    最終更新: {new Date(publishedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full">
+                    <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                    非公開
+                  </span>
+                )}
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <span className={`text-[10px] font-medium ${isSubmissionLocked ? 'text-red-600' : 'text-gray-500'}`}>
+                    予定提出ロック
+                  </span>
                   <input
                     type="checkbox"
                     checked={isSubmissionLocked}
                     onChange={handleToggleSubmissionLock}
-                    className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                    className="w-3 h-3 text-red-600 border-gray-300 rounded focus:ring-red-500"
                   />
-                  <span className={`text-xs font-medium ${isSubmissionLocked ? 'text-red-600' : 'text-gray-600'}`}>
-                    予定提出ロック
-                  </span>
                 </label>
               </div>
-              <button
-                onClick={() => changeMonth(1)}
-                className="flex items-center gap-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 text-sm font-medium transition-colors"
-              >
-                <span className="hidden sm:inline">次月</span>
-                <Icons.ChevronRight />
-              </button>
-            </div>
-
-            {/* 直近5ヶ月タブ */}
-            <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2">
-              {[0, 1, 2, 3, 4].map(offset => {
-                const now = new Date();
-                const targetMonth = now.getMonth() + offset;
-                const tabYear = now.getFullYear() + Math.floor(targetMonth / 12);
-                const tabMonth = (targetMonth % 12) + 1;
-                const isActive = tabYear === currentYear && tabMonth === currentMonth;
-
-                return (
-                  <button
-                    key={offset}
-                    onClick={() => {
-                      setCurrentYear(tabYear);
-                      setCurrentMonth(tabMonth);
-                    }}
-                    className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg whitespace-nowrap text-xs sm:text-sm font-medium transition-all ${isActive
-                      ? 'bg-teal-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {tabMonth}月
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* 全体/A/B表切り替え（名前一覧表では非表示） */}
-            {mainTab !== 'nameList' && (
-            <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
-              <span className="text-sm font-medium text-gray-900 self-center mr-2">表示:</span>
-              <button
-                onClick={() => setSelectedTeam('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                  selectedTeam === 'all'
-                    ? 'bg-teal-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                全体 ({teamACount + teamBCount}名)
-              </button>
-              <button
-                onClick={() => setSelectedTeam('A')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                  selectedTeam === 'A'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                A表 ({teamACount}名)
-              </button>
-              <button
-                onClick={() => setSelectedTeam('B')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                  selectedTeam === 'B'
-                    ? 'bg-orange-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                B表 ({teamBCount}名)
-              </button>
-            </div>
-            )}
-
-            {/* メインタブ切り替え（予定表/名前一覧表） */}
-            <div className="flex justify-center gap-2 pt-4 border-t border-gray-200 mt-4">
-              <button
-                onClick={() => setMainTab('schedule')}
-                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                  mainTab === 'schedule'
-                    ? 'bg-gray-800 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                予定表
-              </button>
-              <button
-                onClick={() => setMainTab('nameList')}
-                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                  mainTab === 'nameList'
-                    ? 'bg-cyan-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                名前一覧表
-              </button>
             </div>
           </div>
 
@@ -4186,16 +4847,49 @@ export default function ScheduleViewPage() {
           {mainTab === 'schedule' && (
           <>
           {/* テーブル */}
-          <div className="bg-white rounded-xl border border-black shadow-sm overflow-hidden">
+          <div
+            className="bg-white rounded-xl border border-black shadow-sm overflow-hidden"
+          >
             <div
               ref={tableContainerRef}
               tabIndex={0}
               onKeyDown={handleTableKeyDown}
               onClick={handleTableClick}
-              className="overflow-x-auto outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset"
+              className="overflow-auto outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset"
+              style={{ maxHeight: `calc(100vh - 200px - ${keyboardPanelHeight}px)` }}
             >
               <table className="border-collapse table-fixed w-auto">
-                <thead>
+                <thead className="sticky top-0 z-30">
+                  {/* 得点行（有効な得点設定がある場合のみ表示） */}
+                  {scoreConfigs.some(c => c.is_active) && (
+                    <tr className="bg-yellow-50">
+                      <th className="sticky left-0 z-40 bg-yellow-100 border border-black px-2 py-1.5 text-xs font-bold text-yellow-800 whitespace-nowrap">
+                        得点
+                      </th>
+                      {filteredMembers.map((member) => (
+                        <th
+                          key={`score-header-${member.staff_id}`}
+                          colSpan={3}
+                          className="border border-black px-1 py-1.5 text-center text-sm font-bold text-yellow-700 bg-yellow-50"
+                        >
+                          {calculateMemberScore(member)}
+                        </th>
+                      ))}
+                      <th
+                        className="sticky z-40 bg-yellow-100 border border-black px-2 py-1.5 text-[10px] font-bold text-yellow-800"
+                        style={{ right: `${activeCountConfigs.length * 40}px` }}
+                      />
+                      {activeCountConfigs.map((countConfig, index) => (
+                        <th
+                          key={`score-header-empty-${countConfig.id}`}
+                          className="sticky z-40 bg-yellow-100 border border-black px-1 py-1 text-center text-xs text-gray-400 w-10 min-w-10 max-w-10"
+                          style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
+                        >
+                          -
+                        </th>
+                      ))}
+                    </tr>
+                  )}
                   {/* メンバー名ヘッダー */}
                   <tr className="bg-gray-100">
                     <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-900 w-16">
@@ -4270,7 +4964,12 @@ export default function ScheduleViewPage() {
                       {filteredMembers.map(member => {
                         const content = getCellContent(day.date, member, day.dayOfWeek, day.isHoliday);
                         const isFocused = focusedCell?.date === day.date && focusedCell?.memberId === member.staff_id;
-                        const focusStyle = isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {};
+                        // フォーカス枠を外側だけに表示（box-shadowで各辺を制御）
+                        const focusColor = '#4F46E5';
+                        const focusStyleFull = isFocused ? { boxShadow: `inset 0 0 0 3px ${focusColor}`, zIndex: 5 } : {};
+                        const focusStyleFirst = isFocused ? { boxShadow: `inset 3px 0 0 0 ${focusColor}, inset 0 3px 0 0 ${focusColor}, inset 0 -3px 0 0 ${focusColor}`, zIndex: 5 } : {};
+                        const focusStyleMiddle = isFocused ? { boxShadow: `inset 0 3px 0 0 ${focusColor}, inset 0 -3px 0 0 ${focusColor}`, zIndex: 5 } : {};
+                        const focusStyleLast = isFocused ? { boxShadow: `inset -3px 0 0 0 ${focusColor}, inset 0 3px 0 0 ${focusColor}, inset 0 -3px 0 0 ${focusColor}`, zIndex: 5 } : {};
 
                         // 出向中・休職中の場合
                         if (content.type === 'secondment' || content.type === 'leave') {
@@ -4284,10 +4983,12 @@ export default function ScheduleViewPage() {
                           return (
                             <td
                               key={`${day.date}-${member.staff_id}`}
+                              data-cell-id={`${day.date}-${member.staff_id}`}
                               colSpan={3}
                               onClick={(e) => handleCellClick(e, day.date, member)}
+                              onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                               className={`border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80 ${isFocused ? 'relative' : ''}`}
-                              style={{ backgroundColor: bgColor, ...focusStyle }}
+                              style={{ backgroundColor: bgColor, ...focusStyleFull }}
                             >
                               <span
                                 className="text-[9px] font-bold"
@@ -4304,10 +5005,12 @@ export default function ScheduleViewPage() {
                           return (
                             <td
                               key={`${day.date}-${member.staff_id}`}
+                              data-cell-id={`${day.date}-${member.staff_id}`}
                               colSpan={3}
                               onClick={(e) => handleCellClick(e, day.date, member)}
+                              onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                               className={`border-y border-black border-l border-l-black border-r border-r-black px-0.5 py-1 text-center cursor-pointer hover:opacity-80 ${isFocused ? 'relative' : ''}`}
-                              style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...focusStyle }}
+                              style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...focusStyleFull }}
                             >
                               <span
                                 className="text-[9px] font-bold"
@@ -4325,10 +5028,12 @@ export default function ScheduleViewPage() {
                             <React.Fragment key={`${day.date}-${member.staff_id}`}>
                               {/* AM+PM 結合セル */}
                               <td
+                                data-cell-id={`${day.date}-${member.staff_id}`}
                                 colSpan={2}
                                 onClick={(e) => handleCellClick(e, day.date, member)}
+                                onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                                 className={`border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 overflow-hidden ${isFocused ? 'relative' : ''}`}
-                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
+                                style={{ backgroundColor: getEffectiveBgColor(content.am.bgColor, day, member), ...focusStyleFirst }}
                               >
                                 <span
                                   className="text-[9px] font-bold whitespace-nowrap"
@@ -4340,8 +5045,9 @@ export default function ScheduleViewPage() {
                               {/* 夜勤 + 当直可否 */}
                               <td
                                 onClick={(e) => handleCellClick(e, day.date, member)}
+                                onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                                 className="border-y border-black border-r border-r-black px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
+                                style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...focusStyleLast }}
                               >
                                 {content.night ? (
                                   <span
@@ -4365,9 +5071,11 @@ export default function ScheduleViewPage() {
                           <React.Fragment key={`${day.date}-${member.staff_id}`}>
                             {/* AM セル */}
                             <td
+                              data-cell-id={`${day.date}-${member.staff_id}`}
                               onClick={(e) => handleCellClick(e, day.date, member)}
+                              onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                               className={`border-y border-black border-l border-l-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden ${isFocused ? 'relative' : ''}`}
-                              style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
+                              style={{ backgroundColor: content.am ? getEffectiveBgColor(content.am.bgColor, day, member) : getCellDefaultBgColor(day, member), ...focusStyleFirst }}
                             >
                               {content.am && (
                                 <span
@@ -4381,8 +5089,9 @@ export default function ScheduleViewPage() {
                             {/* PM セル */}
                             <td
                               onClick={(e) => handleCellClick(e, day.date, member)}
+                              onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                               className="border-y border-black border-r border-r-gray-300 px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                              style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
+                              style={{ backgroundColor: content.pm ? getEffectiveBgColor(content.pm.bgColor, day, member) : getCellDefaultBgColor(day, member), ...focusStyleMiddle }}
                             >
                               {content.pm && (
                                 <span
@@ -4396,8 +5105,9 @@ export default function ScheduleViewPage() {
                             {/* 夜勤 + 当直可否 */}
                             <td
                               onClick={(e) => handleCellClick(e, day.date, member)}
+                              onDoubleClick={keyboardMode ? (e) => handleCellDoubleClick(e, day.date, member) : undefined}
                               className="border-y border-black border-r border-r-black px-0 py-1 text-center cursor-pointer hover:opacity-80 w-[26px] min-w-[26px] max-w-[26px] overflow-hidden"
-                              style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...(isFocused ? { outline: '3px solid #4F46E5', outlineOffset: '-2px', zIndex: 5 } : {}) }}
+                              style={{ backgroundColor: content.night ? getEffectiveBgColor(content.night.bgColor, day, member) : getCellDefaultBgColor(day, member), ...focusStyleLast }}
                             >
                               {content.night ? (
                                 <span
@@ -4467,45 +5177,6 @@ export default function ScheduleViewPage() {
                       </td>
                     ))}
                   </tr>
-                  {/* 得点合計行 */}
-                  {scoreConfigs.some(c => c.is_active) && (
-                    <tr className="bg-yellow-50">
-                      {/* 固定列: ラベル */}
-                      <td
-                        className="sticky left-0 z-20 bg-yellow-100 border border-black px-2 py-1.5 text-xs font-bold text-yellow-800 whitespace-nowrap"
-                        colSpan={1}
-                      >
-                        得点
-                      </td>
-                      {/* メンバー列: 得点値 */}
-                      {filteredMembers.map((member) => (
-                        <React.Fragment key={`score-${member.staff_id}`}>
-                          {/* AM/PM/夜勤の3列を結合して得点表示 */}
-                          <td
-                            colSpan={3}
-                            className="border border-black px-1 py-1.5 text-center text-sm font-bold text-yellow-700 bg-yellow-50"
-                          >
-                            {calculateMemberScore(member)}
-                          </td>
-                        </React.Fragment>
-                      ))}
-                      {/* 右側日付列（空） */}
-                      <td
-                        className="sticky z-10 bg-yellow-100 border border-black px-2 py-1.5 text-[10px] font-bold text-yellow-800"
-                        style={{ right: `${activeCountConfigs.length * 40}px` }}
-                      />
-                      {/* 既存の日付別カウント列分の空セル */}
-                      {activeCountConfigs.map((countConfig, index) => (
-                        <td
-                          key={`score-empty-${countConfig.id}`}
-                          className="sticky z-10 bg-yellow-100 border border-black px-1 py-1 text-center text-xs text-gray-400 w-10 min-w-10 max-w-10"
-                          style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
-                        >
-                          -
-                        </td>
-                      ))}
-                    </tr>
-                  )}
                   {/* メンバー別カウント行 */}
                   {memberCountConfigs.filter(c => c.is_active).map((config, configIndex) => (
                     <tr key={`member-count-${config.id}`} className="bg-orange-50">
@@ -4653,8 +5324,495 @@ export default function ScheduleViewPage() {
         </div>
       </main>
 
-      {/* 編集モーダル */}
-      {showModal && selectedCell && selectedCellDetails && (
+      {/* ショートカット設定モーダル */}
+      {showShortcutConfigModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowShortcutConfigModal(false)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[85vh] overflow-hidden">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">ショートカット設定</h3>
+              <button onClick={() => setShowShortcutConfigModal(false)} className="text-gray-500 hover:text-gray-700">
+                <Icons.X />
+              </button>
+            </div>
+            <div className="p-4 max-h-[70vh] overflow-y-auto">
+              <p className="text-sm text-gray-600 mb-4">
+                キーボードのキーに操作を割り当てます。設定したキーを押すと、選択中のセルに操作が実行されます。
+              </p>
+
+              {/* シフト */}
+              <div className="mb-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-2 pb-1 border-b">シフト</h4>
+                <div className="grid grid-cols-6 gap-1">
+                  {shiftTypes.map((type) => (
+                    <div key={type.id} className="flex items-center gap-2 p-1.5 border rounded">
+                      <div
+                        className="w-16 text-center px-1 py-0.5 text-[10px] font-medium rounded truncate"
+                        style={{
+                          backgroundColor: type.color || '#f3f4f6',
+                          color: type.text_color || '#374151',
+                        }}
+                        title={type.name}
+                      >
+                        {type.display_label || type.name}
+                      </div>
+                      <input
+                        type="text"
+                        maxLength={1}
+                        className="w-8 text-center px-1 py-0.5 border border-gray-300 rounded font-mono text-sm uppercase"
+                        value={Object.entries(shortcutConfig).find(([, cfg]) => cfg.type === 'shift' && cfg.id === type.id)?.[0] || ''}
+                        onChange={(e) => {
+                          const newKey = e.target.value.toUpperCase();
+                          const newConfig = { ...shortcutConfig };
+                          Object.entries(newConfig).forEach(([k, cfg]) => {
+                            if (cfg.type === 'shift' && cfg.id === type.id) delete newConfig[k];
+                          });
+                          if (newKey && /^[A-Z0-9]$/.test(newKey)) {
+                            delete newConfig[newKey];
+                            newConfig[newKey] = { type: 'shift', id: type.id };
+                          }
+                          saveShortcutConfig(newConfig);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 予定 */}
+              {scheduleTypes.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold text-gray-800 mb-2 pb-1 border-b">予定</h4>
+                  <div className="grid grid-cols-6 gap-1">
+                    {scheduleTypes.map((type) => (
+                      <div key={type.id} className="flex items-center gap-2 p-1.5 border rounded">
+                        <div
+                          className="w-16 text-center px-1 py-0.5 text-[10px] font-medium rounded truncate"
+                          style={{
+                            backgroundColor: type.color || '#f3f4f6',
+                            color: type.text_color || '#374151',
+                          }}
+                          title={type.name}
+                        >
+                          {type.display_label || type.name}
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={1}
+                          className="w-8 text-center px-1 py-0.5 border border-gray-300 rounded font-mono text-sm uppercase"
+                          value={Object.entries(shortcutConfig).find(([, cfg]) => cfg.type === 'schedule' && cfg.id === type.id)?.[0] || ''}
+                          onChange={(e) => {
+                            const newKey = e.target.value.toUpperCase();
+                            const newConfig = { ...shortcutConfig };
+                            Object.entries(newConfig).forEach(([k, cfg]) => {
+                              if (cfg.type === 'schedule' && cfg.id === type.id) delete newConfig[k];
+                            });
+                            if (newKey && /^[A-Z0-9]$/.test(newKey)) {
+                              delete newConfig[newKey];
+                              newConfig[newKey] = { type: 'schedule', id: type.id };
+                            }
+                            saveShortcutConfig(newConfig);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 勤務場所 */}
+              <div className="mb-4">
+                <h4 className="text-sm font-bold text-gray-800 mb-2 pb-1 border-b">勤務場所</h4>
+                <div className="grid grid-cols-6 gap-1">
+                  {workLocationMaster.map((location) => (
+                    <div key={location.id} className="flex items-center gap-2 p-1.5 border rounded">
+                      <div
+                        className="w-16 text-center px-1 py-0.5 text-[10px] font-medium rounded truncate"
+                        style={{
+                          backgroundColor: location.color || '#f3f4f6',
+                          color: location.text_color || '#374151',
+                        }}
+                        title={location.name}
+                      >
+                        {location.display_label || location.name}
+                      </div>
+                      <input
+                        type="text"
+                        maxLength={1}
+                        className="w-8 text-center px-1 py-0.5 border border-gray-300 rounded font-mono text-sm uppercase"
+                        value={Object.entries(shortcutConfig).find(([, cfg]) => cfg.type === 'workLocation' && cfg.id === location.id)?.[0] || ''}
+                        onChange={(e) => {
+                          const newKey = e.target.value.toUpperCase();
+                          const newConfig = { ...shortcutConfig };
+                          Object.entries(newConfig).forEach(([k, cfg]) => {
+                            if (cfg.type === 'workLocation' && cfg.id === location.id) delete newConfig[k];
+                          });
+                          if (newKey && /^[A-Z0-9]$/.test(newKey)) {
+                            delete newConfig[newKey];
+                            newConfig[newKey] = { type: 'workLocation', id: location.id };
+                          }
+                          saveShortcutConfig(newConfig);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+                <p className="font-medium mb-1">使い方:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>各項目の右側にキーを入力（A-Z, 0-9）</li>
+                  <li>ショートカットは設定したキーのみ有効</li>
+                  <li>設定は自動保存されます</li>
+                </ul>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => saveShortcutConfig({})}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                リセット
+              </button>
+              <button
+                onClick={() => setShowShortcutConfigModal(false)}
+                className="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* キーボードモード用固定パネル */}
+      {keyboardMode && (
+        <div
+          ref={keyboardPanelRef}
+          className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-gray-300 shadow-lg"
+        >
+          <div className="max-w-full mx-auto px-4 py-3 min-h-[140px]">
+            {/* 選択中のセル情報とエラー表示 */}
+            <div className="flex items-center justify-between mb-2">
+              {focusedCell ? (
+                <div className="text-xs text-gray-600">
+                  選択中: {focusedCell.date.replace(/-/g, '/').slice(5)} - {members.find(m => m.staff_id === focusedCell.memberId)?.name || ''}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400">セルを選択してください</div>
+              )}
+              {keyboardError && (
+                <div className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                  {keyboardError}
+                </div>
+              )}
+            </div>
+
+            {/* チェックボックス群 + 登録状況（横並び） */}
+            <div className="flex items-start gap-4 mb-3 pb-2 border-b border-gray-200">
+              {/* 左: チェックボックス */}
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
+                  <input
+                    type="checkbox"
+                    checked={keyboardPanelOptions.showSchedule}
+                    onChange={(e) => setKeyboardPanelOptions(prev => ({ ...prev, showSchedule: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded"
+                    tabIndex={-1}
+                  />
+                  <span className="text-xs text-gray-700">予定</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
+                  <input
+                    type="checkbox"
+                    checked={keyboardPanelOptions.showShift}
+                    onChange={(e) => setKeyboardPanelOptions(prev => ({ ...prev, showShift: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded"
+                    tabIndex={-1}
+                  />
+                  <span className="text-xs text-gray-700">シフト</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
+                  <input
+                    type="checkbox"
+                    checked={keyboardPanelOptions.showWorkLocation}
+                    onChange={(e) => setKeyboardPanelOptions(prev => ({ ...prev, showWorkLocation: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded"
+                    tabIndex={-1}
+                  />
+                  <span className="text-xs text-gray-700">勤務場所</span>
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
+                  <input
+                    type="checkbox"
+                    checked={keyboardPanelOptions.showShortcut}
+                    onChange={(e) => setKeyboardPanelOptions(prev => ({ ...prev, showShortcut: e.target.checked }))}
+                    className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded"
+                    tabIndex={-1}
+                  />
+                  <span className="text-xs text-gray-700">ショートカット</span>
+                </label>
+              </div>
+
+              {/* 右: 登録状況（常に表示） */}
+              {focusedCell && (() => {
+                const member = members.find(m => m.staff_id === focusedCell.memberId);
+                if (!member) return null;
+                const day = daysData.find(d => d.date === focusedCell.date);
+                if (!day) return null;
+                const content = getCellContent(focusedCell.date, member, day.dayOfWeek, day.isHoliday);
+                const schedules = member.schedules[focusedCell.date] || [];
+                const shifts = member.shifts[focusedCell.date] || [];
+                const vacation = member.vacations[focusedCell.date];
+
+                // 勤務場所を取得
+                const getWorkLocationForPeriod = (period: 'am' | 'pm' | 'night') => {
+                  for (const s of schedules) {
+                    const matchesPeriod = (
+                      (period === 'am' && s.schedule_type.position_am) ||
+                      (period === 'pm' && s.schedule_type.position_pm) ||
+                      (period === 'night' && s.schedule_type.position_night)
+                    );
+                    if (matchesPeriod && s.work_location_id) {
+                      return workLocationMaster.find(wl => wl.id === s.work_location_id);
+                    }
+                  }
+                  for (const s of shifts) {
+                    const matchesPeriod = (
+                      (period === 'am' && s.shift_type.position_am) ||
+                      (period === 'pm' && s.shift_type.position_pm) ||
+                      (period === 'night' && s.shift_type.position_night)
+                    );
+                    if (matchesPeriod && s.work_location_id) {
+                      return workLocationMaster.find(wl => wl.id === s.work_location_id);
+                    }
+                  }
+                  const userWorkLocationId = member.workLocations[focusedCell.date];
+                  if (userWorkLocationId) {
+                    return workLocationMaster.find(wl => wl.id === userWorkLocationId);
+                  }
+                  if (day.isHoliday || day.dayOfWeek === 0) {
+                    return workLocationMaster.find(wl => wl.is_default_holiday);
+                  }
+                  return workLocationMaster.find(wl => wl.is_default_weekday);
+                };
+
+                const amLocation = getWorkLocationForPeriod('am');
+                const pmLocation = getWorkLocationForPeriod('pm');
+                const nightLocation = getWorkLocationForPeriod('night');
+
+                return (
+                  <div className="flex items-center gap-3 border-l border-gray-300 pl-4 flex-1 min-w-0">
+                    <span className="text-xs font-medium text-gray-700 flex-shrink-0">【登録状況】</span>
+                    <div className="flex flex-wrap gap-1 items-center flex-1 min-w-0">
+                      {content.type === 'secondment' && (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-black">出向中</span>
+                      )}
+                      {content.type === 'leave' && (
+                        <span className="text-[10px] text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-black">休職中</span>
+                      )}
+                      {content.isResearchDay && (
+                        <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-black">
+                          {member.isFirstYear ? '外勤(院内)' : '研究日'}
+                        </span>
+                      )}
+                      {vacation && (
+                        <span className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-black">
+                          年休{vacation.level}（{vacation.period === 'full_day' ? '終日' : vacation.period === 'am' ? 'AM' : 'PM'}）
+                        </span>
+                      )}
+                      {schedules.map(s => (
+                        <span
+                          key={s.id}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded border border-black"
+                          style={{ backgroundColor: s.schedule_type.color + '40', color: s.schedule_type.text_color || '#000' }}
+                        >
+                          {s.schedule_type.display_label || s.schedule_type.name}
+                          <button
+                            onClick={() => handleDeleteScheduleByKeyboard(s.id)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="text-red-500 hover:text-red-700 ml-0.5"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      {shifts.map(s => (
+                        <span
+                          key={`shift-${s.id}`}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded border border-black"
+                          style={{ backgroundColor: s.shift_type.color + '40', color: s.shift_type.text_color || '#000' }}
+                        >
+                          {s.shift_type.display_label || s.shift_type.name}
+                          <button
+                            onClick={() => handleDeleteShiftByKeyboard(s.id)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="text-red-500 hover:text-red-700 ml-0.5"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                      {content.type === 'normal' && schedules.length === 0 && shifts.length === 0 && !vacation && !content.isResearchDay && (
+                        <span className="text-[10px] text-gray-400">予定なし</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 text-[10px] text-gray-500 flex-shrink-0">
+                      <span>AM:{amLocation ? (amLocation.display_label || amLocation.name) : '-'}</span>
+                      <span>PM:{pmLocation ? (pmLocation.display_label || pmLocation.name) : '-'}</span>
+                      <span>夜:{nightLocation ? (nightLocation.display_label || nightLocation.name) : '-'}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 各セクション（横並び） */}
+            <div className="flex flex-wrap gap-4">
+
+              {/* 予定を追加セクション */}
+              {keyboardPanelOptions.showSchedule && scheduleTypes.length > 0 && (
+                <div className="flex-shrink-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1">【予定を追加】</div>
+                  <div className="flex flex-wrap gap-1">
+                    {scheduleTypes.map(type => (
+                      <button
+                        key={type.id}
+                        onClick={() => handleAddScheduleByKeyboard(type.id)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        disabled={!focusedCell}
+                        className="px-2 py-1 text-xs font-medium border border-black rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+                        style={{
+                          backgroundColor: type.color || '#f3f4f6',
+                          color: type.text_color || '#374151',
+                        }}
+                      >
+                        {type.display_label || type.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* シフトを追加セクション */}
+              {keyboardPanelOptions.showShift && shiftTypes.length > 0 && (
+                <div className="flex-shrink-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1">【シフトを追加】</div>
+                  <div className="flex flex-wrap gap-1">
+                    {shiftTypes.map((type, index) => (
+                      <button
+                        key={type.id}
+                        onClick={() => handleAddShiftByKeyboard(index)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        disabled={!focusedCell}
+                        className="px-2 py-1 text-xs font-medium border border-black rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+                        style={{
+                          backgroundColor: type.color || '#f3f4f6',
+                          color: type.text_color || '#374151',
+                        }}
+                        title={`${index + 1}キー: ${type.name}`}
+                      >
+                        {type.display_label || type.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 勤務場所を変更セクション */}
+              {keyboardPanelOptions.showWorkLocation && (
+                <div className="flex-shrink-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1">【勤務場所を変更】</div>
+                  <div className="flex flex-wrap gap-1">
+                    {workLocationMaster.map(location => (
+                      <button
+                        key={location.id}
+                        onClick={() => {
+                          if (!focusedCell) return;
+                          const member = members.find(m => m.staff_id === focusedCell.memberId);
+                          if (member) {
+                            handleChangeWorkLocationByKeyboard(focusedCell.date, member, location.id);
+                          }
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                        disabled={!focusedCell}
+                        className="px-2 py-1 text-xs font-medium border border-black rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+                        style={{
+                          backgroundColor: location.color || '#f3f4f6',
+                          color: location.text_color || '#374151',
+                        }}
+                      >
+                        {location.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ショートカットセクション */}
+              {keyboardPanelOptions.showShortcut && Object.keys(shortcutConfig).length > 0 && (
+                <div className="flex-shrink-0">
+                  <div className="text-xs font-medium text-gray-700 mb-1">【ショートカット】</div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(shortcutConfig).map(([key, config]) => {
+                      let item: { name: string; display_label?: string; color?: string; text_color?: string } | undefined;
+                      let onClick: () => void;
+
+                      if (config.type === 'shift') {
+                        const shiftType = shiftTypes.find(t => t.id === config.id);
+                        if (!shiftType) return null;
+                        item = shiftType;
+                        onClick = () => {
+                          const shiftIndex = shiftTypes.findIndex(t => t.id === config.id);
+                          if (shiftIndex >= 0) handleAddShiftByKeyboard(shiftIndex);
+                        };
+                      } else if (config.type === 'schedule') {
+                        const scheduleType = scheduleTypes.find(t => t.id === config.id);
+                        if (!scheduleType) return null;
+                        item = scheduleType;
+                        onClick = () => handleAddScheduleByKeyboard(config.id);
+                      } else if (config.type === 'workLocation') {
+                        const location = workLocationMaster.find(l => l.id === config.id);
+                        if (!location) return null;
+                        item = location;
+                        onClick = () => {
+                          if (!focusedCell) return;
+                          const member = members.find(m => m.staff_id === focusedCell.memberId);
+                          if (member) {
+                            handleChangeWorkLocationByKeyboard(focusedCell.date, member, config.id);
+                          }
+                        };
+                      } else {
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          key={key}
+                          onClick={onClick}
+                          onMouseDown={(e) => e.preventDefault()}
+                          disabled={!focusedCell}
+                          className="px-2 py-1 text-xs font-medium border border-black rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+                          style={{
+                            backgroundColor: item.color || '#f3f4f6',
+                            color: item.text_color || '#374151',
+                          }}
+                        >
+                          ({key}): {item.display_label || item.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 編集モーダル（キーボードモード OFF 時のみ） */}
+      {!keyboardMode && showModal && selectedCell && selectedCellDetails && (
         <>
           {/* オーバーレイ（クリックで閉じる） */}
           <div
@@ -4663,7 +5821,7 @@ export default function ScheduleViewPage() {
           />
           {/* ポップアップ */}
           <div
-            className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 w-72 max-h-[80vh] overflow-y-auto"
+            className="fixed z-50 bg-white shadow-2xl border border-gray-200 overflow-y-auto rounded-xl w-72 max-h-[80vh]"
             style={{ left: popupPosition.x, top: popupPosition.y }}
           >
             <div className="p-2 border-b border-gray-200 flex items-center justify-between">
@@ -6332,6 +7490,8 @@ export default function ScheduleViewPage() {
                             excludeHolidays: preset.exclude_holidays || false,
                             excludePreHolidays: preset.exclude_pre_holidays || false,
                             priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                            maxAssignmentsPerMember: (preset as Record<string, unknown>).max_assignments_per_member as number | null ?? null,
+                            maxAssignmentsMode: ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') || 'execution',
                           }));
                         }
                       }
@@ -6438,6 +7598,65 @@ export default function ScheduleViewPage() {
                       <span className="text-xs text-gray-900">（総得点が低い人から）</span>
                     </label>
                   </div>
+                </div>
+
+                {/* 割り振り回数制限 */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-700">割り振り回数制限</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoAssignConfig.maxAssignmentsPerMember !== null}
+                      onChange={(e) => setAutoAssignConfig(prev => ({
+                        ...prev,
+                        maxAssignmentsPerMember: e.target.checked ? 1 : null
+                      }))}
+                      className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                    />
+                    <span className="text-sm text-gray-700">1人あたりの最大回数を制限</span>
+                  </label>
+
+                  {autoAssignConfig.maxAssignmentsPerMember !== null && (
+                    <div className="ml-6 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">最大</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={autoAssignConfig.maxAssignmentsPerMember}
+                          onChange={(e) => setAutoAssignConfig(prev => ({
+                            ...prev,
+                            maxAssignmentsPerMember: Math.max(1, parseInt(e.target.value) || 1)
+                          }))}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700">回</span>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="duty-max-assignments-mode"
+                            checked={autoAssignConfig.maxAssignmentsMode === 'execution'}
+                            onChange={() => setAutoAssignConfig(prev => ({ ...prev, maxAssignmentsMode: 'execution' }))}
+                            className="w-3 h-3 text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span className="text-xs text-gray-600">この実行での回数</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="duty-max-assignments-mode"
+                            checked={autoAssignConfig.maxAssignmentsMode === 'monthly'}
+                            onChange={() => setAutoAssignConfig(prev => ({ ...prev, maxAssignmentsMode: 'monthly' }))}
+                            className="w-3 h-3 text-emerald-600 border-gray-300 focus:ring-emerald-500"
+                          />
+                          <span className="text-xs text-gray-600">月間の総回数</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 対象者選択 */}
@@ -7025,6 +8244,8 @@ export default function ScheduleViewPage() {
                             excludePreHolidays: preset.exclude_pre_holidays || false,
                             exclusionFilters: (preset.exclusion_filters as ExclusionFilter[]) || [],
                             priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
+                            maxAssignmentsPerMember: (preset as Record<string, unknown>).max_assignments_per_member as number | null ?? null,
+                            maxAssignmentsMode: ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') || 'execution',
                           }));
                         }
                       }
@@ -7096,6 +8317,65 @@ export default function ScheduleViewPage() {
                       <span className="text-xs text-gray-900">（総得点が低い人から）</span>
                     </label>
                   </div>
+                </div>
+
+                {/* 割り振り回数制限 */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold text-gray-700">割り振り回数制限</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={generalShiftConfig.maxAssignmentsPerMember !== null}
+                      onChange={(e) => setGeneralShiftConfig(prev => ({
+                        ...prev,
+                        maxAssignmentsPerMember: e.target.checked ? 1 : null
+                      }))}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">1人あたりの最大回数を制限</span>
+                  </label>
+
+                  {generalShiftConfig.maxAssignmentsPerMember !== null && (
+                    <div className="ml-6 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-700">最大</span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={generalShiftConfig.maxAssignmentsPerMember}
+                          onChange={(e) => setGeneralShiftConfig(prev => ({
+                            ...prev,
+                            maxAssignmentsPerMember: Math.max(1, parseInt(e.target.value) || 1)
+                          }))}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">回</span>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="general-max-assignments-mode"
+                            checked={generalShiftConfig.maxAssignmentsMode === 'execution'}
+                            onChange={() => setGeneralShiftConfig(prev => ({ ...prev, maxAssignmentsMode: 'execution' }))}
+                            className="w-3 h-3 text-blue-600 border-gray-300 focus:ring-blue-500"
+                          />
+                          <span className="text-xs text-gray-600">この実行での回数</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="general-max-assignments-mode"
+                            checked={generalShiftConfig.maxAssignmentsMode === 'monthly'}
+                            onChange={() => setGeneralShiftConfig(prev => ({ ...prev, maxAssignmentsMode: 'monthly' }))}
+                            className="w-3 h-3 text-blue-600 border-gray-300 focus:ring-blue-500"
+                          />
+                          <span className="text-xs text-gray-600">月間の総回数</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 対象者選択 */}
@@ -7958,6 +9238,8 @@ export default function ScheduleViewPage() {
                       exclusion_filters: generalShiftConfig.exclusionFilters,
                       priority_mode: generalShiftConfig.priorityMode,
                       exclude_night_shift_unavailable: generalShiftConfig.excludeNightShiftUnavailable,
+                      max_assignments_per_member: generalShiftConfig.maxAssignmentsPerMember,
+                      max_assignments_mode: generalShiftConfig.maxAssignmentsMode,
                     };
 
                     let error;
@@ -8196,6 +9478,8 @@ export default function ScheduleViewPage() {
                       exclude_holidays: autoAssignConfig.excludeHolidays,
                       exclude_pre_holidays: autoAssignConfig.excludePreHolidays,
                       priority_mode: autoAssignConfig.priorityMode,
+                      max_assignments_per_member: autoAssignConfig.maxAssignmentsPerMember,
+                      max_assignments_mode: autoAssignConfig.maxAssignmentsMode,
                     };
 
                     let error;
@@ -8379,7 +9663,7 @@ export default function ScheduleViewPage() {
             }}
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
                 <h2 className="text-lg font-bold text-gray-900">シフト一括削除</h2>
                 <button
@@ -8394,56 +9678,492 @@ export default function ScheduleViewPage() {
               </div>
 
               <div className="p-4 space-y-4 overflow-y-auto flex-grow">
-                {/* シフトタイプ選択 */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">削除するシフト *</label>
-                  <select
-                    value={bulkDeleteConfig.shiftTypeId || ''}
-                    onChange={(e) => {
-                      setBulkDeleteConfig(prev => ({ ...prev, shiftTypeId: e.target.value ? Number(e.target.value) : null }));
-                      setBulkDeletePreview(null);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                  >
-                    <option value="">選択してください</option>
+                {/* シフト選択（複数選択可） */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-gray-700">削除するシフト *</h3>
+                  <div className="flex flex-wrap gap-2">
                     {shiftTypes.map(type => (
-                      <option key={type.id} value={type.id}>{type.display_label || type.name}</option>
+                      <label key={type.id} className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={(bulkDeleteConfig.shiftTypeIds || []).includes(type.id)}
+                          onChange={(e) => {
+                            setBulkDeleteConfig(prev => ({
+                              ...prev,
+                              shiftTypeIds: e.target.checked
+                                ? [...(prev.shiftTypeIds || []), type.id]
+                                : (prev.shiftTypeIds || []).filter(id => id !== type.id)
+                            }));
+                            setBulkDeletePreview(null);
+                          }}
+                          className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                        />
+                        <span className="text-sm text-gray-700">{type.display_label || type.name}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
+                  {(bulkDeleteConfig.shiftTypeIds || []).length > 0 && (
+                    <div className="text-xs text-gray-500">
+                      選択中: {(bulkDeleteConfig.shiftTypeIds || []).length}件
+                    </div>
+                  )}
                 </div>
 
-                {/* 期間選択 */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">開始日</label>
-                    <input
-                      type="date"
-                      value={bulkDeleteConfig.startDate}
-                      onChange={(e) => {
-                        setBulkDeleteConfig(prev => ({ ...prev, startDate: e.target.value }));
+                {/* 対象者選択 */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-gray-700">対象者</h3>
+                  <div className="flex gap-4 mb-2">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="bulkDeleteSelectionMode"
+                        checked={bulkDeleteConfig.selectionMode === 'filter'}
+                        onChange={() => {
+                          setBulkDeleteConfig(prev => ({ ...prev, selectionMode: 'filter' }));
+                          setBulkDeletePreview(null);
+                        }}
+                        className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                      />
+                      <span className="text-sm text-gray-700">属性で絞り込み</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="bulkDeleteSelectionMode"
+                        checked={bulkDeleteConfig.selectionMode === 'individual'}
+                        onChange={() => {
+                          setBulkDeleteConfig(prev => ({ ...prev, selectionMode: 'individual' }));
+                          setBulkDeletePreview(null);
+                        }}
+                        className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                      />
+                      <span className="text-sm text-gray-700">個別選択</span>
+                    </label>
+                  </div>
+
+                  {bulkDeleteConfig.selectionMode === 'filter' && (
+                    <div className="space-y-3 bg-gray-50 p-3 rounded-lg">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">チーム</label>
+                        <div className="flex gap-2">
+                          {['A', 'B'].map(team => (
+                            <label key={team} className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={(bulkDeleteConfig.filterTeams || []).includes(team as 'A' | 'B')}
+                                onChange={(e) => {
+                                  setBulkDeleteConfig(prev => ({
+                                    ...prev,
+                                    filterTeams: e.target.checked
+                                      ? [...(prev.filterTeams || []), team as 'A' | 'B']
+                                      : (prev.filterTeams || []).filter(t => t !== team)
+                                  }));
+                                  setBulkDeletePreview(null);
+                                }}
+                                className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                              />
+                              <span className="text-sm text-gray-700">{team}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
+                        <div className="flex gap-2">
+                          {['上', '中', '下', 'なし'].map(level => (
+                            <label key={level} className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={(bulkDeleteConfig.filterNightShiftLevels || []).includes(level)}
+                                onChange={(e) => {
+                                  setBulkDeleteConfig(prev => ({
+                                    ...prev,
+                                    filterNightShiftLevels: e.target.checked
+                                      ? [...(prev.filterNightShiftLevels || []), level]
+                                      : (prev.filterNightShiftLevels || []).filter(l => l !== level)
+                                  }));
+                                  setBulkDeletePreview(null);
+                                }}
+                                className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                              />
+                              <span className="text-sm text-gray-700">{level}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">立場</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['常勤', '非常勤', 'ローテーター', '研修医'].map(position => (
+                            <label key={position} className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={(bulkDeleteConfig.filterPositions || []).includes(position)}
+                                onChange={(e) => {
+                                  setBulkDeleteConfig(prev => ({
+                                    ...prev,
+                                    filterPositions: e.target.checked
+                                      ? [...(prev.filterPositions || []), position]
+                                      : (prev.filterPositions || []).filter(p => p !== position)
+                                  }));
+                                  setBulkDeletePreview(null);
+                                }}
+                                className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                              />
+                              <span className="text-sm text-gray-700">{position}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-900 mb-1">医療対応・残り番</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[
+                            { key: 'filterCanCardiac' as const, label: '心外' },
+                            { key: 'filterCanObstetric' as const, label: '産科' },
+                            { key: 'filterCanIcu' as const, label: 'ICU' },
+                            { key: 'filterCanRemainingDuty' as const, label: '残り番' },
+                          ].map(item => (
+                            <div key={item.key} className="flex flex-col">
+                              <span className="text-xs text-gray-900 mb-0.5">{item.label}</span>
+                              <div className="flex gap-1">
+                                {[
+                                  { value: null, label: '全' },
+                                  { value: true, label: '可' },
+                                  { value: false, label: '不可' },
+                                ].map(opt => (
+                                  <label key={String(opt.value)} className="flex items-center gap-0.5">
+                                    <input
+                                      type="radio"
+                                      name={`bulkDelete_${item.key}`}
+                                      checked={bulkDeleteConfig[item.key] === opt.value}
+                                      onChange={() => {
+                                        setBulkDeleteConfig(prev => ({ ...prev, [item.key]: opt.value }));
+                                        setBulkDeletePreview(null);
+                                      }}
+                                      className="w-3 h-3 text-red-600 border-gray-300 focus:ring-red-500"
+                                    />
+                                    <span className="text-xs text-gray-600">{opt.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-900">
+                        対象者: {getTargetMembersForBulkDelete().length}名
+                        {(bulkDeleteConfig.filterTeams || []).length === 0 && (bulkDeleteConfig.filterNightShiftLevels || []).length === 0 && (bulkDeleteConfig.filterPositions || []).length === 0 && ' （フィルタ未設定: 全員対象）'}
+                      </div>
+                    </div>
+                  )}
+
+                  {bulkDeleteConfig.selectionMode === 'individual' && (
+                    <div className="max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg border border-gray-200">
+                      {[...members].sort((a, b) => {
+                        const POSITION_ORDER: { [key: string]: number } = { '常勤': 0, '非常勤': 1, 'ローテーター': 2, '研修医': 3 };
+                        if (a.team !== b.team) return a.team === 'A' ? -1 : 1;
+                        const posA = POSITION_ORDER[a.position] ?? 99;
+                        const posB = POSITION_ORDER[b.position] ?? 99;
+                        if (posA !== posB) return posA - posB;
+                        if (a.display_order !== b.display_order) return a.display_order - b.display_order;
+                        return a.staff_id.localeCompare(b.staff_id);
+                      }).map(member => (
+                        <label key={member.staff_id} className="flex items-center gap-2 py-1 px-2 hover:bg-gray-100 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={(bulkDeleteConfig.selectedMemberIds || []).includes(member.staff_id)}
+                            onChange={(e) => {
+                              setBulkDeleteConfig(prev => ({
+                                ...prev,
+                                selectedMemberIds: e.target.checked
+                                  ? [...(prev.selectedMemberIds || []), member.staff_id]
+                                  : (prev.selectedMemberIds || []).filter(id => id !== member.staff_id)
+                              }));
+                              setBulkDeletePreview(null);
+                            }}
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                          />
+                          <span className="text-sm text-gray-700">{member.name}</span>
+                          <span className="text-xs text-gray-400">{member.team} / {member.position}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 対象日選択 */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold text-gray-700">対象日</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">開始日</label>
+                      <input
+                        type="date"
+                        value={bulkDeleteConfig.startDate}
+                        onChange={(e) => {
+                          setBulkDeleteConfig(prev => ({ ...prev, startDate: e.target.value }));
+                          setBulkDeletePreview(null);
+                        }}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">終了日</label>
+                      <input
+                        type="date"
+                        value={bulkDeleteConfig.endDate}
+                        onChange={(e) => {
+                          setBulkDeleteConfig(prev => ({ ...prev, endDate: e.target.value }));
+                          setBulkDeletePreview(null);
+                        }}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 日付選択モード */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setBulkDeleteConfig(prev => ({ ...prev, dateSelectionMode: 'period' }));
                         setBulkDeletePreview(null);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">終了日</label>
-                    <input
-                      type="date"
-                      value={bulkDeleteConfig.endDate}
-                      onChange={(e) => {
-                        setBulkDeleteConfig(prev => ({ ...prev, endDate: e.target.value }));
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        bulkDeleteConfig.dateSelectionMode === 'period'
+                          ? 'bg-red-100 border-red-500 text-red-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      期間のみ
+                    </button>
+                    <button
+                      onClick={() => {
+                        setBulkDeleteConfig(prev => ({ ...prev, dateSelectionMode: 'weekday' }));
                         setBulkDeletePreview(null);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    />
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        bulkDeleteConfig.dateSelectionMode === 'weekday'
+                          ? 'bg-red-100 border-red-500 text-red-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      期間+曜日
+                    </button>
+                    <button
+                      onClick={() => {
+                        setBulkDeleteConfig(prev => ({ ...prev, dateSelectionMode: 'specific' }));
+                        setBulkDeletePreview(null);
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        bulkDeleteConfig.dateSelectionMode === 'specific'
+                          ? 'bg-red-100 border-red-500 text-red-700'
+                          : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      個別選択
+                    </button>
                   </div>
+
+                  {/* 期間のみモード */}
+                  {bulkDeleteConfig.dateSelectionMode === 'period' && (
+                    <div className="text-xs text-gray-900">
+                      上記期間内の全日が対象になります
+                    </div>
+                  )}
+
+                  {/* 期間＋曜日指定モード */}
+                  {bulkDeleteConfig.dateSelectionMode === 'weekday' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">曜日（選択なしは全曜日）</label>
+                      <div className="flex gap-1">
+                        {WEEKDAYS.map((day, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setBulkDeleteConfig(prev => ({
+                                ...prev,
+                                targetWeekdays: (prev.targetWeekdays || []).includes(idx)
+                                  ? (prev.targetWeekdays || []).filter(w => w !== idx)
+                                  : [...(prev.targetWeekdays || []), idx]
+                              }));
+                              setBulkDeletePreview(null);
+                            }}
+                            className={`w-8 h-8 rounded text-xs font-medium border transition-all ${
+                              (bulkDeleteConfig.targetWeekdays || []).includes(idx)
+                                ? 'bg-red-100 border-red-500 text-red-700'
+                                : 'bg-gray-50 border-gray-300 text-gray-700'
+                            } ${idx === 0 ? 'text-red-600' : idx === 6 ? 'text-blue-600' : ''}`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      {/* 祝日・祝前日オプション */}
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => {
+                            setBulkDeleteConfig(prev => ({
+                              ...prev,
+                              includeHolidays: !prev.includeHolidays
+                            }));
+                            setBulkDeletePreview(null);
+                          }}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            bulkDeleteConfig.includeHolidays
+                              ? 'bg-red-100 border-red-400 text-red-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBulkDeleteConfig(prev => ({
+                              ...prev,
+                              includePreHolidays: !prev.includePreHolidays
+                            }));
+                            setBulkDeletePreview(null);
+                          }}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            bulkDeleteConfig.includePreHolidays
+                              ? 'bg-orange-100 border-orange-400 text-orange-700'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => {
+                            setBulkDeleteConfig(prev => ({
+                              ...prev,
+                              excludeHolidays: !prev.excludeHolidays
+                            }));
+                            setBulkDeletePreview(null);
+                          }}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            bulkDeleteConfig.excludeHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝日除外
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBulkDeleteConfig(prev => ({
+                              ...prev,
+                              excludePreHolidays: !prev.excludePreHolidays
+                            }));
+                            setBulkDeletePreview(null);
+                          }}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            bulkDeleteConfig.excludePreHolidays
+                              ? 'bg-gray-700 border-gray-700 text-white'
+                              : 'bg-gray-50 border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          祝前日除外
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 個別日付選択モード */}
+                  {bulkDeleteConfig.dateSelectionMode === 'specific' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">
+                        日付をクリックして選択（選択: {(bulkDeleteConfig.specificDates || []).length}日）
+                      </label>
+                      <div className="max-h-60 overflow-y-auto bg-gray-50 rounded-lg p-3 border border-gray-200">
+                        {(() => {
+                          let daysToShow: DayData[] = [];
+                          const startD = bulkDeleteConfig.startDate;
+                          const endD = bulkDeleteConfig.endDate;
+
+                          if (startD && endD) {
+                            daysToShow = generateDaysForPeriod(startD, endD);
+                          } else {
+                            daysToShow = daysData;
+                          }
+
+                          if (daysToShow.length === 0) {
+                            return <p className="text-xs text-gray-400 text-center py-4">表示する日付がありません</p>;
+                          }
+
+                          const monthGroups: { [key: string]: DayData[] } = {};
+                          daysToShow.forEach(day => {
+                            const monthKey = day.date.slice(0, 7);
+                            if (!monthGroups[monthKey]) monthGroups[monthKey] = [];
+                            monthGroups[monthKey].push(day);
+                          });
+
+                          return Object.entries(monthGroups).map(([monthKey, days]) => {
+                            const firstDayOfMonth = days[0];
+                            const startWeekday = firstDayOfMonth.dayOfWeek;
+                            const emptySlots = startWeekday;
+
+                            return (
+                              <div key={monthKey} className="mb-4">
+                                <div className="text-xs font-bold text-gray-700 mb-2">
+                                  {monthKey.replace('-', '年')}月
+                                </div>
+                                <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                                  {WEEKDAYS.map((wd, i) => (
+                                    <div key={i} className={`text-xs font-medium ${i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-gray-500'}`}>
+                                      {wd}
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="grid grid-cols-7 gap-1">
+                                  {Array(emptySlots).fill(null).map((_, i) => (
+                                    <div key={`empty-${i}`} className="w-8 h-8" />
+                                  ))}
+                                  {days.map(day => {
+                                    const isSelected = (bulkDeleteConfig.specificDates || []).includes(day.date);
+                                    return (
+                                      <button
+                                        key={day.date}
+                                        onClick={() => {
+                                          setBulkDeleteConfig(prev => ({
+                                            ...prev,
+                                            specificDates: isSelected
+                                              ? (prev.specificDates || []).filter(d => d !== day.date)
+                                              : [...(prev.specificDates || []), day.date]
+                                          }));
+                                          setBulkDeletePreview(null);
+                                        }}
+                                        className={`w-8 h-8 rounded text-xs font-medium border transition-all ${
+                                          isSelected
+                                            ? 'bg-red-500 border-red-600 text-white'
+                                            : day.isHoliday
+                                              ? 'bg-pink-50 border-pink-200 text-pink-600 hover:bg-pink-100'
+                                              : day.dayOfWeek === 0
+                                                ? 'bg-red-50 border-gray-200 text-red-600 hover:bg-red-100'
+                                                : day.dayOfWeek === 6
+                                                  ? 'bg-blue-50 border-gray-200 text-blue-600 hover:bg-blue-100'
+                                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        {day.day || new Date(day.date).getDate()}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* プレビューボタン */}
                 <button
                   onClick={handleBulkDeletePreview}
-                  disabled={!bulkDeleteConfig.shiftTypeId || isBulkDeleting}
+                  disabled={(bulkDeleteConfig.shiftTypeIds || []).length === 0 || isBulkDeleting}
                   className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isBulkDeleting ? '検索中...' : '削除対象を検索'}
@@ -8464,6 +10184,7 @@ export default function ScheduleViewPage() {
                             <tr>
                               <th className="px-3 py-2 text-left text-gray-600">日付</th>
                               <th className="px-3 py-2 text-left text-gray-600">職員</th>
+                              <th className="px-3 py-2 text-left text-gray-600">シフト</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -8471,6 +10192,7 @@ export default function ScheduleViewPage() {
                               <tr key={idx} className="hover:bg-gray-50">
                                 <td className="px-3 py-2 text-gray-900">{shift.date}</td>
                                 <td className="px-3 py-2 text-gray-900">{shift.staffName}</td>
+                                <td className="px-3 py-2 text-gray-900">{shift.shiftName}</td>
                               </tr>
                             ))}
                           </tbody>

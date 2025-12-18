@@ -6,6 +6,11 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+// ショートカット設定の型定義
+export interface ShortcutConfig {
+  [key: string]: { type: 'shift' | 'schedule' | 'workLocation', id: number }
+}
+
 // 予定表示設定の型定義（研究日・出向・休職はschedule_typeに移行）
 export interface DisplaySettings {
   vacation?: {
@@ -96,6 +101,7 @@ export interface Database {
           show_lottery_period_applications: boolean
           point_retention_rate: number
           display_settings: DisplaySettings
+          shortcut_config?: ShortcutConfig | null
           created_at: string
           updated_at: string
         }
@@ -113,6 +119,7 @@ export interface Database {
           show_lottery_period_applications?: boolean
           point_retention_rate?: number
           display_settings?: DisplaySettings
+          shortcut_config?: ShortcutConfig | null
           created_at?: string
           updated_at?: string
         }
@@ -130,6 +137,7 @@ export interface Database {
           show_lottery_period_applications?: boolean
           point_retention_rate?: number
           display_settings?: DisplaySettings
+          shortcut_config?: ShortcutConfig | null
           created_at?: string
           updated_at?: string
         }
