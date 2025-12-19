@@ -26,7 +26,8 @@ SELECT setval('kensanbi_usage_history_id_seq', GREATEST(COALESCE((SELECT MAX(id)
 SELECT setval('member_count_config_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM member_count_config), 0), 1));
 SELECT setval('score_config_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM score_config), 0), 1));
 SELECT setval('duty_assign_preset_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM duty_assign_preset), 0), 1));
-SELECT setval('user_point_retention_rate_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_point_retention_rate), 0), 1));
+-- user_point_retention_rate は user_annual_leave_points にリネーム済み
+SELECT setval('user_annual_leave_points_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_annual_leave_points), 0), 1));
 SELECT setval('name_list_config_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM name_list_config), 0), 1));
 SELECT setval('priority_exchange_request_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM priority_exchange_request), 0), 1));
 SELECT setval('schedule_hidden_members_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM schedule_hidden_members), 0), 1));
