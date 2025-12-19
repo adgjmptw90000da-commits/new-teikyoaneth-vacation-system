@@ -6031,7 +6031,7 @@ export default function ScheduleViewPage() {
           ref={keyboardPanelRef}
           className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-gray-300 shadow-lg overflow-hidden"
         >
-          <div className="max-w-full mx-auto px-4 py-3 min-h-[140px] overflow-x-auto">
+          <div className="w-full px-4 py-3 min-h-[140px]">
             {/* 選択中のセル情報とエラー表示 */}
             <div className="flex items-center justify-between mb-2">
               {focusedCell ? (
@@ -6051,7 +6051,7 @@ export default function ScheduleViewPage() {
             {/* チェックボックス群 + 登録状況（横並び） */}
             <div className="flex flex-wrap items-start gap-4 mb-3 pb-2 border-b border-gray-200">
               {/* 左: チェックボックス */}
-              <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
                   <input
                     type="checkbox"
@@ -6212,7 +6212,7 @@ export default function ScheduleViewPage() {
 
               {/* 予定を追加セクション */}
               {keyboardPanelOptions.showSchedule && scheduleTypes.length > 0 && (
-                <div className="flex-shrink-0">
+                <div className="min-w-0">
                   <div className="text-xs font-medium text-gray-700 mb-1">【予定を追加】</div>
                   <div className="flex flex-wrap gap-1">
                     {scheduleTypes.map(type => (
@@ -6236,7 +6236,7 @@ export default function ScheduleViewPage() {
 
               {/* シフトを追加セクション */}
               {keyboardPanelOptions.showShift && shiftTypes.length > 0 && (
-                <div className="flex-shrink-0">
+                <div className="min-w-0">
                   <div className="text-xs font-medium text-gray-700 mb-1">【シフトを追加】</div>
                   <div className="flex flex-wrap gap-1">
                     {shiftTypes.map((type, index) => (
@@ -6261,7 +6261,7 @@ export default function ScheduleViewPage() {
 
               {/* 勤務場所を変更セクション */}
               {keyboardPanelOptions.showWorkLocation && (
-                <div className="flex-shrink-0">
+                <div className="min-w-0">
                   <div className="text-xs font-medium text-gray-700 mb-1">【勤務場所を変更】</div>
                   <div className="flex flex-wrap gap-1">
                     {workLocationMaster.map(location => (
@@ -6291,7 +6291,7 @@ export default function ScheduleViewPage() {
 
               {/* ショートカットセクション */}
               {keyboardPanelOptions.showShortcut && Object.keys(shortcutConfig).length > 0 && (
-                <div className="flex-shrink-0">
+                <div className="min-w-0">
                   <div className="text-xs font-medium text-gray-700 mb-1">【ショートカット】</div>
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(shortcutConfig).map(([key, config]) => {
