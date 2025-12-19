@@ -4977,6 +4977,7 @@ export default function ScheduleViewPage() {
                 setAutoAssignPreview(null);
                 setShowAutoAssignModal(true);
               }}
+              onMouseDown={(e) => keyboardMode && e.preventDefault()}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded-lg transition-colors shadow-sm"
             >
               <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
@@ -4990,6 +4991,7 @@ export default function ScheduleViewPage() {
                 setEditingCountConfig(null);
                 setShowCountConfigModal(true);
               }}
+              onMouseDown={(e) => keyboardMode && e.preventDefault()}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-300 hover:bg-purple-100 rounded-lg transition-colors shadow-sm"
             >
               <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
@@ -5000,6 +5002,7 @@ export default function ScheduleViewPage() {
             <div className="relative" ref={toolMenuRef}>
               <button
                 onClick={() => setShowToolMenu(!showToolMenu)}
+                onMouseDown={(e) => keyboardMode && e.preventDefault()}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors shadow-sm"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -5020,6 +5023,7 @@ export default function ScheduleViewPage() {
                       handleUndoAutoAssign();
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     disabled={isAutoAssigning}
                     className="w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 flex items-center gap-2 disabled:opacity-50"
                   >
@@ -5041,6 +5045,7 @@ export default function ScheduleViewPage() {
                       setShowBulkDeleteModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-red-500 rounded-full"></span>
@@ -5055,6 +5060,7 @@ export default function ScheduleViewPage() {
                       setShowNameListConfigModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-cyan-500 rounded-full"></span>
@@ -5068,6 +5074,7 @@ export default function ScheduleViewPage() {
                       setShowScoreConfigModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
@@ -5079,6 +5086,7 @@ export default function ScheduleViewPage() {
                       setShowHiddenMembersModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
@@ -5091,6 +5099,7 @@ export default function ScheduleViewPage() {
                       setShowShortcutConfigModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
@@ -5103,6 +5112,7 @@ export default function ScheduleViewPage() {
                       setShowMonthlyAttributesModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
@@ -5115,6 +5125,7 @@ export default function ScheduleViewPage() {
                       setShowSnapshotModal(true);
                       setShowToolMenu(false);
                     }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
                     className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
                   >
                     <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
@@ -5133,6 +5144,7 @@ export default function ScheduleViewPage() {
                 <span className="text-[10px] font-medium text-gray-500">表示:</span>
                 <button
                   onClick={() => setSelectedTeam('all')}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   className={`px-2 py-1 rounded text-xs font-bold transition-all ${
                     selectedTeam === 'all'
                       ? 'bg-teal-600 text-white'
@@ -5143,6 +5155,7 @@ export default function ScheduleViewPage() {
                 </button>
                 <button
                   onClick={() => setSelectedTeam('A')}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   className={`px-2 py-1 rounded text-xs font-bold transition-all ${
                     selectedTeam === 'A'
                       ? 'bg-blue-600 text-white'
@@ -5153,6 +5166,7 @@ export default function ScheduleViewPage() {
                 </button>
                 <button
                   onClick={() => setSelectedTeam('B')}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   className={`px-2 py-1 rounded text-xs font-bold transition-all ${
                     selectedTeam === 'B'
                       ? 'bg-orange-600 text-white'
@@ -5167,6 +5181,7 @@ export default function ScheduleViewPage() {
             <div className="flex gap-1">
               <button
                 onClick={() => setMainTab('schedule')}
+                onMouseDown={(e) => keyboardMode && e.preventDefault()}
                 className={`px-3 py-1 rounded text-xs font-bold transition-all ${
                   mainTab === 'schedule'
                     ? 'bg-gray-800 text-white'
@@ -5177,6 +5192,7 @@ export default function ScheduleViewPage() {
               </button>
               <button
                 onClick={() => setMainTab('nameList')}
+                onMouseDown={(e) => keyboardMode && e.preventDefault()}
                 className={`px-3 py-1 rounded text-xs font-bold transition-all ${
                   mainTab === 'nameList'
                     ? 'bg-cyan-600 text-white'
@@ -5210,6 +5226,7 @@ export default function ScheduleViewPage() {
               <>
                 <button
                   onClick={handleUpload}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   disabled={isUploading}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
                 >
@@ -5217,6 +5234,7 @@ export default function ScheduleViewPage() {
                 </button>
                 <button
                   onClick={handleUnpublish}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   disabled={isUploading}
                   className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg transition-colors disabled:opacity-50"
                 >
@@ -5226,6 +5244,7 @@ export default function ScheduleViewPage() {
             ) : (
               <button
                 onClick={handleUpload}
+                onMouseDown={(e) => keyboardMode && e.preventDefault()}
                 disabled={isUploading}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
               >
@@ -5245,6 +5264,7 @@ export default function ScheduleViewPage() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => changeMonth(-1)}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   className="p-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition-colors"
                 >
                   <Icons.ChevronLeft />
@@ -5252,6 +5272,7 @@ export default function ScheduleViewPage() {
                 <span className="text-sm font-bold text-gray-900 min-w-[90px] text-center">{currentYear}年{currentMonth}月</span>
                 <button
                   onClick={() => changeMonth(1)}
+                  onMouseDown={(e) => keyboardMode && e.preventDefault()}
                   className="p-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition-colors"
                 >
                   <Icons.ChevronRight />
@@ -5274,6 +5295,7 @@ export default function ScheduleViewPage() {
                         setCurrentYear(tabYear);
                         setCurrentMonth(tabMonth);
                       }}
+                      onMouseDown={(e) => keyboardMode && e.preventDefault()}
                       className={`px-2 py-1 rounded whitespace-nowrap text-xs font-medium transition-all ${isActive
                         ? 'bg-teal-600 text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
