@@ -2435,9 +2435,34 @@ export default function ScheduleViewPage() {
         });
       }
 
+      // INSERT前に既存データをチェック
+      const { data: existingShifts } = await supabase
+        .from('user_shift')
+        .select('staff_id, shift_date, shift_type_id')
+        .in('staff_id', [...new Set(insertData.map(d => d.staff_id))])
+        .in('shift_date', [...new Set(insertData.map(d => d.shift_date))]);
+
+      // 重複を除外
+      const existingSet = new Set(
+        existingShifts?.map(s => `${s.staff_id}|${s.shift_date}|${s.shift_type_id}`) || []
+      );
+
+      const filteredData = insertData.filter(d =>
+        !existingSet.has(`${d.staff_id}|${d.shift_date}|${d.shift_type_id}`)
+      );
+
+      if (filteredData.length === 0) {
+        alert('すべてのシフトが既に登録されています');
+        setAutoAssignPreview(null);
+        setIsAutoAssigning(false);
+        return;
+      }
+
+      const skippedCount = insertData.length - filteredData.length;
+
       const { data, error } = await supabase
         .from('user_shift')
-        .insert(insertData)
+        .insert(filteredData)
         .select('id');
 
       if (error) {
@@ -2454,7 +2479,9 @@ export default function ScheduleViewPage() {
       };
       localStorage.setItem('lastAutoAssignment', JSON.stringify(lastAutoAssignment));
 
-      alert(`${autoAssignPreview.assignments.filter(a => a.type === 'night_shift').length}件の当直を割り振りました`);
+      const registeredCount = autoAssignPreview.assignments.filter(a => a.type === 'night_shift').length - Math.floor(skippedCount / 2);
+      const skippedMsg = skippedCount > 0 ? `（${skippedCount}件は既に登録済みのためスキップ）` : '';
+      alert(`${registeredCount}件の当直を割り振りました${skippedMsg}`);
       setShowAutoAssignModal(false);
       setAutoAssignPreview(null);
       fetchData(); // データ再取得
@@ -3040,9 +3067,34 @@ export default function ScheduleViewPage() {
         });
       }
 
+      // INSERT前に既存データをチェック
+      const { data: existingShifts } = await supabase
+        .from('user_shift')
+        .select('staff_id, shift_date, shift_type_id')
+        .in('staff_id', [...new Set(insertData.map(d => d.staff_id))])
+        .in('shift_date', [...new Set(insertData.map(d => d.shift_date))]);
+
+      // 重複を除外
+      const existingSet = new Set(
+        existingShifts?.map(s => `${s.staff_id}|${s.shift_date}|${s.shift_type_id}`) || []
+      );
+
+      const filteredData = insertData.filter(d =>
+        !existingSet.has(`${d.staff_id}|${d.shift_date}|${d.shift_type_id}`)
+      );
+
+      if (filteredData.length === 0) {
+        alert('すべてのシフトが既に登録されています');
+        setGeneralShiftPreview(null);
+        setIsAutoAssigning(false);
+        return;
+      }
+
+      const skippedCount = insertData.length - filteredData.length;
+
       const { data, error } = await supabase
         .from('user_shift')
-        .insert(insertData)
+        .insert(filteredData)
         .select('id');
 
       if (error) {
@@ -3059,7 +3111,8 @@ export default function ScheduleViewPage() {
       };
       localStorage.setItem('lastAutoAssignment', JSON.stringify(lastAutoAssignment));
 
-      alert(`${generalShiftPreview.assignments.length}件のシフトを割り振りました`);
+      const skippedMsg = skippedCount > 0 ? `（${skippedCount}件は既に登録済みのためスキップ）` : '';
+      alert(`${filteredData.length}件のシフトを割り振りました${skippedMsg}`);
       setShowAutoAssignModal(false);
       setGeneralShiftPreview(null);
       fetchData(); // データ再取得
