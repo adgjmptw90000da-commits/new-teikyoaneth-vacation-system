@@ -160,19 +160,6 @@ export default function ScheduleSystemPage() {
               </button>
 
               <button
-                onClick={() => router.push("/admin/member-settings")}
-                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
-              >
-                <div className="bg-purple-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-purple-600 mr-4">
-                  <Icons.Users />
-                </div>
-                <div className="text-left">
-                  <h4 className="font-semibold text-gray-900">メンバー属性</h4>
-                  <p className="text-xs text-gray-500">チーム・当直レベル・並び順</p>
-                </div>
-              </button>
-
-              <button
                 onClick={() => router.push("/admin/schedule-settings")}
                 className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-300 transition-all"
               >
