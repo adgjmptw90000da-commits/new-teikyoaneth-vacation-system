@@ -326,6 +326,24 @@ export default function ScheduleViewPage() {
   const [showHiddenMembersModal, setShowHiddenMembersModal] = useState(false);
   const [savingHidden, setSavingHidden] = useState(false);
 
+  // 月別メンバー属性
+  type MonthlyAttribute = {
+    id?: number;
+    staff_id: string;
+    year: number;
+    month: number;
+    night_shift_level: string | null;
+    position: string | null;
+    team: string | null;
+    can_cardiac: boolean;
+    can_obstetric: boolean;
+    can_icu: boolean;
+    can_remaining_duty: boolean;
+  };
+  const [monthlyAttributes, setMonthlyAttributes] = useState<MonthlyAttribute[]>([]);
+  const [showMonthlyAttributesModal, setShowMonthlyAttributesModal] = useState(false);
+  const [savingMonthlyAttributes, setSavingMonthlyAttributes] = useState(false);
+
   // ツールバーメニュー
   const [showToolMenu, setShowToolMenu] = useState(false);
   const toolMenuRef = useRef<HTMLDivElement>(null);
@@ -710,6 +728,7 @@ export default function ScheduleViewPage() {
         { data: dutyAssignPresetsData },
         { data: hiddenMembersData },
         { data: nameListConfigsData },
+        { data: monthlyAttributesData },
       ] = await Promise.all([
         supabase.from("user").select("staff_id, name, team, display_order, night_shift_level, can_cardiac, can_obstetric, can_icu, can_remaining_duty, position").order("team").order("display_order").order("staff_id"),
         supabase.from("schedule_type").select("*").order("display_order"),
@@ -752,6 +771,7 @@ export default function ScheduleViewPage() {
         supabase.from("duty_assign_preset").select("*").order("display_order"),
         supabase.from("schedule_hidden_members").select("staff_id").eq("year", currentYear).eq("month", currentMonth),
         supabase.from("name_list_config").select("*").order("display_order"),
+        supabase.from("user_monthly_attributes").select("*").eq("year", currentYear).eq("month", currentMonth),
       ]);
 
       // 確定済み日付のSetを作成
@@ -833,6 +853,78 @@ export default function ScheduleViewPage() {
       const hiddenIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
       setHiddenMemberIds(hiddenIds);
 
+      // 月別属性の処理
+      let currentMonthlyAttrs = monthlyAttributesData || [];
+
+      // 月別属性が存在しない場合は自動作成
+      if (currentMonthlyAttrs.length === 0 && users && users.length > 0) {
+        // 最新の月のデータを探す
+        const { data: latestAttrs } = await supabase
+          .from("user_monthly_attributes")
+          .select("*")
+          .order("year", { ascending: false })
+          .order("month", { ascending: false })
+          .limit(1);
+
+        let sourceAttrs: MonthlyAttribute[] = [];
+
+        if (latestAttrs && latestAttrs.length > 0) {
+          // 最新月のデータがあればそこから全員分取得
+          const latestYear = latestAttrs[0].year;
+          const latestMonth = latestAttrs[0].month;
+          const { data: allLatestAttrs } = await supabase
+            .from("user_monthly_attributes")
+            .select("*")
+            .eq("year", latestYear)
+            .eq("month", latestMonth);
+          sourceAttrs = (allLatestAttrs || []).map(a => ({
+            staff_id: a.staff_id,
+            year: currentYear,
+            month: currentMonth,
+            night_shift_level: a.night_shift_level,
+            position: a.position,
+            team: a.team,
+            can_cardiac: a.can_cardiac,
+            can_obstetric: a.can_obstetric,
+            can_icu: a.can_icu,
+            can_remaining_duty: a.can_remaining_duty,
+          }));
+        }
+
+        // 全ユーザーの属性を作成（最新月にないユーザーはuserテーブルから）
+        const newAttrs: MonthlyAttribute[] = users.map(user => {
+          const existing = sourceAttrs.find(a => a.staff_id === user.staff_id);
+          if (existing) {
+            return existing;
+          }
+          return {
+            staff_id: user.staff_id,
+            year: currentYear,
+            month: currentMonth,
+            night_shift_level: user.night_shift_level || null,
+            position: user.position || null,
+            team: user.team || null,
+            can_cardiac: user.can_cardiac || false,
+            can_obstetric: user.can_obstetric || false,
+            can_icu: user.can_icu || false,
+            can_remaining_duty: user.can_remaining_duty || false,
+          };
+        });
+
+        // DBに保存
+        const { data: insertedAttrs } = await supabase
+          .from("user_monthly_attributes")
+          .insert(newAttrs)
+          .select();
+
+        currentMonthlyAttrs = insertedAttrs || newAttrs;
+      }
+
+      setMonthlyAttributes(currentMonthlyAttrs);
+
+      // 月別属性をマップ化
+      const attrsByStaffId = new Map(currentMonthlyAttrs.map(a => [a.staff_id, a]));
+
       // メンバーデータを構築（非表示メンバーを除外）
       const visibleUsers = (users || []).filter(u => !hiddenIds.has(u.staff_id));
       const membersData: MemberData[] = visibleUsers.map(user => {
@@ -887,12 +979,15 @@ export default function ScheduleViewPage() {
           workLocationsByDate[wl.work_date] = wl.work_location_id;
         });
 
+        // 月別属性を取得（なければuserテーブルの値を使用）
+        const monthlyAttr = attrsByStaffId.get(user.staff_id);
+
         return {
           staff_id: user.staff_id,
           name: user.name,
-          team: user.team || 'A',
+          team: (monthlyAttr?.team as 'A' | 'B') || user.team || 'A',
           display_order: user.display_order || 0,
-          position: user.position || '常勤',
+          position: (monthlyAttr?.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || user.position || '常勤',
           researchDay: researchDayRecord?.day_of_week ?? null,
           isFirstYear: researchDayRecord?.is_first_year ?? false,
           isSecondment,
@@ -900,12 +995,12 @@ export default function ScheduleViewPage() {
           schedules: schedulesByDate,
           shifts: shiftsByDate,
           vacations: vacationsByDate,
-          nightShiftLevel: user.night_shift_level || null,
+          nightShiftLevel: monthlyAttr?.night_shift_level || user.night_shift_level || null,
           workLocations: workLocationsByDate,
-          can_cardiac: user.can_cardiac || false,
-          can_obstetric: user.can_obstetric || false,
-          can_icu: user.can_icu || false,
-          can_remaining_duty: user.can_remaining_duty || false,
+          can_cardiac: monthlyAttr?.can_cardiac ?? user.can_cardiac ?? false,
+          can_obstetric: monthlyAttr?.can_obstetric ?? user.can_obstetric ?? false,
+          can_icu: monthlyAttr?.can_icu ?? user.can_icu ?? false,
+          can_remaining_duty: monthlyAttr?.can_remaining_duty ?? user.can_remaining_duty ?? false,
         };
       });
 
@@ -4643,6 +4738,18 @@ export default function ScheduleViewPage() {
                   >
                     <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
                     ショートカット設定
+                  </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  {/* メンバー属性編集 */}
+                  <button
+                    onClick={() => {
+                      setShowMonthlyAttributesModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                    メンバー属性編集
                   </button>
                 </div>
               )}
@@ -10321,6 +10428,231 @@ export default function ScheduleViewPage() {
                   className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingHidden ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 月別メンバー属性編集モーダル */}
+      {showMonthlyAttributesModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => setShowMonthlyAttributesModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">メンバー属性編集</h2>
+                  <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月の属性</p>
+                </div>
+                <button
+                  onClick={() => setShowMonthlyAttributesModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-auto flex-1">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-3 py-2 text-left font-medium text-gray-700 sticky left-0 bg-gray-50">名前</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">職位</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">チーム</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">当直レベル</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">心臓</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">産科</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">ICU</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-700">残当</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allUsersForHidden.map(user => {
+                        const attr = monthlyAttributes.find(a => a.staff_id === user.staff_id);
+                        if (!attr) return null;
+                        return (
+                          <tr key={user.staff_id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium text-gray-900 sticky left-0 bg-white">{user.name}</td>
+                            <td className="px-3 py-2 text-center">
+                              <select
+                                value={attr.position || '常勤'}
+                                onChange={async (e) => {
+                                  const newValue = e.target.value;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ position: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, position: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value="常勤">常勤</option>
+                                <option value="非常勤">非常勤</option>
+                                <option value="ローテーター">ローテーター</option>
+                                <option value="研修医">研修医</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <select
+                                value={attr.team || 'A'}
+                                onChange={async (e) => {
+                                  const newValue = e.target.value;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ team: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, team: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <select
+                                value={attr.night_shift_level || 'なし'}
+                                onChange={async (e) => {
+                                  const newValue = e.target.value;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ night_shift_level: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, night_shift_level: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="text-xs border border-gray-300 rounded px-2 py-1"
+                              >
+                                <option value="なし">なし</option>
+                                <option value="上">上</option>
+                                <option value="中">中</option>
+                                <option value="下">下</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={attr.can_cardiac}
+                                onChange={async (e) => {
+                                  const newValue = e.target.checked;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ can_cardiac: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, can_cardiac: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="w-4 h-4"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={attr.can_obstetric}
+                                onChange={async (e) => {
+                                  const newValue = e.target.checked;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ can_obstetric: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, can_obstetric: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="w-4 h-4"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={attr.can_icu}
+                                onChange={async (e) => {
+                                  const newValue = e.target.checked;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ can_icu: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, can_icu: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="w-4 h-4"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={attr.can_remaining_duty}
+                                onChange={async (e) => {
+                                  const newValue = e.target.checked;
+                                  setSavingMonthlyAttributes(true);
+                                  await supabase
+                                    .from("user_monthly_attributes")
+                                    .update({ can_remaining_duty: newValue, updated_at: new Date().toISOString() })
+                                    .eq("staff_id", user.staff_id)
+                                    .eq("year", currentYear)
+                                    .eq("month", currentMonth);
+                                  setMonthlyAttributes(prev => prev.map(a =>
+                                    a.staff_id === user.staff_id ? { ...a, can_remaining_duty: newValue } : a
+                                  ));
+                                  setSavingMonthlyAttributes(false);
+                                }}
+                                className="w-4 h-4"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 flex justify-between items-center flex-shrink-0">
+                <p className="text-xs text-gray-500">
+                  {savingMonthlyAttributes ? '保存中...' : '変更は自動保存されます'}
+                </p>
+                <button
+                  onClick={() => setShowMonthlyAttributesModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm"
+                >
+                  閉じる
                 </button>
               </div>
             </div>
