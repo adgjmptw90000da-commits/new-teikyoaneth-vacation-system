@@ -1656,8 +1656,8 @@ export default function ScheduleViewPage() {
     dayOfWeek: number,
     isHoliday: boolean
   ): boolean => {
-    // 当直レベル「なし」は当直不可
-    if (member.nightShiftLevel === 'なし') return false;
+    // 当直レベル「なし」または未設定(null)は当直不可
+    if (!member.nightShiftLevel || member.nightShiftLevel === 'なし') return false;
 
     // 出向中・休職中は当直不可
     if (member.isSecondment) return false;
