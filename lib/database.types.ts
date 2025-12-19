@@ -1194,6 +1194,7 @@ export interface Database {
           can_obstetric: boolean
           can_icu: boolean
           can_remaining_duty: boolean
+          display_order: number
           created_at: string
           updated_at: string
         }
@@ -1209,6 +1210,7 @@ export interface Database {
           can_obstetric?: boolean
           can_icu?: boolean
           can_remaining_duty?: boolean
+          display_order?: number
           created_at?: string
           updated_at?: string
         }
@@ -1224,6 +1226,7 @@ export interface Database {
           can_obstetric?: boolean
           can_icu?: boolean
           can_remaining_duty?: boolean
+          display_order?: number
           created_at?: string
           updated_at?: string
         }
