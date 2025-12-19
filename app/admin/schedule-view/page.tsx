@@ -2637,6 +2637,33 @@ export default function ScheduleViewPage() {
       if (!checkNightShiftAvailability(date, member, dayOfWeek, isHoliday)) {
         return false;
       }
+
+      // 仮割り振りによる当直不可もチェック
+      const prevDateObj = new Date(date);
+      prevDateObj.setDate(prevDateObj.getDate() - 1);
+      const prevDateStr = prevDateObj.toISOString().split('T')[0];
+
+      const nextDateObj = new Date(date);
+      nextDateObj.setDate(nextDateObj.getDate() + 1);
+      const nextDateStr = nextDateObj.toISOString().split('T')[0];
+
+      // 当直タイプのシフトID一覧
+      const nightShiftTypeIds = shiftTypes.filter(t => t.is_night_shift).map(t => t.id);
+
+      // 割り振り中のシフトが当直タイプの場合、前日/翌日の仮割り振りをチェック
+      if (generalShiftConfig.shiftTypeId && nightShiftTypeIds.includes(generalShiftConfig.shiftTypeId)) {
+        // 前日に仮割り振りがあれば不可（当直明けになる）
+        const hasPrevDayAssignment = existingAssignments.some(
+          a => a.staffId === member.staff_id && a.date === prevDateStr
+        );
+        if (hasPrevDayAssignment) return false;
+
+        // 翌日に仮割り振りがあれば不可
+        const hasNextDayAssignment = existingAssignments.some(
+          a => a.staffId === member.staff_id && a.date === nextDateStr
+        );
+        if (hasNextDayAssignment) return false;
+      }
     }
 
     // 研究日は不可（祝日・日曜は研究日にならない）
