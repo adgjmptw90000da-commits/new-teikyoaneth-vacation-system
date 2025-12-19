@@ -6029,9 +6029,9 @@ export default function ScheduleViewPage() {
       {keyboardMode && (
         <div
           ref={keyboardPanelRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-gray-300 shadow-lg"
+          className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-gray-300 shadow-lg overflow-hidden"
         >
-          <div className="max-w-full mx-auto px-4 py-3 min-h-[140px]">
+          <div className="max-w-full mx-auto px-4 py-3 min-h-[140px] overflow-x-auto">
             {/* 選択中のセル情報とエラー表示 */}
             <div className="flex items-center justify-between mb-2">
               {focusedCell ? (
