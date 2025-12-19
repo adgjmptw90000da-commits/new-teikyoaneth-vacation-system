@@ -570,9 +570,9 @@ export default function ScheduleViewPage() {
           if (!attr) return m;
           return {
             ...m,
-            team: (attr.team as 'A' | 'B') || m.team,
-            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || m.position,
-            nightShiftLevel: attr.night_shift_level || m.nightShiftLevel,
+            team: (attr.team as 'A' | 'B') ?? m.team,
+            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') ?? m.position,
+            nightShiftLevel: attr.night_shift_level,
             can_cardiac: attr.can_cardiac ?? m.can_cardiac,
             can_obstetric: attr.can_obstetric ?? m.can_obstetric,
             can_icu: attr.can_icu ?? m.can_icu,
@@ -635,9 +635,9 @@ export default function ScheduleViewPage() {
           if (!attr) return m;
           return {
             ...m,
-            team: (attr.team as 'A' | 'B') || m.team,
-            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || m.position,
-            nightShiftLevel: attr.night_shift_level || m.nightShiftLevel,
+            team: (attr.team as 'A' | 'B') ?? m.team,
+            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') ?? m.position,
+            nightShiftLevel: attr.night_shift_level,
             can_cardiac: attr.can_cardiac ?? m.can_cardiac,
             can_obstetric: attr.can_obstetric ?? m.can_obstetric,
             can_icu: attr.can_icu ?? m.can_icu,
