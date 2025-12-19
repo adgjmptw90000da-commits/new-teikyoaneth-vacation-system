@@ -466,6 +466,13 @@ export default function ScheduleViewPage() {
 
   // 前の月の属性をコピー
   const copyFromPreviousMonth = async () => {
+    // 既存データがある場合は確認
+    if (monthlyAttributes.length > 0) {
+      if (!confirm(`${currentYear}年${currentMonth}月の属性データが既に存在します。\n前の月のデータで上書きしますか？`)) {
+        return;
+      }
+    }
+
     setCopyingFromPrevMonth(true);
     try {
       // 直前の月を計算
@@ -502,6 +509,15 @@ export default function ScheduleViewPage() {
         alert("コピー元となる月のデータが見つかりませんでした。");
         setCopyingFromPrevMonth(false);
         return;
+      }
+
+      // 既存データを削除
+      if (monthlyAttributes.length > 0) {
+        await supabase
+          .from("user_monthly_attributes")
+          .delete()
+          .eq("year", currentYear)
+          .eq("month", currentMonth);
       }
 
       // 現在月用にデータを作成
@@ -10575,9 +10591,30 @@ export default function ScheduleViewPage() {
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
               <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">メンバー属性編集</h2>
-                  <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月の属性</p>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">メンバー属性編集</h2>
+                    <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月の属性</p>
+                  </div>
+                  {monthlyAttributes.length > 0 && (
+                    <button
+                      onClick={copyFromPreviousMonth}
+                      disabled={copyingFromPrevMonth}
+                      className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {copyingFromPrevMonth ? (
+                        <>
+                          <span className="animate-spin text-xs">⏳</span>
+                          コピー中...
+                        </>
+                      ) : (
+                        <>
+                          <Icons.Copy />
+                          前の月からコピー
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowMonthlyAttributesModal(false)}
