@@ -6049,7 +6049,7 @@ export default function ScheduleViewPage() {
             </div>
 
             {/* チェックボックス群 + 登録状況（横並び） */}
-            <div className="flex items-start gap-4 mb-3 pb-2 border-b border-gray-200">
+            <div className="flex flex-wrap items-start gap-4 mb-3 pb-2 border-b border-gray-200">
               {/* 左: チェックボックス */}
               <div className="flex items-center gap-3 flex-shrink-0">
                 <label className="flex items-center gap-1 cursor-pointer" onMouseDown={(e) => e.preventDefault()}>
