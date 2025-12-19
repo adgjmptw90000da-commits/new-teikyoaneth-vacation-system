@@ -11022,6 +11022,9 @@ export default function ScheduleViewPage() {
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, team: newValue } : a
                                           ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, team: newValue as 'A' | 'B' } : m
+                                          ));
                                           setSavingMonthlyAttributes(false);
                                         }}
                                         className="text-xs border border-gray-300 rounded px-2 py-1"
@@ -11044,6 +11047,9 @@ export default function ScheduleViewPage() {
                                             .eq("month", currentMonth);
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, night_shift_level: newValue } : a
+                                          ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, nightShiftLevel: newValue } : m
                                           ));
                                           setSavingMonthlyAttributes(false);
                                         }}
@@ -11071,6 +11077,9 @@ export default function ScheduleViewPage() {
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, can_cardiac: newValue } : a
                                           ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, can_cardiac: newValue } : m
+                                          ));
                                           setSavingMonthlyAttributes(false);
                                         }}
                                         className="w-4 h-4"
@@ -11091,6 +11100,9 @@ export default function ScheduleViewPage() {
                                             .eq("month", currentMonth);
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, can_obstetric: newValue } : a
+                                          ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, can_obstetric: newValue } : m
                                           ));
                                           setSavingMonthlyAttributes(false);
                                         }}
@@ -11113,6 +11125,9 @@ export default function ScheduleViewPage() {
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, can_icu: newValue } : a
                                           ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, can_icu: newValue } : m
+                                          ));
                                           setSavingMonthlyAttributes(false);
                                         }}
                                         className="w-4 h-4"
@@ -11133,6 +11148,9 @@ export default function ScheduleViewPage() {
                                             .eq("month", currentMonth);
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, can_remaining_duty: newValue } : a
+                                          ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, can_remaining_duty: newValue } : m
                                           ));
                                           setSavingMonthlyAttributes(false);
                                         }}
