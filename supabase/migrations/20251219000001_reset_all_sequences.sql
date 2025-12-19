@@ -10,12 +10,10 @@ SELECT setval('event_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM event), 0),
 SELECT setval('conference_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM conference), 0), 1));
 SELECT setval('schedule_type_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM schedule_type), 0), 1));
 SELECT setval('user_schedule_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_schedule), 0), 1));
-SELECT setval('user_research_day_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_research_day), 0), 1));
+-- user_research_day, user_secondment, user_leave_of_absence は削除済み（user_scheduleに統合）
 SELECT setval('user_work_settings_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_work_settings), 0), 1));
 SELECT setval('schedule_submission_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM schedule_submission), 0), 1));
 SELECT setval('daily_schedule_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM daily_schedule), 0), 1));
-SELECT setval('user_secondment_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_secondment), 0), 1));
-SELECT setval('user_leave_of_absence_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_leave_of_absence), 0), 1));
 SELECT setval('shift_type_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM shift_type), 0), 1));
 SELECT setval('user_shift_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM user_shift), 0), 1));
 SELECT setval('work_location_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM work_location), 0), 1));
