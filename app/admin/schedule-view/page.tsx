@@ -8785,6 +8785,7 @@ export default function ScheduleViewPage() {
                             priorityMode: (preset.priority_mode as 'count' | 'score') || 'count',
                             maxAssignmentsPerMember: (preset as Record<string, unknown>).max_assignments_per_member as number | null ?? null,
                             maxAssignmentsMode: ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') || 'execution',
+                            excludeNightShiftUnavailable: preset.exclude_night_shift_unavailable || false,
                           }));
                         }
                       }
