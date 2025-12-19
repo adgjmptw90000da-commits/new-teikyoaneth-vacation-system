@@ -412,6 +412,16 @@ export default function ScheduleViewPage() {
   const [savingMonthlyAttributes, setSavingMonthlyAttributes] = useState(false);
   const [copyingFromPrevMonth, setCopyingFromPrevMonth] = useState(false);
 
+  // スナップショット管理
+  type ScheduleSnapshot = Database["public"]["Tables"]["schedule_snapshot"]["Row"];
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [snapshots, setSnapshots] = useState<ScheduleSnapshot[]>([]);
+  const [newSnapshotName, setNewSnapshotName] = useState("");
+  const [newSnapshotDescription, setNewSnapshotDescription] = useState("");
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const [restoringSnapshot, setRestoringSnapshot] = useState(false);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
   // ドラッグ&ドロップ用センサー
   const dndSensors = useSensors(
     useSensor(PointerSensor, {
@@ -552,6 +562,207 @@ export default function ScheduleViewPage() {
       alert("属性のコピー中にエラーが発生しました");
     } finally {
       setCopyingFromPrevMonth(false);
+    }
+  };
+
+  // スナップショット関連関数
+  const loadSnapshots = async () => {
+    setLoadingSnapshots(true);
+    try {
+      const { data, error } = await supabase
+        .from("schedule_snapshot")
+        .select("*")
+        .eq("year", currentYear)
+        .eq("month", currentMonth)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error loading snapshots:", error);
+      } else {
+        setSnapshots(data || []);
+      }
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
+  const saveSnapshot = async () => {
+    if (!newSnapshotName.trim()) {
+      alert("保存名を入力してください");
+      return;
+    }
+
+    const currentUser = getUser();
+    if (!currentUser) {
+      alert("ログインが必要です");
+      return;
+    }
+
+    setSavingSnapshot(true);
+    try {
+      // 現在のデータを収集
+      const { data: schedulesData } = await supabase
+        .from("user_schedule")
+        .select("staff_id, schedule_date, schedule_type_id, work_location_id")
+        .gte("schedule_date", `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`)
+        .lt("schedule_date", currentMonth === 12
+          ? `${currentYear + 1}-01-01`
+          : `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`);
+
+      const { data: shiftsData } = await supabase
+        .from("user_shift")
+        .select("staff_id, shift_date, shift_type_id, work_location_id")
+        .gte("shift_date", `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`)
+        .lt("shift_date", currentMonth === 12
+          ? `${currentYear + 1}-01-01`
+          : `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`);
+
+      const { data: workLocationsData } = await supabase
+        .from("user_work_location")
+        .select("staff_id, work_date, work_location_id")
+        .gte("work_date", `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`)
+        .lt("work_date", currentMonth === 12
+          ? `${currentYear + 1}-01-01`
+          : `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`);
+
+      const { data: monthlyAttrsData } = await supabase
+        .from("user_monthly_attributes")
+        .select("staff_id, night_shift_level, position, team, can_cardiac, can_obstetric, can_icu, can_remaining_duty, display_order")
+        .eq("year", currentYear)
+        .eq("month", currentMonth);
+
+      const snapshotData = {
+        schedules: (schedulesData || []).map(s => ({
+          staff_id: s.staff_id,
+          schedule_date: s.schedule_date,
+          schedule_type_id: s.schedule_type_id,
+          work_location_id: s.work_location_id,
+        })),
+        shifts: (shiftsData || []).map(s => ({
+          staff_id: s.staff_id,
+          shift_date: s.shift_date,
+          shift_type_id: s.shift_type_id,
+          work_location_id: s.work_location_id,
+        })),
+        workLocations: (workLocationsData || []).map(w => ({
+          staff_id: w.staff_id,
+          work_date: w.work_date,
+          work_location_id: w.work_location_id,
+        })),
+        monthlyAttributes: (monthlyAttrsData || []).map(a => ({
+          staff_id: a.staff_id,
+          night_shift_level: a.night_shift_level,
+          position: a.position,
+          team: a.team,
+          can_cardiac: a.can_cardiac,
+          can_obstetric: a.can_obstetric,
+          can_icu: a.can_icu,
+          can_remaining_duty: a.can_remaining_duty,
+          display_order: a.display_order ?? 0,
+        })),
+        savedAt: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from("schedule_snapshot")
+        .insert({
+          year: currentYear,
+          month: currentMonth,
+          name: newSnapshotName.trim(),
+          description: newSnapshotDescription.trim() || null,
+          snapshot_data: snapshotData,
+          created_by_staff_id: currentUser.staff_id,
+        });
+
+      if (error) {
+        console.error("Error saving snapshot:", error);
+        alert("保存に失敗しました: " + error.message);
+      } else {
+        setNewSnapshotName("");
+        setNewSnapshotDescription("");
+        await loadSnapshots();
+        alert("予定表を保存しました");
+      }
+    } finally {
+      setSavingSnapshot(false);
+    }
+  };
+
+  const restoreSnapshot = async (snapshot: ScheduleSnapshot) => {
+    if (!confirm(`「${snapshot.name}」のデータで現在の予定表を上書きしますか？\n\n※ この操作は元に戻せません。必要に応じて先に現在の状態を保存してください。`)) {
+      return;
+    }
+
+    setRestoringSnapshot(true);
+    try {
+      const data = snapshot.snapshot_data as {
+        schedules: { staff_id: string; schedule_date: string; schedule_type_id: number; work_location_id?: number | null }[];
+        shifts: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[];
+        workLocations: { staff_id: string; work_date: string; work_location_id: number }[];
+        monthlyAttributes: { staff_id: string; night_shift_level: string | null; position: string | null; team: string | null; can_cardiac: boolean; can_obstetric: boolean; can_icu: boolean; can_remaining_duty: boolean; display_order: number }[];
+      };
+
+      const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+      const endDate = currentMonth === 12
+        ? `${currentYear + 1}-01-01`
+        : `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+
+      // 既存データを削除
+      await Promise.all([
+        supabase.from("user_schedule").delete().gte("schedule_date", startDate).lt("schedule_date", endDate),
+        supabase.from("user_shift").delete().gte("shift_date", startDate).lt("shift_date", endDate),
+        supabase.from("user_work_location").delete().gte("work_date", startDate).lt("work_date", endDate),
+        supabase.from("user_monthly_attributes").delete().eq("year", currentYear).eq("month", currentMonth),
+      ]);
+
+      // スナップショットデータを挿入
+      if (data.schedules.length > 0) {
+        await supabase.from("user_schedule").insert(data.schedules);
+      }
+      if (data.shifts.length > 0) {
+        await supabase.from("user_shift").insert(data.shifts);
+      }
+      if (data.workLocations.length > 0) {
+        await supabase.from("user_work_location").insert(data.workLocations);
+      }
+      if (data.monthlyAttributes.length > 0) {
+        const attrsToInsert = data.monthlyAttributes.map(a => ({
+          ...a,
+          year: currentYear,
+          month: currentMonth,
+        }));
+        await supabase.from("user_monthly_attributes").insert(attrsToInsert);
+      }
+
+      alert("予定表を復元しました。ページを再読み込みします。");
+      window.location.reload();
+    } catch (err) {
+      console.error("Error restoring snapshot:", err);
+      alert("復元に失敗しました");
+    } finally {
+      setRestoringSnapshot(false);
+    }
+  };
+
+  const deleteSnapshot = async (snapshot: ScheduleSnapshot) => {
+    if (!confirm(`「${snapshot.name}」を削除しますか？`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("schedule_snapshot")
+        .delete()
+        .eq("id", snapshot.id);
+
+      if (error) {
+        console.error("Error deleting snapshot:", error);
+        alert("削除に失敗しました: " + error.message);
+      } else {
+        await loadSnapshots();
+      }
+    } catch (err) {
+      console.error("Error deleting snapshot:", err);
     }
   };
 
@@ -4896,6 +5107,18 @@ export default function ScheduleViewPage() {
                   >
                     <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
                     メンバー属性編集
+                  </button>
+                  {/* 保存データ管理 */}
+                  <button
+                    onClick={() => {
+                      loadSnapshots();
+                      setShowSnapshotModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                    保存データ管理
                   </button>
                 </div>
               )}
@@ -10932,6 +11155,160 @@ export default function ScheduleViewPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 保存データ管理モーダル */}
+      {showSnapshotModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => setShowSnapshotModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">保存データ管理</h2>
+                  <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月の予定表</p>
+                </div>
+                <button
+                  onClick={() => setShowSnapshotModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-auto flex-1 space-y-6">
+                {/* 新規保存 */}
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h3 className="font-bold text-purple-800 mb-3 flex items-center gap-2">
+                    <span className="text-lg">💾</span>
+                    現在の予定表を保存
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">保存名 *</label>
+                      <input
+                        type="text"
+                        value={newSnapshotName}
+                        onChange={(e) => setNewSnapshotName(e.target.value)}
+                        placeholder="例: v1, 調整前, バックアップ"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">説明（任意）</label>
+                      <input
+                        type="text"
+                        value={newSnapshotDescription}
+                        onChange={(e) => setNewSnapshotDescription(e.target.value)}
+                        placeholder="例: 当直割り当て完了時点"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      />
+                    </div>
+                    <button
+                      onClick={saveSnapshot}
+                      disabled={savingSnapshot || !newSnapshotName.trim()}
+                      className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingSnapshot ? "保存中..." : "保存する"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 保存済みデータ一覧 */}
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">📁</span>
+                    保存済みデータ
+                    {loadingSnapshots && <span className="text-xs text-gray-500">読み込み中...</span>}
+                  </h3>
+
+                  {snapshots.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <p className="text-sm">保存されたデータはありません</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {snapshots.map((snapshot) => {
+                        const data = snapshot.snapshot_data as {
+                          schedules: unknown[];
+                          shifts: unknown[];
+                          workLocations: unknown[];
+                          monthlyAttributes: unknown[];
+                          savedAt: string;
+                        };
+                        return (
+                          <div
+                            key={snapshot.id}
+                            className="bg-white border border-gray-200 rounded-lg p-4 hover:border-purple-300 transition-colors"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="font-bold text-gray-900">{snapshot.name}</h4>
+                                {snapshot.description && (
+                                  <p className="text-sm text-gray-500 mt-0.5">{snapshot.description}</p>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-500">
+                                  <span className="bg-gray-100 px-2 py-0.5 rounded">
+                                    予定: {data.schedules?.length || 0}件
+                                  </span>
+                                  <span className="bg-gray-100 px-2 py-0.5 rounded">
+                                    シフト: {data.shifts?.length || 0}件
+                                  </span>
+                                  <span className="bg-gray-100 px-2 py-0.5 rounded">
+                                    勤務場所: {data.workLocations?.length || 0}件
+                                  </span>
+                                  <span className="bg-gray-100 px-2 py-0.5 rounded">
+                                    属性: {data.monthlyAttributes?.length || 0}件
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-2">
+                                  {new Date(snapshot.created_at).toLocaleString('ja-JP')} に保存
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 ml-4">
+                                <button
+                                  onClick={() => restoreSnapshot(snapshot)}
+                                  disabled={restoringSnapshot}
+                                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                >
+                                  復元
+                                </button>
+                                <button
+                                  onClick={() => deleteSnapshot(snapshot)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="削除"
+                                >
+                                  <Icons.Trash />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    ※ 復元すると現在の予定表が上書きされます
+                  </p>
+                  <button
+                    onClick={() => setShowSnapshotModal(false)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
     </div>

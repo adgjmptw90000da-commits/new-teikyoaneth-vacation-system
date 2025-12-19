@@ -1231,6 +1231,44 @@ export interface Database {
           updated_at?: string
         }
       }
+      schedule_snapshot: {
+        Row: {
+          id: number
+          year: number
+          month: number
+          name: string
+          description: string | null
+          snapshot_data: {
+            schedules: { staff_id: string; schedule_date: string; schedule_type_id: number; work_location_id?: number | null }[]
+            shifts: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[]
+            workLocations: { staff_id: string; work_date: string; work_location_id: number }[]
+            monthlyAttributes: { staff_id: string; night_shift_level: string | null; position: string | null; team: string | null; can_cardiac: boolean; can_obstetric: boolean; can_icu: boolean; can_remaining_duty: boolean; display_order: number }[]
+            savedAt: string
+          }
+          created_by_staff_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          year: number
+          month: number
+          name: string
+          description?: string | null
+          snapshot_data: object
+          created_by_staff_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          year?: number
+          month?: number
+          name?: string
+          description?: string | null
+          snapshot_data?: object
+          created_by_staff_id?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
