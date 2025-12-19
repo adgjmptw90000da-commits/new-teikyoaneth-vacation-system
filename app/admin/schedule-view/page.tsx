@@ -565,6 +565,51 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // 月別属性モーダルを開く（未登録メンバーを自動追加）
+  const openMonthlyAttributesModal = async () => {
+    setShowMonthlyAttributesModal(true);
+
+    // 全メンバーのうち、月別属性が未登録のメンバーを検出
+    const existingStaffIds = new Set(monthlyAttributes.map(a => a.staff_id));
+    const missingMembers = allUsersForHidden.filter(u => !existingStaffIds.has(u.staff_id));
+
+    if (missingMembers.length === 0) return;
+
+    // 未登録メンバーをデフォルト値で追加
+    const maxDisplayOrder = monthlyAttributes.length > 0
+      ? Math.max(...monthlyAttributes.map(a => a.display_order ?? 0))
+      : -1;
+
+    const newAttrs = missingMembers.map((member, idx) => ({
+      staff_id: member.staff_id,
+      year: currentYear,
+      month: currentMonth,
+      night_shift_level: null,
+      position: '常勤',
+      team: member.team || 'A',
+      can_cardiac: false,
+      can_obstetric: false,
+      can_icu: false,
+      can_remaining_duty: false,
+      display_order: maxDisplayOrder + 1 + idx,
+    }));
+
+    try {
+      const { data: insertedAttrs, error } = await supabase
+        .from("user_monthly_attributes")
+        .insert(newAttrs)
+        .select();
+
+      if (error) {
+        console.error("Error adding new members:", error);
+      } else if (insertedAttrs) {
+        setMonthlyAttributes(prev => [...prev, ...insertedAttrs]);
+      }
+    } catch (err) {
+      console.error("Error adding new members:", err);
+    }
+  };
+
   // スナップショット関連関数
   const loadSnapshots = async () => {
     setLoadingSnapshots(true);
@@ -5109,7 +5154,7 @@ export default function ScheduleViewPage() {
                   {/* メンバー属性編集 */}
                   <button
                     onClick={() => {
-                      setShowMonthlyAttributesModal(true);
+                      openMonthlyAttributesModal();
                       setShowToolMenu(false);
                     }}
                     onMouseDown={(e) => keyboardMode && e.preventDefault()}
