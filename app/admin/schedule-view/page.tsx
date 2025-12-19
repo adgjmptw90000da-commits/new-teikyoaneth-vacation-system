@@ -1343,7 +1343,7 @@ export default function ScheduleViewPage() {
           staff_id: user.staff_id,
           name: user.name,
           team: (monthlyAttr?.team as 'A' | 'B') || user.team || 'A',
-          display_order: user.display_order || 0,
+          display_order: monthlyAttr?.display_order ?? user.display_order ?? 0,
           position: (monthlyAttr?.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || user.position || '常勤',
           researchDay: researchDayRecord?.day_of_week ?? null,
           isFirstYear: researchDayRecord?.is_first_year ?? false,
