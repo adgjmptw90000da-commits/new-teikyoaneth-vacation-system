@@ -4083,6 +4083,9 @@ export default function ScheduleViewPage() {
 
   // 選択されたチームのメンバーをフィルター
   const filteredMembers = useMemo(() => {
+    // monthlyAttributesから最新のdisplay_orderを取得するためのマップを作成
+    const attrMap = new Map(monthlyAttributes.map(a => [a.staff_id, a]));
+
     return members
       .filter(m => selectedTeam === 'all' || m.team === selectedTeam)
       .sort((a, b) => {
@@ -4094,13 +4097,15 @@ export default function ScheduleViewPage() {
         const posA = POSITION_ORDER[a.position] ?? 99;
         const posB = POSITION_ORDER[b.position] ?? 99;
         if (posA !== posB) return posA - posB;
-        // 3. display_orderでソート
-        if (a.display_order !== b.display_order) return a.display_order - b.display_order;
+        // 3. display_orderでソート（monthlyAttributesから最新値を取得）
+        const orderA = attrMap.get(a.staff_id)?.display_order ?? a.display_order;
+        const orderB = attrMap.get(b.staff_id)?.display_order ?? b.display_order;
+        if (orderA !== orderB) return orderA - orderB;
         // 4. staff_idでソート
         return a.staff_id.localeCompare(b.staff_id);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, selectedTeam]);
+  }, [members, selectedTeam, monthlyAttributes]);
 
   // ========== キーボードナビゲーション機能 ==========
 
