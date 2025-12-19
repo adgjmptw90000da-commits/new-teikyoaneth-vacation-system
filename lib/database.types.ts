@@ -1181,6 +1181,53 @@ export interface Database {
           updated_at?: string
         }
       }
+      user_monthly_attributes: {
+        Row: {
+          id: number
+          staff_id: string
+          year: number
+          month: number
+          night_shift_level: string | null
+          position: string | null
+          team: string | null
+          can_cardiac: boolean
+          can_obstetric: boolean
+          can_icu: boolean
+          can_remaining_duty: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          year: number
+          month: number
+          night_shift_level?: string | null
+          position?: string | null
+          team?: string | null
+          can_cardiac?: boolean
+          can_obstetric?: boolean
+          can_icu?: boolean
+          can_remaining_duty?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          year?: number
+          month?: number
+          night_shift_level?: string | null
+          position?: string | null
+          team?: string | null
+          can_cardiac?: boolean
+          can_obstetric?: boolean
+          can_icu?: boolean
+          can_remaining_duty?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
