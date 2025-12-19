@@ -387,7 +387,7 @@ export default function ScheduleViewPage() {
   const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
 
   // 非表示メンバー管理
-  const [allUsersForHidden, setAllUsersForHidden] = useState<{ staff_id: string; name: string; team: 'A' | 'B' }[]>([]);
+  const [allUsersForHidden, setAllUsersForHidden] = useState<{ staff_id: string; name: string }[]>([]);
   const [hiddenMemberIds, setHiddenMemberIds] = useState<Set<string>>(new Set());
   const [showHiddenMembersModal, setShowHiddenMembersModal] = useState(false);
   const [savingHidden, setSavingHidden] = useState(false);
@@ -610,7 +610,7 @@ export default function ScheduleViewPage() {
       month: currentMonth,
       night_shift_level: null,
       position: '常勤',
-      team: member.team || 'A',
+      team: 'A',  // デフォルト値（userテーブルの値は使用しない）
       can_cardiac: false,
       can_obstetric: false,
       can_icu: false,
@@ -1354,8 +1354,8 @@ export default function ScheduleViewPage() {
       // 予定提出ロック状態を設定
       setIsSubmissionLocked(publishData?.is_submission_locked ?? false);
 
-      // 非表示メンバー管理用：全ユーザーを保存
-      setAllUsersForHidden((users || []).map(u => ({ staff_id: u.staff_id, name: u.name, team: u.team || 'A' })));
+      // 非表示メンバー管理用：全ユーザーを保存（teamは月別属性から取得するため含まない）
+      setAllUsersForHidden((users || []).map(u => ({ staff_id: u.staff_id, name: u.name })));
 
       // 非表示メンバーのSetを作成・保存
       const hiddenIds = new Set(hiddenMembersData?.map(h => h.staff_id) || []);
@@ -1422,15 +1422,15 @@ export default function ScheduleViewPage() {
           workLocationsByDate[wl.work_date] = wl.work_location_id;
         });
 
-        // 月別属性を取得（なければuserテーブルの値を使用）
+        // 月別属性を取得（月別属性のみ使用、なければデフォルト値）
         const monthlyAttr = attrsByStaffId.get(user.staff_id);
 
         return {
           staff_id: user.staff_id,
           name: user.name,
-          team: (monthlyAttr?.team as 'A' | 'B') || user.team || 'A',
-          display_order: monthlyAttr?.display_order ?? user.display_order ?? 0,
-          position: (monthlyAttr?.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || user.position || '常勤',
+          team: (monthlyAttr?.team as 'A' | 'B') ?? 'A',
+          display_order: monthlyAttr?.display_order ?? 0,
+          position: (monthlyAttr?.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') ?? '常勤',
           researchDay: researchDayRecord?.day_of_week ?? null,
           isFirstYear: researchDayRecord?.is_first_year ?? false,
           isSecondment,
@@ -1438,12 +1438,12 @@ export default function ScheduleViewPage() {
           schedules: schedulesByDate,
           shifts: shiftsByDate,
           vacations: vacationsByDate,
-          nightShiftLevel: monthlyAttr?.night_shift_level || user.night_shift_level || null,
+          nightShiftLevel: monthlyAttr?.night_shift_level ?? null,
           workLocations: workLocationsByDate,
-          can_cardiac: monthlyAttr?.can_cardiac ?? user.can_cardiac ?? false,
-          can_obstetric: monthlyAttr?.can_obstetric ?? user.can_obstetric ?? false,
-          can_icu: monthlyAttr?.can_icu ?? user.can_icu ?? false,
-          can_remaining_duty: monthlyAttr?.can_remaining_duty ?? user.can_remaining_duty ?? false,
+          can_cardiac: monthlyAttr?.can_cardiac ?? false,
+          can_obstetric: monthlyAttr?.can_obstetric ?? false,
+          can_icu: monthlyAttr?.can_icu ?? false,
+          can_remaining_duty: monthlyAttr?.can_remaining_duty ?? false,
         };
       });
 
@@ -10855,7 +10855,10 @@ export default function ScheduleViewPage() {
                     <h3 className="text-sm font-medium text-gray-700 mb-2">A表</h3>
                     <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2">
                       {allUsersForHidden
-                        .filter(u => u.team === 'A')
+                        .filter(u => {
+                          const attr = monthlyAttributes.find(a => a.staff_id === u.staff_id);
+                          return (attr?.team ?? 'A') === 'A';
+                        })
                         .map(user => (
                           <label key={user.staff_id} className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1 cursor-pointer">
                             <input
@@ -10878,7 +10881,10 @@ export default function ScheduleViewPage() {
                     <h3 className="text-sm font-medium text-gray-700 mb-2">B表</h3>
                     <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2">
                       {allUsersForHidden
-                        .filter(u => u.team === 'B')
+                        .filter(u => {
+                          const attr = monthlyAttributes.find(a => a.staff_id === u.staff_id);
+                          return (attr?.team ?? 'A') === 'B';
+                        })
                         .map(user => (
                           <label key={user.staff_id} className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1 cursor-pointer">
                             <input
