@@ -453,6 +453,12 @@ export default function ScheduleViewPage() {
     }));
 
     setMonthlyAttributes(updates);
+    // membersステートも更新
+    const orderMap = new Map(updates.map(a => [a.staff_id, a.display_order]));
+    setMembers(prev => prev.map(m => {
+      const newOrder = orderMap.get(m.staff_id);
+      return newOrder !== undefined ? { ...m, display_order: newOrder } : m;
+    }));
 
     // DBに保存
     setSavingMonthlyAttributes(true);
@@ -555,7 +561,25 @@ export default function ScheduleViewPage() {
         console.error("Error inserting attributes:", error);
         alert("属性のコピーに失敗しました: " + error.message);
       } else {
-        setMonthlyAttributes(insertedAttrs || newAttrs);
+        const finalAttrs = insertedAttrs || newAttrs;
+        setMonthlyAttributes(finalAttrs);
+        // membersステートも更新
+        const attrMap = new Map(finalAttrs.map(a => [a.staff_id, a]));
+        setMembers(prev => prev.map(m => {
+          const attr = attrMap.get(m.staff_id);
+          if (!attr) return m;
+          return {
+            ...m,
+            team: (attr.team as 'A' | 'B') || m.team,
+            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || m.position,
+            nightShiftLevel: attr.night_shift_level || m.nightShiftLevel,
+            can_cardiac: attr.can_cardiac ?? m.can_cardiac,
+            can_obstetric: attr.can_obstetric ?? m.can_obstetric,
+            can_icu: attr.can_icu ?? m.can_icu,
+            can_remaining_duty: attr.can_remaining_duty ?? m.can_remaining_duty,
+            display_order: attr.display_order ?? m.display_order,
+          };
+        }));
       }
     } catch (err) {
       console.error("Error copying from previous month:", err);
@@ -604,6 +628,23 @@ export default function ScheduleViewPage() {
         console.error("Error adding new members:", error);
       } else if (insertedAttrs) {
         setMonthlyAttributes(prev => [...prev, ...insertedAttrs]);
+        // membersステートも更新
+        const attrMap = new Map(insertedAttrs.map(a => [a.staff_id, a]));
+        setMembers(prev => prev.map(m => {
+          const attr = attrMap.get(m.staff_id);
+          if (!attr) return m;
+          return {
+            ...m,
+            team: (attr.team as 'A' | 'B') || m.team,
+            position: (attr.position as '常勤' | '非常勤' | 'ローテーター' | '研修医') || m.position,
+            nightShiftLevel: attr.night_shift_level || m.nightShiftLevel,
+            can_cardiac: attr.can_cardiac ?? m.can_cardiac,
+            can_obstetric: attr.can_obstetric ?? m.can_obstetric,
+            can_icu: attr.can_icu ?? m.can_icu,
+            can_remaining_duty: attr.can_remaining_duty ?? m.can_remaining_duty,
+            display_order: attr.display_order ?? m.display_order,
+          };
+        }));
       }
     } catch (err) {
       console.error("Error adding new members:", err);
@@ -10996,6 +11037,9 @@ export default function ScheduleViewPage() {
                                             .eq("month", currentMonth);
                                           setMonthlyAttributes(prev => prev.map(a =>
                                             a.staff_id === attr.staff_id ? { ...a, position: newValue } : a
+                                          ));
+                                          setMembers(prev => prev.map(m =>
+                                            m.staff_id === attr.staff_id ? { ...m, position: newValue as '常勤' | '非常勤' | 'ローテーター' | '研修医' } : m
                                           ));
                                           setSavingMonthlyAttributes(false);
                                         }}
