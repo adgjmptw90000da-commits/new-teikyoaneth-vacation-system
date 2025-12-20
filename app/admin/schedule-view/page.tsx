@@ -4450,10 +4450,68 @@ export default function ScheduleViewPage() {
         }
       }
 
-      // 勤務場所チェック
+      // 勤務場所チェック（時間帯を考慮）
       if (!matches && config.target_work_location_ids && config.target_work_location_ids.length > 0) {
-        if (workLocationId && config.target_work_location_ids.includes(workLocationId)) {
-          matches = true;
+        // 勤務場所を時間帯ごとに取得
+        const getWorkLocationForPeriod = (periodAm: boolean, periodPm: boolean, periodNight: boolean): number | null => {
+          // 1. シフトの勤務場所（時間帯一致時）
+          for (const shift of shifts) {
+            const matchesPeriod =
+              (periodAm && shift.shift_type.position_am) ||
+              (periodPm && shift.shift_type.position_pm) ||
+              (periodNight && shift.shift_type.position_night);
+            if (matchesPeriod && shift.work_location_id) {
+              return shift.work_location_id;
+            }
+          }
+          // 2. 予定の勤務場所（時間帯一致時）
+          for (const schedule of schedules) {
+            const matchesPeriod =
+              (periodAm && schedule.schedule_type.position_am) ||
+              (periodPm && schedule.schedule_type.position_pm) ||
+              (periodNight && schedule.schedule_type.position_night);
+            if (matchesPeriod && schedule.work_location_id) {
+              return schedule.work_location_id;
+            }
+          }
+          // 3. 予定タイプのデフォルト勤務場所
+          for (const schedule of schedules) {
+            const matchesPeriod =
+              (periodAm && schedule.schedule_type.position_am) ||
+              (periodPm && schedule.schedule_type.position_pm) ||
+              (periodNight && schedule.schedule_type.position_night);
+            if (matchesPeriod && schedule.schedule_type.default_work_location_id) {
+              return schedule.schedule_type.default_work_location_id;
+            }
+          }
+          // 4. user_work_location（日単位のフォールバック）
+          return workLocationId || null;
+        };
+
+        // 選択された時間帯ごとにチェック
+        if (config.target_period_am) {
+          const locId = getWorkLocationForPeriod(true, false, false);
+          if (locId && config.target_work_location_ids.includes(locId)) {
+            matches = true;
+          }
+        }
+        if (!matches && config.target_period_pm) {
+          const locId = getWorkLocationForPeriod(false, true, false);
+          if (locId && config.target_work_location_ids.includes(locId)) {
+            matches = true;
+          }
+        }
+        if (!matches && config.target_period_night) {
+          const locId = getWorkLocationForPeriod(false, false, true);
+          if (locId && config.target_work_location_ids.includes(locId)) {
+            matches = true;
+          }
+        }
+        // 時間帯が全て未選択の場合（フォールバック）
+        if (!matches && !config.target_period_am && !config.target_period_pm && !config.target_period_night) {
+          if (workLocationId && config.target_work_location_ids.includes(workLocationId)) {
+            matches = true;
+          }
         }
       }
 
