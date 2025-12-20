@@ -329,9 +329,8 @@ export default function MembersPage() {
     setProcessing(true);
 
     try {
-      // 全ての関連テーブルを更新（順序が重要：子テーブルを先に更新）
+      // 全ての関連テーブル
       const tablesToUpdate = [
-        // 子テーブル（外部キー参照あり）
         { table: 'application', column: 'staff_id' },
         { table: 'user_schedule', column: 'staff_id' },
         { table: 'user_research_day', column: 'staff_id' },
@@ -356,21 +355,7 @@ export default function MembersPage() {
         { table: 'schedule_publish', column: 'published_by_staff_id' },
       ];
 
-      // 各テーブルを更新
-      for (const { table, column } of tablesToUpdate) {
-        const { error } = await supabase
-          .from(table)
-          .update({ [column]: newId })
-          .eq(column, oldStaffId);
-
-        if (error) {
-          console.log(`Table ${table}.${column} update skipped or failed:`, error.message);
-          // テーブルが存在しない場合などはスキップ
-        }
-      }
-
-      // 最後にuserテーブル（主キー）を更新
-      // PostgreSQLでは主キーの更新は直接できないため、新規作成→旧削除の手順
+      // Step 1: 旧ユーザー情報を取得
       const { data: oldUser, error: fetchError } = await supabase
         .from("user")
         .select("*")
@@ -381,7 +366,7 @@ export default function MembersPage() {
         throw new Error("ユーザー情報の取得に失敗しました");
       }
 
-      // 新しいIDでユーザーを作成
+      // Step 2: 新しいIDでユーザーを先に作成（外部キー参照先を用意）
       const { error: insertError } = await supabase
         .from("user")
         .insert({
@@ -393,16 +378,40 @@ export default function MembersPage() {
         throw new Error(`新しいIDでのユーザー作成に失敗しました: ${insertError.message}`);
       }
 
-      // 古いユーザーを削除
+      // Step 3: 全ての子テーブルを新IDに更新
+      const updateErrors: string[] = [];
+      for (const { table, column } of tablesToUpdate) {
+        const { error } = await supabase
+          .from(table)
+          .update({ [column]: newId })
+          .eq(column, oldStaffId);
+
+        if (error) {
+          console.log(`Table ${table}.${column} update:`, error.message);
+          // 外部キー制約エラー以外の場合のみ記録（データが存在しない場合はOK）
+          if (!error.message.includes('0 rows')) {
+            updateErrors.push(`${table}.${column}`);
+          }
+        }
+      }
+
+      // Step 4: 古いユーザーを削除
       const { error: deleteError } = await supabase
         .from("user")
         .delete()
         .eq("staff_id", oldStaffId);
 
       if (deleteError) {
-        // ロールバック: 新しいユーザーを削除
+        // ロールバック: 子テーブルを元に戻し、新しいユーザーを削除
+        for (const { table, column } of tablesToUpdate) {
+          await supabase.from(table).update({ [column]: oldStaffId }).eq(column, newId);
+        }
         await supabase.from("user").delete().eq("staff_id", newId);
         throw new Error(`古いユーザーの削除に失敗しました: ${deleteError.message}`);
+      }
+
+      if (updateErrors.length > 0) {
+        console.warn("一部のテーブル更新でエラー:", updateErrors);
       }
 
       alert(`職員IDを「${oldStaffId}」から「${newId}」に変更しました`);
