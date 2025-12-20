@@ -368,6 +368,7 @@ export default function ScheduleViewPage() {
   const [editingDutyPreset, setEditingDutyPreset] = useState<DutyAssignPreset | null>(null);
   const [draggingShiftPresetIndex, setDraggingShiftPresetIndex] = useState<number | null>(null);
   const [draggingDutyPresetIndex, setDraggingDutyPresetIndex] = useState<number | null>(null);
+  const [draggingScoreConfigIndex, setDraggingScoreConfigIndex] = useState<number | null>(null);
 
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
@@ -5039,6 +5040,9 @@ export default function ScheduleViewPage() {
         setScoreConfigs(prev => prev.map(c =>
           c.id === editingScoreConfig.id ? { ...c, ...newScoreConfig } : c
         ));
+        // 編集時はモーダルを閉じずに編集状態を解除（連続編集可能に）
+        setEditingScoreConfig(null);
+        resetScoreConfigForm();
       } else {
         // 新規作成
         const maxOrder = Math.max(0, ...scoreConfigs.map(c => c.display_order || 0));
@@ -5059,11 +5063,9 @@ export default function ScheduleViewPage() {
         if (data) {
           setScoreConfigs(prev => [...prev, data]);
         }
+        // 新規作成時もモーダルを閉じない（連続追加可能に）
+        resetScoreConfigForm();
       }
-
-      setShowScoreConfigModal(false);
-      setEditingScoreConfig(null);
-      resetScoreConfigForm();
     } catch (err) {
       console.error("Error saving score config:", err);
       alert("保存に失敗しました");
@@ -5098,6 +5100,32 @@ export default function ScheduleViewPage() {
       ));
     } catch (err) {
       console.error("Error toggling score config:", err);
+    }
+  };
+
+  // 得点設定の並べ替え
+  const handleReorderScoreConfig = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...scoreConfigs];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    setScoreConfigs(reordered);
+
+    try {
+      const updates = reordered.map((config, index) => ({
+        id: config.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase.from("score_config")
+          .update({ display_order: update.display_order })
+          .eq("id", update.id);
+      }
+    } catch (error) {
+      console.error("得点設定の並べ替えに失敗:", error);
     }
   };
 
@@ -7592,14 +7620,41 @@ export default function ScheduleViewPage() {
                 {/* 既存の得点設定一覧 */}
                 {!editingScoreConfig && scoreConfigs.length > 0 && (
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
+                    <h3 className="text-sm font-medium text-gray-700">登録済み設定（ドラッグで並べ替え）</h3>
                     <div className="space-y-1">
-                      {scoreConfigs.map(config => (
+                      {scoreConfigs.map((config, index) => (
                         <div
                           key={config.id}
-                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                          draggable
+                          onDragStart={() => setDraggingScoreConfigIndex(index)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.add('bg-yellow-100', 'border-yellow-400');
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.classList.remove('bg-yellow-100', 'border-yellow-400');
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove('bg-yellow-100', 'border-yellow-400');
+                            if (draggingScoreConfigIndex !== null) {
+                              handleReorderScoreConfig(draggingScoreConfigIndex, index);
+                              setDraggingScoreConfigIndex(null);
+                            }
+                          }}
+                          onDragEnd={() => setDraggingScoreConfigIndex(null)}
+                          className={`flex items-center justify-between p-2 bg-gray-50 rounded-lg border-2 border-gray-200 cursor-grab active:cursor-grabbing transition-colors ${
+                            draggingScoreConfigIndex === index ? 'opacity-50' : ''
+                          }`}
                         >
                           <div className="flex items-center gap-3">
+                            <div className="text-gray-400 cursor-grab">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                              </svg>
+                            </div>
                             <input
                               type="checkbox"
                               checked={config.is_active || false}
