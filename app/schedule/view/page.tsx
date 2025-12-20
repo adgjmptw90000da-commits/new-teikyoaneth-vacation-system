@@ -238,6 +238,12 @@ export default function ScheduleViewPage() {
         if (member.isSecondment) return false;
         if (isDateInLeaveOfAbsence(day.date, member.leaveOfAbsence)) return false;
 
+        // チームフィルタ（空の場合は全員対象）
+        const targetTeams = (config.target_teams as ('A' | 'B')[]) || [];
+        if (targetTeams.length > 0 && !targetTeams.includes(member.team)) {
+          return false;
+        }
+
         // 対象のシフト/予定があるかチェック
         const schedules = member.schedules[day.date] || [];
         const shifts = member.shifts[day.date] || [];
