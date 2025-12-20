@@ -7169,7 +7169,7 @@ export default function ScheduleViewPage() {
                   <div>
                     <label className="block text-xs font-medium text-gray-900 mb-1">フィルタ: 当直レベル</label>
                     <div className="flex gap-4">
-                      {['なし', '上', '中', '下'].map(level => (
+                      {['なし', '上', '上中', '中', '中下', '下'].map(level => (
                         <label key={level} className="flex items-center gap-1">
                           <input
                             type="checkbox"
@@ -8383,7 +8383,7 @@ export default function ScheduleViewPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
                         <div className="flex gap-2">
-                          {['上', '中', '下'].map(level => (
+                          {['上', '上中', '中', '中下', '下'].map(level => (
                             <button
                               key={level}
                               onClick={() => {
@@ -9103,7 +9103,7 @@ export default function ScheduleViewPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
                         <div className="flex gap-2">
-                          {['上', '中', '下', 'なし'].map(level => (
+                          {['上', '上中', '中', '中下', '下', 'なし'].map(level => (
                             <label key={level} className="flex items-center gap-1">
                               <input
                                 type="checkbox"
@@ -10451,7 +10451,7 @@ export default function ScheduleViewPage() {
                       <div>
                         <label className="block text-xs font-medium text-gray-900 mb-1">当直レベル</label>
                         <div className="flex gap-2">
-                          {['上', '中', '下', 'なし'].map(level => (
+                          {['上', '上中', '中', '中下', '下', 'なし'].map(level => (
                             <label key={level} className="flex items-center gap-1">
                               <input
                                 type="checkbox"
@@ -11207,7 +11207,9 @@ export default function ScheduleViewPage() {
                                       >
                                         <option value="なし">なし</option>
                                         <option value="上">上</option>
+                                        <option value="上中">上中</option>
                                         <option value="中">中</option>
+                                        <option value="中下">中下</option>
                                         <option value="下">下</option>
                                       </select>
                                     </td>

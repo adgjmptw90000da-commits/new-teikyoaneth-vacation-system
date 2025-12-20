@@ -43,7 +43,7 @@ export interface Database {
           password: string
           is_admin: boolean
           team: 'A' | 'B'
-          night_shift_level: 'なし' | '上' | '中' | '下'
+          night_shift_level: 'なし' | '上' | '上中' | '中' | '中下' | '下'
           can_cardiac: boolean
           can_obstetric: boolean
           can_icu: boolean
@@ -59,7 +59,7 @@ export interface Database {
           password: string
           is_admin?: boolean
           team?: 'A' | 'B'
-          night_shift_level?: '上' | '中' | '下'
+          night_shift_level?: 'なし' | '上' | '上中' | '中' | '中下' | '下'
           can_cardiac?: boolean
           can_obstetric?: boolean
           can_icu?: boolean
@@ -75,7 +75,7 @@ export interface Database {
           password?: string
           is_admin?: boolean
           team?: 'A' | 'B'
-          night_shift_level?: '上' | '中' | '下'
+          night_shift_level?: 'なし' | '上' | '上中' | '中' | '中下' | '下'
           can_cardiac?: boolean
           can_obstetric?: boolean
           can_icu?: boolean
