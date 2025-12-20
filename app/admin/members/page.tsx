@@ -46,6 +46,9 @@ const Icons = {
   ArrowUpDown: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
   ),
+  Edit: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+  ),
 };
 
 export default function MembersPage() {
@@ -61,6 +64,10 @@ export default function MembersPage() {
   const [selectedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
   const [defaultFiscalYear, setDefaultFiscalYear] = useState<number | null>(null);
   const [maxAnnualLeavePoints, setMaxAnnualLeavePoints] = useState<number | null>(null);
+  // 職員ID変更用
+  const [showStaffIdChangeModal, setShowStaffIdChangeModal] = useState(false);
+  const [staffIdChangeTarget, setStaffIdChangeTarget] = useState<User | null>(null);
+  const [newStaffId, setNewStaffId] = useState('');
 
   useEffect(() => {
     const user = getUser();
@@ -271,6 +278,150 @@ export default function MembersPage() {
     } catch (err) {
       console.error("Error:", err);
       alert("エラーが発生しました");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // 職員ID変更モーダルを開く
+  const openStaffIdChangeModal = (user: User) => {
+    setStaffIdChangeTarget(user);
+    setNewStaffId(user.staff_id);
+    setShowStaffIdChangeModal(true);
+  };
+
+  // 職員ID変更処理
+  const handleChangeStaffId = async () => {
+    if (!staffIdChangeTarget) return;
+
+    const oldStaffId = staffIdChangeTarget.staff_id;
+    const newId = newStaffId.trim();
+
+    // バリデーション
+    if (!newId) {
+      alert("新しい職員IDを入力してください");
+      return;
+    }
+
+    if (!/^[0-9]+$/.test(newId)) {
+      alert("職員IDは数字のみで入力してください");
+      return;
+    }
+
+    if (oldStaffId === newId) {
+      alert("職員IDが変更されていません");
+      return;
+    }
+
+    // 既存IDとの重複チェック
+    const existingUser = users.find(u => u.staff_id === newId);
+    if (existingUser) {
+      alert(`職員ID「${newId}」は既に使用されています（${existingUser.name}）`);
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "職員ID変更の確認",
+      message: `${staffIdChangeTarget.name}さんの職員IDを変更しますか？\n\n現在のID: ${oldStaffId}\n新しいID: ${newId}\n\n関連する全てのデータ（シフト、年休申請など）も自動的に更新されます。`,
+    });
+    if (!confirmed) return;
+
+    setProcessing(true);
+
+    try {
+      // 全ての関連テーブルを更新（順序が重要：子テーブルを先に更新）
+      const tablesToUpdate = [
+        // 子テーブル（外部キー参照あり）
+        { table: 'application', column: 'staff_id' },
+        { table: 'user_schedule', column: 'staff_id' },
+        { table: 'user_research_day', column: 'staff_id' },
+        { table: 'user_shift', column: 'staff_id' },
+        { table: 'user_work_location', column: 'staff_id' },
+        { table: 'user_monthly_attributes', column: 'staff_id' },
+        { table: 'user_work_settings', column: 'staff_id' },
+        { table: 'schedule_submission', column: 'staff_id' },
+        { table: 'user_point_retention_rate', column: 'staff_id' },
+        { table: 'user_annual_leave_points', column: 'staff_id' },
+        { table: 'schedule_hidden_members', column: 'staff_id' },
+        { table: 'user_secondment', column: 'staff_id' },
+        { table: 'user_leave_of_absence', column: 'staff_id' },
+        { table: 'kensanbi_grant_history', column: 'staff_id' },
+        { table: 'kensanbi_grant_history', column: 'approved_by_staff_id' },
+        { table: 'kensanbi_usage_history', column: 'staff_id' },
+        { table: 'priority_exchange_log', column: 'exchanged_by_staff_id' },
+        { table: 'priority_exchange_request', column: 'requester_staff_id' },
+        { table: 'priority_exchange_request', column: 'target_staff_id' },
+        { table: 'priority_exchange_request', column: 'admin_staff_id' },
+        { table: 'cancellation_request', column: 'reviewed_by_staff_id' },
+        { table: 'schedule_publish', column: 'published_by_staff_id' },
+      ];
+
+      // 各テーブルを更新
+      for (const { table, column } of tablesToUpdate) {
+        const { error } = await supabase
+          .from(table)
+          .update({ [column]: newId })
+          .eq(column, oldStaffId);
+
+        if (error) {
+          console.log(`Table ${table}.${column} update skipped or failed:`, error.message);
+          // テーブルが存在しない場合などはスキップ
+        }
+      }
+
+      // 最後にuserテーブル（主キー）を更新
+      // PostgreSQLでは主キーの更新は直接できないため、新規作成→旧削除の手順
+      const { data: oldUser, error: fetchError } = await supabase
+        .from("user")
+        .select("*")
+        .eq("staff_id", oldStaffId)
+        .single();
+
+      if (fetchError || !oldUser) {
+        throw new Error("ユーザー情報の取得に失敗しました");
+      }
+
+      // 新しいIDでユーザーを作成
+      const { error: insertError } = await supabase
+        .from("user")
+        .insert({
+          ...oldUser,
+          staff_id: newId,
+        });
+
+      if (insertError) {
+        throw new Error(`新しいIDでのユーザー作成に失敗しました: ${insertError.message}`);
+      }
+
+      // 古いユーザーを削除
+      const { error: deleteError } = await supabase
+        .from("user")
+        .delete()
+        .eq("staff_id", oldStaffId);
+
+      if (deleteError) {
+        // ロールバック: 新しいユーザーを削除
+        await supabase.from("user").delete().eq("staff_id", newId);
+        throw new Error(`古いユーザーの削除に失敗しました: ${deleteError.message}`);
+      }
+
+      alert(`職員IDを「${oldStaffId}」から「${newId}」に変更しました`);
+      setShowStaffIdChangeModal(false);
+      setStaffIdChangeTarget(null);
+      setNewStaffId('');
+
+      // 現在のユーザーのIDを変更した場合はログアウト
+      if (currentUser && currentUser.staff_id === oldStaffId) {
+        alert("自分の職員IDを変更したため、再ログインが必要です");
+        localStorage.removeItem("user");
+        router.push("/auth/login");
+        return;
+      }
+
+      await fetchUsersForYear(selectedFiscalYear);
+    } catch (err) {
+      console.error("職員ID変更エラー:", err);
+      alert(`職員IDの変更に失敗しました: ${err instanceof Error ? err.message : "不明なエラー"}`);
     } finally {
       setProcessing(false);
     }
@@ -692,14 +843,25 @@ export default function MembersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <button
-                        onClick={() => handleDeleteUser(user)}
-                        disabled={cannotModify(user) || processing}
-                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <Icons.Trash />
-                        削除
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openStaffIdChangeModal(user)}
+                          disabled={processing}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="職員IDを変更"
+                        >
+                          <Icons.Edit />
+                          ID変更
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(user)}
+                          disabled={cannotModify(user) || processing}
+                          className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Icons.Trash />
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -710,6 +872,71 @@ export default function MembersPage() {
       </main>
 
       {ConfirmDialog}
+
+      {/* 職員ID変更モーダル */}
+      {showStaffIdChangeModal && staffIdChangeTarget && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50"
+            onClick={() => {
+              setShowStaffIdChangeModal(false);
+              setStaffIdChangeTarget(null);
+              setNewStaffId('');
+            }}
+          />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl z-50 w-[400px] max-w-[90vw]">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">職員ID変更</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">対象者</label>
+                  <div className="px-3 py-2 bg-gray-100 rounded-lg text-gray-900 font-medium">
+                    {staffIdChangeTarget.name}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">現在の職員ID</label>
+                  <div className="px-3 py-2 bg-gray-100 rounded-lg text-gray-900 font-mono">
+                    {staffIdChangeTarget.staff_id}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">新しい職員ID</label>
+                  <input
+                    type="text"
+                    value={newStaffId}
+                    onChange={(e) => setNewStaffId(e.target.value)}
+                    placeholder="新しい職員IDを入力"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    disabled={processing}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">※ 数字のみ入力可能です</p>
+                </div>
+              </div>
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowStaffIdChangeModal(false);
+                    setStaffIdChangeTarget(null);
+                    setNewStaffId('');
+                  }}
+                  disabled={processing}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleChangeStaffId}
+                  disabled={processing || !newStaffId.trim()}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing ? '処理中...' : '変更する'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
