@@ -1118,6 +1118,22 @@ export default function ScheduleViewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
+  // ページが再表示されたら勤務場所マスターを再フェッチ
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchWorkLocationMaster();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // メニュー外クリックで閉じる
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1206,6 +1222,17 @@ export default function ScheduleViewPage() {
       container.scrollLeft += scrollAmount;
     }
   }, [focusedCell, scoreConfigs, countConfigs]);
+
+  // 勤務場所マスターのみを再フェッチする軽量な関数
+  const fetchWorkLocationMaster = async () => {
+    const { data } = await supabase
+      .from("work_location")
+      .select("*")
+      .order("display_order");
+    if (data) {
+      setWorkLocationMaster(data);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
