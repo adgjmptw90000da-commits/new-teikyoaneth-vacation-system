@@ -4533,7 +4533,18 @@ export default function ScheduleViewPage() {
           }
 
           // 7. user_work_location（日単位のフォールバック）
-          return workLocationId || null;
+          if (workLocationId) return workLocationId;
+
+          // 8. デフォルト勤務場所（祝日/平日）
+          if (day.isHoliday || day.dayOfWeek === 0) {
+            const defaultHoliday = workLocationMaster.find(wl => wl.is_default_holiday);
+            if (defaultHoliday) return defaultHoliday.id;
+          } else {
+            const defaultWeekday = workLocationMaster.find(wl => wl.is_default_weekday);
+            if (defaultWeekday) return defaultWeekday.id;
+          }
+
+          return null;
         };
 
         // 選択された時間帯ごとにチェック
