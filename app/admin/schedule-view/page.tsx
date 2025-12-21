@@ -1118,11 +1118,11 @@ export default function ScheduleViewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
-  // ページが再表示されたら勤務場所マスターを再フェッチ
+  // ページが再表示されたらマスターデータを再フェッチ
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        fetchWorkLocationMaster();
+        fetchMasterData();
       }
     };
 
@@ -1223,15 +1223,21 @@ export default function ScheduleViewPage() {
     }
   }, [focusedCell, scoreConfigs, countConfigs]);
 
-  // 勤務場所マスターのみを再フェッチする軽量な関数
-  const fetchWorkLocationMaster = async () => {
-    const { data } = await supabase
-      .from("work_location")
-      .select("*")
-      .order("display_order");
-    if (data) {
-      setWorkLocationMaster(data);
-    }
+  // マスターデータを再フェッチする関数（勤務場所・シフトタイプ・予定タイプ）
+  const fetchMasterData = async () => {
+    const [
+      { data: workLocationsData },
+      { data: shiftTypesData },
+      { data: scheduleTypesData },
+    ] = await Promise.all([
+      supabase.from("work_location").select("*").order("display_order"),
+      supabase.from("shift_types").select("*").order("display_order"),
+      supabase.from("schedule_types").select("*").order("display_order"),
+    ]);
+
+    if (workLocationsData) setWorkLocationMaster(workLocationsData);
+    if (shiftTypesData) setShiftTypes(shiftTypesData);
+    if (scheduleTypesData) setScheduleTypes(scheduleTypesData);
   };
 
   const fetchData = async () => {
