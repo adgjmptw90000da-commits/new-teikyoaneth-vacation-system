@@ -4453,19 +4453,11 @@ export default function ScheduleViewPage() {
 
       // 勤務場所チェック（時間帯を考慮）
       if (!matches && config.target_work_location_ids && config.target_work_location_ids.length > 0) {
-        // 勤務場所を時間帯ごとに取得
+        // 勤務場所を時間帯ごとに取得（除外フィルタと同じロジック）
         const getWorkLocationForPeriod = (periodAm: boolean, periodPm: boolean, periodNight: boolean): number | null => {
-          // 1. シフトの勤務場所（時間帯一致時）
-          for (const shift of shifts) {
-            const matchesPeriod =
-              (periodAm && shift.shift_type.position_am) ||
-              (periodPm && shift.shift_type.position_pm) ||
-              (periodNight && shift.shift_type.position_night);
-            if (matchesPeriod && shift.work_location_id) {
-              return shift.work_location_id;
-            }
-          }
-          // 2. 予定の勤務場所（時間帯一致時）
+          const period = periodAm ? 'am' : periodPm ? 'pm' : 'night';
+
+          // 1. 予定の直接設定（時間帯一致時）
           for (const schedule of schedules) {
             const matchesPeriod =
               (periodAm && schedule.schedule_type.position_am) ||
@@ -4475,7 +4467,30 @@ export default function ScheduleViewPage() {
               return schedule.work_location_id;
             }
           }
-          // 3. 予定タイプのデフォルト勤務場所
+
+          // 2. シフトの直接設定（時間帯一致時）
+          for (const shift of shifts) {
+            const matchesPeriod =
+              (periodAm && shift.shift_type.position_am) ||
+              (periodPm && shift.shift_type.position_pm) ||
+              (periodNight && shift.shift_type.position_night);
+            if (matchesPeriod && shift.work_location_id) {
+              return shift.work_location_id;
+            }
+          }
+
+          // 3. シフトタイプのデフォルト勤務場所
+          for (const shift of shifts) {
+            const matchesPeriod =
+              (periodAm && shift.shift_type.position_am) ||
+              (periodPm && shift.shift_type.position_pm) ||
+              (periodNight && shift.shift_type.position_night);
+            if (matchesPeriod && shift.shift_type.default_work_location_id) {
+              return shift.shift_type.default_work_location_id;
+            }
+          }
+
+          // 4. 予定タイプのデフォルト勤務場所
           for (const schedule of schedules) {
             const matchesPeriod =
               (periodAm && schedule.schedule_type.position_am) ||
@@ -4485,7 +4500,39 @@ export default function ScheduleViewPage() {
               return schedule.schedule_type.default_work_location_id;
             }
           }
-          // 4. user_work_location（日単位のフォールバック）
+
+          // 5. 年休/研鑽日の勤務場所（displaySettingsから）
+          if (vacation && period !== 'night') {
+            const matchesVacationPeriod = (
+              vacation.period === 'full_day' ||
+              (period === 'am' && vacation.period === 'am') ||
+              (period === 'pm' && vacation.period === 'pm')
+            );
+            if (matchesVacationPeriod) {
+              const onePersonnelStatus = vacation.one_personnel_status || 'not_applied';
+              let settingsKey: string;
+              if (onePersonnelStatus === 'kensanbi') {
+                settingsKey = 'kensanbi_used';
+              } else {
+                settingsKey = 'vacation';
+              }
+              const settings = displaySettings[settingsKey as keyof DisplaySettings];
+              if (settings && typeof settings === 'object' && 'default_work_location_id' in settings) {
+                const locId = (settings as { default_work_location_id?: number }).default_work_location_id;
+                if (locId) return locId;
+              }
+            }
+          }
+
+          // 6. 研究日の勤務場所（displaySettingsから）
+          if (isResearchDay && period !== 'night') {
+            const researchSettings = displaySettings.research_day;
+            if (researchSettings?.default_work_location_id) {
+              return researchSettings.default_work_location_id;
+            }
+          }
+
+          // 7. user_work_location（日単位のフォールバック）
           return workLocationId || null;
         };
 
