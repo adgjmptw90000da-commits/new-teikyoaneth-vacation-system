@@ -994,7 +994,7 @@ export default function ScheduleViewPage() {
       presetId: number;
       presetName: string;
       usedNightShiftTypeName: string;
-      assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+      assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
       unassignedDates: string[];
       summary: Map<string, number>;
     }>;
@@ -2701,7 +2701,7 @@ export default function ScheduleViewPage() {
     setIsAutoAssigning(true);
     try {
       const results: typeof batchDutyResult['results'] = [];
-      let allAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
+      let allAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[] = [];
 
       for (let stepIndex = 0; stepIndex < batchDutySteps.length; stepIndex++) {
         const step = batchDutySteps[stepIndex];
@@ -2766,16 +2766,16 @@ export default function ScheduleViewPage() {
               }
             });
           }
-          // 前のステップで割り振った分を加算
+          // 前のステップで割り振った分を加算（同じ当直タイプのみ）
           const prevAssignCount = allAssignments.filter(a =>
-            a.staffId === m.staff_id && a.type === 'night_shift'
+            a.staffId === m.staff_id && a.type === 'night_shift' && a.nightShiftTypeId === nightShiftTypeId
           ).length;
           existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
         });
 
         // 複数回試行
         const trialResults: Array<{
-          assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+          assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
           unassignedDates: string[];
           summary: Map<string, number>;
         }> = [];
@@ -2844,9 +2844,9 @@ export default function ScheduleViewPage() {
     dayAfterShiftTypeId: number | null,
     maxAssignmentsPerMember: number | null,
     maxAssignmentsMode: 'execution' | 'monthly',
-    previousAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
+    previousAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[]
   ): {
-    assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+    assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
     summary: Map<string, number>;
     unassignedDates: string[];
   } => {
@@ -2868,7 +2868,7 @@ export default function ScheduleViewPage() {
       }
     };
 
-    const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
+    const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[] = [];
     const unassignedDates: string[] = [];
 
     // その日に既に当直が入っているかチェック（前のステップの結果も含む）
@@ -2877,7 +2877,8 @@ export default function ScheduleViewPage() {
         const shifts = member.shifts?.[date] || [];
         if (shifts.some(s => s.shift_type_id === nightShiftTypeId)) return true;
       }
-      if (previousAssignments.some(a => a.date === date && a.type === 'night_shift')) return true;
+      // 同じ当直タイプの場合のみスキップ
+      if (previousAssignments.some(a => a.date === date && a.type === 'night_shift' && a.nightShiftTypeId === nightShiftTypeId)) return true;
       return assignments.some(a => a.date === date && a.type === 'night_shift');
     };
 
@@ -2923,13 +2924,13 @@ export default function ScheduleViewPage() {
 
       if (availableMembers.length > 0) {
         const selected = selectLeastAssigned(availableMembers);
-        if (selected) {
-          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
+        if (selected && nightShiftTypeId) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift', nightShiftTypeId });
           if (dayAfterShiftTypeId) {
             const nextDate = new Date(day.date);
             nextDate.setDate(nextDate.getDate() + 1);
             const nextDateStr = nextDate.toISOString().split('T')[0];
-            assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
+            assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after', nightShiftTypeId });
           }
           assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
         }
