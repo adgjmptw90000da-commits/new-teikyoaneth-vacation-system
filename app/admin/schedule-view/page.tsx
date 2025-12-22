@@ -369,6 +369,7 @@ export default function ScheduleViewPage() {
   const [draggingShiftPresetIndex, setDraggingShiftPresetIndex] = useState<number | null>(null);
   const [draggingDutyPresetIndex, setDraggingDutyPresetIndex] = useState<number | null>(null);
   const [draggingScoreConfigIndex, setDraggingScoreConfigIndex] = useState<number | null>(null);
+  const [draggingCountConfigIndex, setDraggingCountConfigIndex] = useState<number | null>(null);
 
   // 全体/A/B表切り替え
   const [selectedTeam, setSelectedTeam] = useState<'all' | 'A' | 'B'>('all');
@@ -5220,6 +5221,32 @@ export default function ScheduleViewPage() {
     }
   };
 
+  // カウント設定の並べ替え
+  const handleReorderCountConfig = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
+    const reordered = [...countConfigs];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    setCountConfigs(reordered);
+
+    try {
+      const updates = reordered.map((config, index) => ({
+        id: config.id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        await supabase.from("count_config")
+          .update({ display_order: update.display_order })
+          .eq("id", update.id);
+      }
+    } catch (error) {
+      console.error("カウント設定の並べ替えに失敗:", error);
+    }
+  };
+
   // 得点設定フォームリセット
   const resetScoreConfigForm = () => {
     setNewScoreConfig({
@@ -7128,12 +7155,39 @@ export default function ScheduleViewPage() {
                   <div className="space-y-2">
                     <h3 className="text-sm font-medium text-gray-700">登録済み設定</h3>
                     <div className="space-y-1">
-                      {countConfigs.map(config => (
+                      {countConfigs.map((config, index) => (
                         <div
                           key={config.id}
-                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                          draggable
+                          onDragStart={() => setDraggingCountConfigIndex(index)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.add('bg-purple-100', 'border-purple-400');
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.classList.remove('bg-purple-100', 'border-purple-400');
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove('bg-purple-100', 'border-purple-400');
+                            if (draggingCountConfigIndex !== null) {
+                              handleReorderCountConfig(draggingCountConfigIndex, index);
+                              setDraggingCountConfigIndex(null);
+                            }
+                          }}
+                          onDragEnd={() => setDraggingCountConfigIndex(null)}
+                          className={`flex items-center justify-between p-2 bg-gray-50 rounded-lg border-2 border-gray-200 cursor-grab active:cursor-grabbing transition-colors ${
+                            draggingCountConfigIndex === index ? 'opacity-50' : ''
+                          }`}
                         >
                           <div className="flex items-center gap-3">
+                            <div className="text-gray-400 cursor-grab">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                              </svg>
+                            </div>
                             <input
                               type="checkbox"
                               checked={config.is_active || false}
