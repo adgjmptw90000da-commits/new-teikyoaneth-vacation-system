@@ -964,6 +964,62 @@ export default function ScheduleViewPage() {
   } | null>(null);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
 
+  // バッチ実行（連続割り振り）用のステップ型定義
+  type BatchAssignStep = {
+    id: string; // ユニークID
+    presetId: number;
+    presetName: string;
+    // 上書き設定（nullの場合はプリセットの値を使用）
+    overrideNightShiftTypeId: number | null;        // 当直シフトタイプ
+    overrideDayAfterShiftTypeId: number | null;     // 明けシフトタイプ
+    overrideMaxAssignments: number | null;
+    overrideMaxAssignmentsMode: 'execution' | 'monthly' | null;
+  };
+  type BatchShiftStep = {
+    id: string;
+    presetId: number;
+    presetName: string;
+    overrideShiftTypeId: number | null;
+    overrideMaxAssignments: number | null;
+    overrideMaxAssignmentsMode: 'execution' | 'monthly' | null;
+  };
+
+  // 当直バッチ実行
+  const [batchDutyMode, setBatchDutyMode] = useState(false);
+  const [batchDutySteps, setBatchDutySteps] = useState<BatchAssignStep[]>([]);
+  const [batchDutyTrialCount, setBatchDutyTrialCount] = useState(10);
+  const [batchDutyResult, setBatchDutyResult] = useState<{
+    results: Array<{
+      stepIndex: number;
+      presetId: number;
+      presetName: string;
+      usedNightShiftTypeName: string;
+      assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+      unassignedDates: string[];
+      summary: Map<string, number>;
+    }>;
+    totalAssignments: number;
+    totalUnassigned: number;
+  } | null>(null);
+
+  // 一般シフトバッチ実行
+  const [batchShiftMode, setBatchShiftMode] = useState(false);
+  const [batchShiftSteps, setBatchShiftSteps] = useState<BatchShiftStep[]>([]);
+  const [batchShiftTrialCount, setBatchShiftTrialCount] = useState(10);
+  const [batchShiftResult, setBatchShiftResult] = useState<{
+    results: Array<{
+      stepIndex: number;
+      presetId: number;
+      presetName: string;
+      usedShiftTypeName: string;
+      assignments: { date: string; staffId: string; staffName: string }[];
+      unassignedDates: string[];
+      summary: Map<string, number>;
+    }>;
+    totalAssignments: number;
+    totalUnassigned: number;
+  } | null>(null);
+
   // 一般シフト自動割り振り用の設定
   const [generalShiftConfig, setGeneralShiftConfig] = useState<{
     shiftTypeId: number | null;
@@ -991,6 +1047,8 @@ export default function ScheduleViewPage() {
     // 割り振り回数制限
     maxAssignmentsPerMember: number | null; // nullは制限なし
     maxAssignmentsMode: 'execution' | 'monthly'; // この実行での回数 or 月間総回数
+    // 複数試行設定
+    trialCount: number; // 試行回数（デフォルト10）
   }>(() => {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -1025,11 +1083,20 @@ export default function ScheduleViewPage() {
       priorityMode: 'count',
       maxAssignmentsPerMember: null,
       maxAssignmentsMode: 'execution',
+      trialCount: 10,
     };
   });
   const [generalShiftPreview, setGeneralShiftPreview] = useState<{
     assignments: { date: string; staffId: string; staffName: string }[];
     summary: Map<string, number>;
+    unassignedDates: string[];
+    trialResults?: Array<{
+      trialIndex: number;
+      assignments: { date: string; staffId: string; staffName: string }[];
+      unassignedDates: string[];
+      summary: Map<string, number>;
+    }>;
+    selectedTrialIndex?: number;
   } | null>(null);
 
   // シフト一括削除用の設定
@@ -2621,6 +2688,343 @@ export default function ScheduleViewPage() {
   };
 
   // ========================================
+  // 当直バッチ実行（連続割り振り）
+  // ========================================
+
+  // 当直バッチ: プレビュー実行
+  const handleBatchDutyPreview = () => {
+    if (batchDutySteps.length === 0) {
+      alert('実行するステップを追加してください');
+      return;
+    }
+
+    setIsAutoAssigning(true);
+    try {
+      const results: typeof batchDutyResult['results'] = [];
+      let allAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
+
+      for (let stepIndex = 0; stepIndex < batchDutySteps.length; stepIndex++) {
+        const step = batchDutySteps[stepIndex];
+        const preset = dutyAssignPresets.find(p => p.id === step.presetId);
+        if (!preset) continue;
+
+        // 上書き設定を適用したコンフィグを作成
+        const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset.night_shift_type_id;
+        const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset.day_after_shift_type_id;
+        const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
+        const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
+
+        // 対象メンバーを取得
+        let targetMembers: MemberData[] = [];
+        if (preset.selection_mode === 'individual') {
+          targetMembers = members.filter(m => (preset.selected_member_ids || []).includes(m.staff_id));
+        } else {
+          targetMembers = members.filter(m => {
+            if ((preset.filter_teams || []).length > 0 && !(preset.filter_teams || []).includes(m.team as 'A' | 'B')) return false;
+            if ((preset.filter_night_shift_levels || []).length > 0 && !(preset.filter_night_shift_levels || []).includes(m.nightShiftLevel || '')) return false;
+            if (preset.filter_can_cardiac !== null && m.can_cardiac !== preset.filter_can_cardiac) return false;
+            if (preset.filter_can_obstetric !== null && m.can_obstetric !== preset.filter_can_obstetric) return false;
+            if (preset.filter_can_icu !== null && m.can_icu !== preset.filter_can_icu) return false;
+            return true;
+          });
+        }
+
+        if (targetMembers.length === 0) continue;
+
+        // 対象日を取得
+        const startD = preset.start_date || autoAssignConfig.startDate;
+        const endD = preset.end_date || autoAssignConfig.endDate;
+        let targetDates = generateDateRange(startD, endD);
+
+        // 日付フィルタ適用
+        if (preset.date_selection_mode === 'weekday') {
+          targetDates = targetDates.filter(day => {
+            if (preset.exclude_holidays && day.isHoliday) return false;
+            if (preset.exclude_pre_holidays && isPreHoliday(day.date)) return false;
+            const weekdayMatch = (preset.target_weekdays || []).includes(day.dayOfWeek);
+            const holidayMatch = preset.include_holidays && day.isHoliday;
+            const preHolidayMatch = preset.include_pre_holidays && isPreHoliday(day.date);
+            if ((preset.target_weekdays || []).length > 0 || preset.include_holidays || preset.include_pre_holidays) {
+              return weekdayMatch || holidayMatch || preHolidayMatch;
+            }
+            return true;
+          });
+        }
+
+        if (targetDates.length === 0) continue;
+
+        // 既存カウント計算（前のステップの結果を含める）
+        const existingCountsInit = new Map<string, number>();
+        targetMembers.forEach(m => {
+          let existingCount = 0;
+          if (m.shifts) {
+            Object.entries(m.shifts).forEach(([date, shifts]) => {
+              const inPeriod = (!startD || date >= startD) && (!endD || date <= endD);
+              if (inPeriod && nightShiftTypeId) {
+                const hasNightShift = shifts.some(s => s.shift_type_id === nightShiftTypeId);
+                if (hasNightShift) existingCount++;
+              }
+            });
+          }
+          // 前のステップで割り振った分を加算
+          const prevAssignCount = allAssignments.filter(a =>
+            a.staffId === m.staff_id && a.type === 'night_shift'
+          ).length;
+          existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
+        });
+
+        // 複数回試行
+        const trialResults: Array<{
+          assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+          unassignedDates: string[];
+          summary: Map<string, number>;
+        }> = [];
+
+        for (let i = 0; i < batchDutyTrialCount; i++) {
+          // 前のステップの割り振りを考慮したスケジュールで試行
+          const result = runSingleAutoAssignTrialWithConfig(
+            targetMembers,
+            targetDates,
+            existingCountsInit,
+            nightShiftTypeId,
+            dayAfterShiftTypeId,
+            maxAssignmentsPerMember,
+            maxAssignmentsMode,
+            allAssignments
+          );
+          trialResults.push(result);
+        }
+
+        // 最良結果を選択
+        let bestIndex = 0;
+        let minUnassigned = trialResults[0].unassignedDates.length;
+        for (let i = 1; i < trialResults.length; i++) {
+          if (trialResults[i].unassignedDates.length < minUnassigned) {
+            minUnassigned = trialResults[i].unassignedDates.length;
+            bestIndex = i;
+          }
+        }
+        const bestResult = trialResults[bestIndex];
+
+        const nightShiftTypeName = shiftTypes.find(t => t.id === nightShiftTypeId)?.name || '不明';
+
+        results.push({
+          stepIndex,
+          presetId: step.presetId,
+          presetName: step.presetName,
+          usedNightShiftTypeName: nightShiftTypeName,
+          assignments: bestResult.assignments,
+          unassignedDates: bestResult.unassignedDates,
+          summary: bestResult.summary,
+        });
+
+        // この結果を次のステップに引き継ぐ
+        allAssignments = [...allAssignments, ...bestResult.assignments];
+      }
+
+      setBatchDutyResult({
+        results,
+        totalAssignments: allAssignments.filter(a => a.type === 'night_shift').length,
+        totalUnassigned: results.reduce((sum, r) => sum + r.unassignedDates.length, 0),
+      });
+    } catch (error) {
+      console.error('Batch duty preview error:', error);
+      alert('バッチプレビュー生成中にエラーが発生しました');
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  // 設定を上書きして単一試行を実行するヘルパー
+  const runSingleAutoAssignTrialWithConfig = (
+    targetMembers: MemberData[],
+    targetDates: DayData[],
+    existingCountsInit: Map<string, number>,
+    nightShiftTypeId: number | null,
+    dayAfterShiftTypeId: number | null,
+    maxAssignmentsPerMember: number | null,
+    maxAssignmentsMode: 'execution' | 'monthly',
+    previousAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
+  ): {
+    assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+    summary: Map<string, number>;
+    unassignedDates: string[];
+  } => {
+    const assignmentCount = new Map<string, number>();
+    const existingCounts = new Map<string, number>();
+    existingCountsInit.forEach((count, staffId) => {
+      assignmentCount.set(staffId, count);
+      existingCounts.set(staffId, count);
+    });
+
+    const isWithinMaxAssignments = (memberId: string): boolean => {
+      if (maxAssignmentsPerMember === null) return true;
+      const currentCount = assignmentCount.get(memberId) || 0;
+      const existingCount = existingCounts.get(memberId) || 0;
+      if (maxAssignmentsMode === 'execution') {
+        return (currentCount - existingCount) < maxAssignmentsPerMember;
+      } else {
+        return currentCount < maxAssignmentsPerMember;
+      }
+    };
+
+    const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
+    const unassignedDates: string[] = [];
+
+    // その日に既に当直が入っているかチェック（前のステップの結果も含む）
+    const isDayAlreadyAssigned = (date: string): boolean => {
+      for (const member of members) {
+        const shifts = member.shifts?.[date] || [];
+        if (shifts.some(s => s.shift_type_id === nightShiftTypeId)) return true;
+      }
+      if (previousAssignments.some(a => a.date === date && a.type === 'night_shift')) return true;
+      return assignments.some(a => a.date === date && a.type === 'night_shift');
+    };
+
+    // メンバーが当直可能かチェック（前のステップの結果も含む）
+    const canAssignMember = (date: string, member: MemberData, day: DayData): boolean => {
+      // 基本チェック
+      if (!canAssignNightShift(date, member, [...previousAssignments, ...assignments], day)) return false;
+      return true;
+    };
+
+    const sortByAvailableCount = (dates: DayData[]) => {
+      return [...dates].sort((a, b) => {
+        const availableA = targetMembers.filter(m =>
+          canAssignMember(a.date, m, a) && isWithinMaxAssignments(m.staff_id)
+        ).length;
+        const availableB = targetMembers.filter(m =>
+          canAssignMember(b.date, m, b) && isWithinMaxAssignments(m.staff_id)
+        ).length;
+        return availableA - availableB;
+      });
+    };
+
+    const selectLeastAssigned = (availableMembers: MemberData[]): MemberData | null => {
+      if (availableMembers.length === 0) return null;
+      const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+      const leastAssignedMembers = availableMembers.filter(m =>
+        (assignmentCount.get(m.staff_id) || 0) === minCount
+      );
+      return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+    };
+
+    let remainingDates = [...targetDates];
+    while (remainingDates.length > 0) {
+      remainingDates = sortByAvailableCount(remainingDates);
+      const day = remainingDates.shift();
+      if (!day) break;
+
+      if (isDayAlreadyAssigned(day.date)) continue;
+
+      const availableMembers = targetMembers.filter(m =>
+        canAssignMember(day.date, m, day) && isWithinMaxAssignments(m.staff_id)
+      );
+
+      if (availableMembers.length > 0) {
+        const selected = selectLeastAssigned(availableMembers);
+        if (selected) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
+          if (dayAfterShiftTypeId) {
+            const nextDate = new Date(day.date);
+            nextDate.setDate(nextDate.getDate() + 1);
+            const nextDateStr = nextDate.toISOString().split('T')[0];
+            assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
+          }
+          assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
+        }
+      } else {
+        unassignedDates.push(day.date);
+      }
+    }
+
+    return { assignments, summary: assignmentCount, unassignedDates };
+  };
+
+  // 当直バッチ: 適用
+  const handleBatchDutyApply = async () => {
+    if (!batchDutyResult || batchDutyResult.results.length === 0) return;
+
+    setIsAutoAssigning(true);
+    try {
+      const allInsertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
+
+      for (const result of batchDutyResult.results) {
+        const step = batchDutySteps[result.stepIndex];
+        const preset = dutyAssignPresets.find(p => p.id === step.presetId);
+        if (!preset) continue;
+
+        const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset.night_shift_type_id;
+        const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset.day_after_shift_type_id;
+        const nightShiftType = shiftTypes.find(t => t.id === nightShiftTypeId);
+        const dayAfterShiftType = shiftTypes.find(t => t.id === dayAfterShiftTypeId);
+
+        for (const assignment of result.assignments) {
+          const shiftTypeId = assignment.type === 'night_shift' ? nightShiftTypeId! : dayAfterShiftTypeId!;
+          const workLocationId = assignment.type === 'night_shift'
+            ? (nightShiftType?.default_work_location_id || null)
+            : (dayAfterShiftType?.default_work_location_id || null);
+
+          allInsertData.push({
+            staff_id: assignment.staffId,
+            shift_date: assignment.date,
+            shift_type_id: shiftTypeId,
+            work_location_id: workLocationId,
+          });
+        }
+      }
+
+      // 重複チェック
+      const { data: existingShifts } = await supabase
+        .from('user_shift')
+        .select('staff_id, shift_date, shift_type_id')
+        .in('staff_id', [...new Set(allInsertData.map(d => d.staff_id))])
+        .in('shift_date', [...new Set(allInsertData.map(d => d.shift_date))]);
+
+      const existingSet = new Set(
+        existingShifts?.map(s => `${s.staff_id}|${s.shift_date}|${s.shift_type_id}`) || []
+      );
+
+      const filteredData = allInsertData.filter(d =>
+        !existingSet.has(`${d.staff_id}|${d.shift_date}|${d.shift_type_id}`)
+      );
+
+      if (filteredData.length === 0) {
+        alert('すべてのシフトが既に登録されています');
+        setBatchDutyResult(null);
+        setIsAutoAssigning(false);
+        return;
+      }
+
+      const { data: insertedData, error } = await supabase
+        .from('user_shift')
+        .insert(filteredData)
+        .select('id');
+
+      if (error) throw error;
+
+      // 取り消し用にIDを保存
+      localStorage.setItem('lastAutoAssignment', JSON.stringify({
+        insertedShiftIds: insertedData?.map(d => d.id) || [],
+        timestamp: new Date().toISOString(),
+        type: 'batch_duty',
+      }));
+
+      alert(`${filteredData.length}件のシフトを登録しました`);
+      setBatchDutyResult(null);
+      setBatchDutySteps([]);
+      setBatchDutyMode(false);
+      setShowAutoAssignModal(false);
+      fetchData();
+    } catch (error) {
+      console.error('Batch apply error:', error);
+      alert('適用中にエラーが発生しました');
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  // ========================================
   // 一般シフト自動割り振り用のヘルパー関数
   // ========================================
 
@@ -2981,7 +3385,149 @@ export default function ScheduleViewPage() {
     return true;
   };
 
-  // 一般シフト: プレビュー実行
+  // 一般シフト: 単一試行を実行するヘルパー関数
+  const runSingleGeneralShiftTrial = (
+    targetMembers: MemberData[],
+    targetDates: DayData[],
+    existingCountsInit: Map<string, number>,
+    targetShiftType: ShiftType | undefined
+  ): {
+    assignments: { date: string; staffId: string; staffName: string }[];
+    summary: Map<string, number>;
+    unassignedDates: string[];
+  } => {
+    // 各メンバーのシフト回数カウンタ初期化
+    const assignmentCount = new Map<string, number>();
+    const existingCounts = new Map<string, number>();
+    existingCountsInit.forEach((count, staffId) => {
+      assignmentCount.set(staffId, count);
+      existingCounts.set(staffId, count);
+    });
+
+    // 最大回数制限チェック関数
+    const isWithinMaxAssignments = (memberId: string): boolean => {
+      if (generalShiftConfig.maxAssignmentsPerMember === null) return true;
+
+      const currentCount = assignmentCount.get(memberId) || 0;
+      const existingCount = existingCounts.get(memberId) || 0;
+
+      if (generalShiftConfig.maxAssignmentsMode === 'execution') {
+        const newAssignCount = currentCount - existingCount;
+        return newAssignCount < generalShiftConfig.maxAssignmentsPerMember;
+      } else {
+        return currentCount < generalShiftConfig.maxAssignmentsPerMember;
+      }
+    };
+
+    // 結果格納用
+    const assignments: { date: string; staffId: string; staffName: string }[] = [];
+    const unassignedDates: string[] = [];
+
+    // 割り振り中のシフトを含めた得点計算（一般シフトプレビュー用）
+    const calculateMemberScoreWithPreviewGeneral = (
+      member: MemberData,
+      previewAssignments: { date: string; staffId: string; staffName: string }[],
+      targetShiftTypeId: number
+    ): number => {
+      let score = calculateMemberScore(member);
+      const activeConfigs = scoreConfigs.filter(c => c.is_active);
+      const memberPreviewAssignments = previewAssignments.filter(a => a.staffId === member.staff_id);
+
+      for (const assignment of memberPreviewAssignments) {
+        const day = daysData.find(d => d.date === assignment.date);
+        if (!day) continue;
+
+        for (const config of activeConfigs) {
+          if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+          if (!isDateMatchForScore(day, config)) continue;
+          score += config.points;
+        }
+      }
+
+      return Math.round(score * 10) / 10;
+    };
+
+    // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
+    const selectLeastAssignedForGeneral = (
+      availableMembers: MemberData[],
+      currentAssignments: { date: string; staffId: string; staffName: string }[]
+    ): MemberData | null => {
+      if (availableMembers.length === 0) return null;
+
+      if (generalShiftConfig.priorityMode === 'score') {
+        const memberScores = availableMembers.map(m => ({
+          member: m,
+          score: calculateMemberScoreWithPreviewGeneral(m, currentAssignments, generalShiftConfig.shiftTypeId!)
+        }));
+        const minScore = Math.min(...memberScores.map(ms => ms.score));
+        const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+        return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+      } else {
+        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+        const leastAssignedMembers = availableMembers.filter(m =>
+          (assignmentCount.get(m.staff_id) || 0) === minCount
+        );
+        return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+      }
+    };
+
+    // その日に既にシフトが入っているかチェック
+    const isDayAlreadyAssignedGeneral = (date: string): boolean => {
+      for (const member of members) {
+        const shifts = member.shifts?.[date] || [];
+        if (shifts.some(s => s.shift_type_id === generalShiftConfig.shiftTypeId)) {
+          return true;
+        }
+      }
+      return assignments.some(a => a.date === date);
+    };
+
+    // 一般シフト用: 割り振れる人数の少ない日からソートする関数
+    const sortByAvailableCountGeneral = (dates: DayData[]) => {
+      return [...dates].sort((a, b) => {
+        const availableA = targetMembers.filter(m =>
+          canAssignGeneralShift(a.date, m, assignments, targetShiftType, a.dayOfWeek, a.isHoliday) &&
+          isWithinMaxAssignments(m.staff_id)
+        ).length;
+        const availableB = targetMembers.filter(m =>
+          canAssignGeneralShift(b.date, m, assignments, targetShiftType, b.dayOfWeek, b.isHoliday) &&
+          isWithinMaxAssignments(m.staff_id)
+        ).length;
+        return availableA - availableB;
+      });
+    };
+
+    // 未割り振りの日を管理
+    let remainingDates = [...targetDates];
+
+    while (remainingDates.length > 0) {
+      remainingDates = sortByAvailableCountGeneral(remainingDates);
+      const day = remainingDates.shift();
+      if (!day) break;
+
+      if (isDayAlreadyAssignedGeneral(day.date)) continue;
+
+      const availableMembers = targetMembers.filter(m =>
+        canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday) &&
+        isWithinMaxAssignments(m.staff_id)
+      );
+
+      if (availableMembers.length > 0) {
+        const selected = selectLeastAssignedForGeneral(availableMembers, assignments);
+        if (selected) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
+          assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
+        }
+      } else {
+        // 割り振り不可日として記録
+        unassignedDates.push(day.date);
+      }
+    }
+
+    return { assignments, summary: assignmentCount, unassignedDates };
+  };
+
+  // 一般シフト: プレビュー実行（複数回試行対応）
   const handleGeneralShiftPreview = () => {
     setIsAutoAssigning(true);
     try {
@@ -3008,9 +3554,8 @@ export default function ScheduleViewPage() {
         return;
       }
 
-      // 各メンバーのシフト回数カウンタ初期化（既存のシフトをカウント）
-      const assignmentCount = new Map<string, number>();
-      const existingCounts = new Map<string, number>(); // 既存回数を別途記録（execution modeチェック用）
+      // 既存のシフト数をカウント（初期値として全試行で共有）
+      const existingCountsInit = new Map<string, number>();
       targetMembers.forEach(m => {
         let existingCount = 0;
         if (m.shifts) {
@@ -3023,139 +3568,45 @@ export default function ScheduleViewPage() {
             }
           });
         }
-        assignmentCount.set(m.staff_id, existingCount);
-        existingCounts.set(m.staff_id, existingCount);
+        existingCountsInit.set(m.staff_id, existingCount);
       });
 
-      // 最大回数制限チェック関数
-      const isWithinMaxAssignments = (memberId: string): boolean => {
-        if (generalShiftConfig.maxAssignmentsPerMember === null) return true;
+      // 複数回試行
+      const trialResults: Array<{
+        trialIndex: number;
+        assignments: { date: string; staffId: string; staffName: string }[];
+        unassignedDates: string[];
+        summary: Map<string, number>;
+      }> = [];
 
-        const currentCount = assignmentCount.get(memberId) || 0;
-        const existingCount = existingCounts.get(memberId) || 0;
-
-        if (generalShiftConfig.maxAssignmentsMode === 'execution') {
-          // この実行での新規割り当て回数のみチェック
-          const newAssignCount = currentCount - existingCount;
-          return newAssignCount < generalShiftConfig.maxAssignmentsPerMember;
-        } else {
-          // 月間総回数（既存 + 新規）をチェック
-          return currentCount < generalShiftConfig.maxAssignmentsPerMember;
-        }
-      };
-
-      // 結果格納用
-      const assignments: { date: string; staffId: string; staffName: string }[] = [];
-
-      // 割り振り中のシフトを含めた得点計算（一般シフトプレビュー用）
-      const calculateMemberScoreWithPreviewGeneral = (
-        member: MemberData,
-        previewAssignments: { date: string; staffId: string; staffName: string }[],
-        targetShiftTypeId: number
-      ): number => {
-        // 既存の得点
-        let score = calculateMemberScore(member);
-
-        // プレビューで割り振ったシフトの得点を加算
-        const activeConfigs = scoreConfigs.filter(c => c.is_active);
-        const memberPreviewAssignments = previewAssignments.filter(a => a.staffId === member.staff_id);
-
-        for (const assignment of memberPreviewAssignments) {
-          const day = daysData.find(d => d.date === assignment.date);
-          if (!day) continue;
-
-          for (const config of activeConfigs) {
-            // 対象シフトタイプかチェック
-            if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
-            // 日付フィルタチェック
-            if (!isDateMatchForScore(day, config)) continue;
-            // 得点加算
-            score += config.points;
-          }
-        }
-
-        // 小数点以下1桁に丸める（浮動小数点精度問題対策）
-        return Math.round(score * 10) / 10;
-      };
-
-      // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
-      const selectLeastAssignedForGeneral = (
-        availableMembers: MemberData[],
-        currentAssignments: { date: string; staffId: string; staffName: string }[]
-      ): MemberData | null => {
-        if (availableMembers.length === 0) return null;
-
-        if (generalShiftConfig.priorityMode === 'score') {
-          // 得点ベース: プレビュー割り振りを含めた得点で判断
-          const memberScores = availableMembers.map(m => ({
-            member: m,
-            score: calculateMemberScoreWithPreviewGeneral(m, currentAssignments, generalShiftConfig.shiftTypeId!)
-          }));
-          const minScore = Math.min(...memberScores.map(ms => ms.score));
-          const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
-          return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
-        } else {
-          // 回数ベース（現行通り）
-          const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-          const leastAssignedMembers = availableMembers.filter(m =>
-            (assignmentCount.get(m.staff_id) || 0) === minCount
-          );
-          return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
-        }
-      };
-
-      // その日に既にシフトが入っているかチェック（誰かに入っていたらスキップ）
-      const isDayAlreadyAssignedGeneral = (date: string): boolean => {
-        for (const member of members) {
-          const shifts = member.shifts?.[date] || [];
-          if (shifts.some(s => s.shift_type_id === generalShiftConfig.shiftTypeId)) {
-            return true;
-          }
-        }
-        return assignments.some(a => a.date === date);
-      };
-
-      // 一般シフト用: 割り振れる人数の少ない日からソートする関数
-      const sortByAvailableCountGeneral = (dates: DayData[]) => {
-        return [...dates].sort((a, b) => {
-          const availableA = targetMembers.filter(m =>
-            canAssignGeneralShift(a.date, m, assignments, targetShiftType, a.dayOfWeek, a.isHoliday) &&
-            isWithinMaxAssignments(m.staff_id)
-          ).length;
-          const availableB = targetMembers.filter(m =>
-            canAssignGeneralShift(b.date, m, assignments, targetShiftType, b.dayOfWeek, b.isHoliday) &&
-            isWithinMaxAssignments(m.staff_id)
-          ).length;
-          return availableA - availableB;
+      for (let i = 0; i < generalShiftConfig.trialCount; i++) {
+        const result = runSingleGeneralShiftTrial(targetMembers, targetDates, existingCountsInit, targetShiftType);
+        trialResults.push({
+          trialIndex: i,
+          assignments: result.assignments,
+          unassignedDates: result.unassignedDates,
+          summary: result.summary,
         });
-      };
+      }
 
-      // 未割り振りの日を管理（毎回難易度を再計算して割り振り）
-      let remainingDates = [...targetDates];
-
-      while (remainingDates.length > 0) {
-        // 毎回再計算して最も難易度の高い日（割り振れる人数が少ない日）を取得
-        remainingDates = sortByAvailableCountGeneral(remainingDates);
-        const day = remainingDates.shift();
-        if (!day) break;
-
-        // その日に既にシフトが入っていたらスキップ
-        if (isDayAlreadyAssignedGeneral(day.date)) continue;
-
-        const availableMembers = targetMembers.filter(m =>
-          canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday) &&
-          isWithinMaxAssignments(m.staff_id)
-        );
-        if (availableMembers.length > 0) {
-          const selected = selectLeastAssignedForGeneral(availableMembers, assignments);
-          if (selected) {
-            assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
-            assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
-          }
+      // 最も割り振り不可が少ない結果を選択
+      let bestIndex = 0;
+      let minUnassigned = trialResults[0].unassignedDates.length;
+      for (let i = 1; i < trialResults.length; i++) {
+        if (trialResults[i].unassignedDates.length < minUnassigned) {
+          minUnassigned = trialResults[i].unassignedDates.length;
+          bestIndex = i;
         }
       }
 
-      setGeneralShiftPreview({ assignments, summary: assignmentCount });
+      const bestResult = trialResults[bestIndex];
+      setGeneralShiftPreview({
+        assignments: bestResult.assignments,
+        summary: bestResult.summary,
+        unassignedDates: bestResult.unassignedDates,
+        trialResults,
+        selectedTrialIndex: bestIndex,
+      });
     } catch (error) {
       console.error('General shift preview error:', error);
       alert('プレビュー生成中にエラーが発生しました: ' + (error instanceof Error ? error.message : String(error)));
@@ -3236,6 +3687,328 @@ export default function ScheduleViewPage() {
       fetchData(); // データ再取得
     } catch (error) {
       console.error('Apply error:', error);
+      alert('適用中にエラーが発生しました');
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  // ========================================
+  // 一般シフトバッチ実行（連続割り振り）
+  // ========================================
+
+  // 一般シフトバッチ: プレビュー実行
+  const handleBatchShiftPreview = () => {
+    if (batchShiftSteps.length === 0) {
+      alert('実行するステップを追加してください');
+      return;
+    }
+
+    setIsAutoAssigning(true);
+    try {
+      const results: typeof batchShiftResult['results'] = [];
+      let allAssignments: { date: string; staffId: string; staffName: string }[] = [];
+
+      for (let stepIndex = 0; stepIndex < batchShiftSteps.length; stepIndex++) {
+        const step = batchShiftSteps[stepIndex];
+        const preset = shiftAssignPresets.find(p => p.id === step.presetId);
+        if (!preset) continue;
+
+        // 上書き設定を適用
+        const shiftTypeId = step.overrideShiftTypeId ?? preset.shift_type_id;
+        const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
+        const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
+
+        // 対象シフトタイプを取得
+        const targetShiftType = shiftTypes.find(st => st.id === shiftTypeId);
+
+        // 対象メンバーを取得
+        let targetMembers: MemberData[] = [];
+        if (preset.selection_mode === 'individual') {
+          targetMembers = members.filter(m => (preset.selected_member_ids || []).includes(m.staff_id));
+        } else {
+          targetMembers = members.filter(m => {
+            if ((preset.filter_teams || []).length > 0 && !(preset.filter_teams || []).includes(m.team as 'A' | 'B')) return false;
+            if ((preset.filter_night_shift_levels || []).length > 0 && !(preset.filter_night_shift_levels || []).includes(m.nightShiftLevel || '')) return false;
+            if ((preset.filter_positions || []).length > 0 && !(preset.filter_positions || []).includes(m.position)) return false;
+            if (preset.filter_can_cardiac !== null && m.can_cardiac !== preset.filter_can_cardiac) return false;
+            if (preset.filter_can_obstetric !== null && m.can_obstetric !== preset.filter_can_obstetric) return false;
+            if (preset.filter_can_icu !== null && m.can_icu !== preset.filter_can_icu) return false;
+            if (preset.filter_can_remaining_duty !== null && m.can_remaining_duty !== preset.filter_can_remaining_duty) return false;
+            return true;
+          });
+        }
+
+        if (targetMembers.length === 0) continue;
+
+        // 対象日を取得
+        const startD = generalShiftConfig.startDate;
+        const endD = generalShiftConfig.endDate;
+        let targetDates = generateDateRange(startD, endD);
+
+        // 日付フィルタ適用
+        if (preset.date_selection_mode === 'weekday') {
+          targetDates = targetDates.filter(day => {
+            if (preset.exclude_holidays && day.isHoliday) return false;
+            if (preset.exclude_pre_holidays && isPreHoliday(day.date)) return false;
+            const weekdayMatch = (preset.target_weekdays || []).includes(day.dayOfWeek);
+            const holidayMatch = preset.include_holidays && day.isHoliday;
+            const preHolidayMatch = preset.include_pre_holidays && isPreHoliday(day.date);
+            if ((preset.target_weekdays || []).length > 0 || preset.include_holidays || preset.include_pre_holidays) {
+              return weekdayMatch || holidayMatch || preHolidayMatch;
+            }
+            return true;
+          });
+        }
+
+        if (targetDates.length === 0) continue;
+
+        // 既存カウント計算（前のステップの結果を含める）
+        const existingCountsInit = new Map<string, number>();
+        targetMembers.forEach(m => {
+          let existingCount = 0;
+          if (m.shifts) {
+            Object.entries(m.shifts).forEach(([date, shifts]) => {
+              const inPeriod = (!startD || date >= startD) && (!endD || date <= endD);
+              if (inPeriod && shiftTypeId) {
+                const hasShift = shifts.some(s => s.shift_type_id === shiftTypeId);
+                if (hasShift) existingCount++;
+              }
+            });
+          }
+          // 前のステップで割り振った分を加算
+          const prevAssignCount = allAssignments.filter(a => a.staffId === m.staff_id).length;
+          existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
+        });
+
+        // 複数回試行
+        const trialResults: Array<{
+          assignments: { date: string; staffId: string; staffName: string }[];
+          unassignedDates: string[];
+          summary: Map<string, number>;
+        }> = [];
+
+        for (let i = 0; i < batchShiftTrialCount; i++) {
+          const result = runSingleGeneralShiftTrialWithConfig(
+            targetMembers,
+            targetDates,
+            existingCountsInit,
+            targetShiftType,
+            shiftTypeId,
+            maxAssignmentsPerMember,
+            maxAssignmentsMode,
+            allAssignments
+          );
+          trialResults.push(result);
+        }
+
+        // 最良結果を選択
+        let bestIndex = 0;
+        let minUnassigned = trialResults[0].unassignedDates.length;
+        for (let i = 1; i < trialResults.length; i++) {
+          if (trialResults[i].unassignedDates.length < minUnassigned) {
+            minUnassigned = trialResults[i].unassignedDates.length;
+            bestIndex = i;
+          }
+        }
+        const bestResult = trialResults[bestIndex];
+
+        const shiftTypeName = shiftTypes.find(t => t.id === shiftTypeId)?.name || '不明';
+
+        results.push({
+          stepIndex,
+          presetId: step.presetId,
+          presetName: step.presetName,
+          usedShiftTypeName: shiftTypeName,
+          assignments: bestResult.assignments,
+          unassignedDates: bestResult.unassignedDates,
+          summary: bestResult.summary,
+        });
+
+        // この結果を次のステップに引き継ぐ
+        allAssignments = [...allAssignments, ...bestResult.assignments];
+      }
+
+      setBatchShiftResult({
+        results,
+        totalAssignments: allAssignments.length,
+        totalUnassigned: results.reduce((sum, r) => sum + r.unassignedDates.length, 0),
+      });
+    } catch (error) {
+      console.error('Batch shift preview error:', error);
+      alert('バッチプレビュー生成中にエラーが発生しました');
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
+  // 設定を上書きして一般シフト単一試行を実行するヘルパー
+  const runSingleGeneralShiftTrialWithConfig = (
+    targetMembers: MemberData[],
+    targetDates: DayData[],
+    existingCountsInit: Map<string, number>,
+    targetShiftType: ShiftType | undefined,
+    shiftTypeId: number | null,
+    maxAssignmentsPerMember: number | null,
+    maxAssignmentsMode: 'execution' | 'monthly',
+    previousAssignments: { date: string; staffId: string; staffName: string }[]
+  ): {
+    assignments: { date: string; staffId: string; staffName: string }[];
+    summary: Map<string, number>;
+    unassignedDates: string[];
+  } => {
+    const assignmentCount = new Map<string, number>();
+    const existingCounts = new Map<string, number>();
+    existingCountsInit.forEach((count, staffId) => {
+      assignmentCount.set(staffId, count);
+      existingCounts.set(staffId, count);
+    });
+
+    const isWithinMaxAssignments = (memberId: string): boolean => {
+      if (maxAssignmentsPerMember === null) return true;
+      const currentCount = assignmentCount.get(memberId) || 0;
+      const existingCount = existingCounts.get(memberId) || 0;
+      if (maxAssignmentsMode === 'execution') {
+        return (currentCount - existingCount) < maxAssignmentsPerMember;
+      } else {
+        return currentCount < maxAssignmentsPerMember;
+      }
+    };
+
+    const assignments: { date: string; staffId: string; staffName: string }[] = [];
+    const unassignedDates: string[] = [];
+
+    // その日に既にシフトが入っているかチェック（前のステップの結果も含む）
+    const isDayAlreadyAssigned = (date: string): boolean => {
+      for (const member of members) {
+        const shifts = member.shifts?.[date] || [];
+        if (shifts.some(s => s.shift_type_id === shiftTypeId)) return true;
+      }
+      if (previousAssignments.some(a => a.date === date)) return true;
+      return assignments.some(a => a.date === date);
+    };
+
+    const sortByAvailableCount = (dates: DayData[]) => {
+      return [...dates].sort((a, b) => {
+        const availableA = targetMembers.filter(m =>
+          canAssignGeneralShift(a.date, m, [...previousAssignments, ...assignments], targetShiftType, a.dayOfWeek, a.isHoliday) &&
+          isWithinMaxAssignments(m.staff_id)
+        ).length;
+        const availableB = targetMembers.filter(m =>
+          canAssignGeneralShift(b.date, m, [...previousAssignments, ...assignments], targetShiftType, b.dayOfWeek, b.isHoliday) &&
+          isWithinMaxAssignments(m.staff_id)
+        ).length;
+        return availableA - availableB;
+      });
+    };
+
+    const selectLeastAssigned = (availableMembers: MemberData[]): MemberData | null => {
+      if (availableMembers.length === 0) return null;
+      const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+      const leastAssignedMembers = availableMembers.filter(m =>
+        (assignmentCount.get(m.staff_id) || 0) === minCount
+      );
+      return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+    };
+
+    let remainingDates = [...targetDates];
+    while (remainingDates.length > 0) {
+      remainingDates = sortByAvailableCount(remainingDates);
+      const day = remainingDates.shift();
+      if (!day) break;
+
+      if (isDayAlreadyAssigned(day.date)) continue;
+
+      const availableMembers = targetMembers.filter(m =>
+        canAssignGeneralShift(day.date, m, [...previousAssignments, ...assignments], targetShiftType, day.dayOfWeek, day.isHoliday) &&
+        isWithinMaxAssignments(m.staff_id)
+      );
+
+      if (availableMembers.length > 0) {
+        const selected = selectLeastAssigned(availableMembers);
+        if (selected) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
+          assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
+        }
+      } else {
+        unassignedDates.push(day.date);
+      }
+    }
+
+    return { assignments, summary: assignmentCount, unassignedDates };
+  };
+
+  // 一般シフトバッチ: 適用
+  const handleBatchShiftApply = async () => {
+    if (!batchShiftResult || batchShiftResult.results.length === 0) return;
+
+    setIsAutoAssigning(true);
+    try {
+      const allInsertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
+
+      for (const result of batchShiftResult.results) {
+        const step = batchShiftSteps[result.stepIndex];
+        const preset = shiftAssignPresets.find(p => p.id === step.presetId);
+        if (!preset) continue;
+
+        const shiftTypeId = step.overrideShiftTypeId ?? preset.shift_type_id;
+        const targetShiftType = shiftTypes.find(t => t.id === shiftTypeId);
+        const workLocationId = targetShiftType?.default_work_location_id || null;
+
+        for (const assignment of result.assignments) {
+          allInsertData.push({
+            staff_id: assignment.staffId,
+            shift_date: assignment.date,
+            shift_type_id: shiftTypeId!,
+            work_location_id: workLocationId,
+          });
+        }
+      }
+
+      // 重複チェック
+      const { data: existingShifts } = await supabase
+        .from('user_shift')
+        .select('staff_id, shift_date, shift_type_id')
+        .in('staff_id', [...new Set(allInsertData.map(d => d.staff_id))])
+        .in('shift_date', [...new Set(allInsertData.map(d => d.shift_date))]);
+
+      const existingSet = new Set(
+        existingShifts?.map(s => `${s.staff_id}|${s.shift_date}|${s.shift_type_id}`) || []
+      );
+
+      const filteredData = allInsertData.filter(d =>
+        !existingSet.has(`${d.staff_id}|${d.shift_date}|${d.shift_type_id}`)
+      );
+
+      if (filteredData.length === 0) {
+        alert('すべてのシフトが既に登録されています');
+        setBatchShiftResult(null);
+        setIsAutoAssigning(false);
+        return;
+      }
+
+      const { data: insertedData, error } = await supabase
+        .from('user_shift')
+        .insert(filteredData)
+        .select('id');
+
+      if (error) throw error;
+
+      // 取り消し用にIDを保存
+      localStorage.setItem('lastAutoAssignment', JSON.stringify({
+        insertedShiftIds: insertedData?.map(d => d.id) || [],
+        timestamp: new Date().toISOString(),
+        type: 'batch_shift',
+      }));
+
+      alert(`${filteredData.length}件のシフトを登録しました`);
+      setBatchShiftResult(null);
+      setBatchShiftSteps([]);
+      setBatchShiftMode(false);
+      setShowAutoAssignModal(false);
+      fetchData();
+    } catch (error) {
+      console.error('Batch apply error:', error);
       alert('適用中にエラーが発生しました');
     } finally {
       setIsAutoAssigning(false);
@@ -8426,6 +9199,268 @@ export default function ScheduleViewPage() {
               {/* 当直割り振りタブ */}
               {autoAssignMode === 'night_shift' && (
               <div className="p-4 space-y-4">
+                {/* 単一実行/連続実行モード切り替え */}
+                <div className="flex gap-2 border-b border-gray-200 pb-2">
+                  <button
+                    onClick={() => { setBatchDutyMode(false); setBatchDutyResult(null); }}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      !batchDutyMode
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    単一実行
+                  </button>
+                  <button
+                    onClick={() => { setBatchDutyMode(true); setAutoAssignPreview(null); }}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      batchDutyMode
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    連続実行
+                  </button>
+                </div>
+
+                {/* 連続実行モード */}
+                {batchDutyMode ? (
+                  <div className="space-y-4">
+                    {/* ステップ一覧 */}
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-bold text-gray-700">実行ステップ</h3>
+                      {batchDutySteps.length === 0 ? (
+                        <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+                          ステップを追加してください
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {batchDutySteps.map((step, idx) => {
+                            const preset = dutyAssignPresets.find(p => p.id === step.presetId);
+                            const nightShiftName = step.overrideNightShiftTypeId
+                              ? shiftTypes.find(t => t.id === step.overrideNightShiftTypeId)?.name
+                              : shiftTypes.find(t => t.id === preset?.night_shift_type_id)?.name;
+                            return (
+                              <div key={step.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    ステップ{idx + 1}: {step.presetName}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {idx > 0 && (
+                                      <button
+                                        onClick={() => {
+                                          const newSteps = [...batchDutySteps];
+                                          [newSteps[idx - 1], newSteps[idx]] = [newSteps[idx], newSteps[idx - 1]];
+                                          setBatchDutySteps(newSteps);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                        title="上に移動"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    {idx < batchDutySteps.length - 1 && (
+                                      <button
+                                        onClick={() => {
+                                          const newSteps = [...batchDutySteps];
+                                          [newSteps[idx], newSteps[idx + 1]] = [newSteps[idx + 1], newSteps[idx]];
+                                          setBatchDutySteps(newSteps);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                        title="下に移動"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => setBatchDutySteps(batchDutySteps.filter((_, i) => i !== idx))}
+                                      className="p-1 text-red-400 hover:text-red-600"
+                                      title="削除"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                {/* 上書き設定 */}
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <label className="text-gray-600">当直シフト</label>
+                                    <select
+                                      value={step.overrideNightShiftTypeId ?? ''}
+                                      onChange={(e) => {
+                                        const newSteps = [...batchDutySteps];
+                                        newSteps[idx] = {
+                                          ...newSteps[idx],
+                                          overrideNightShiftTypeId: e.target.value ? Number(e.target.value) : null
+                                        };
+                                        setBatchDutySteps(newSteps);
+                                      }}
+                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                                    >
+                                      <option value="">プリセット値（{nightShiftName}）</option>
+                                      {shiftTypes.filter(t => t.is_night_shift).map(t => (
+                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-gray-600">回数制限</label>
+                                    <select
+                                      value={step.overrideMaxAssignments ?? ''}
+                                      onChange={(e) => {
+                                        const newSteps = [...batchDutySteps];
+                                        newSteps[idx] = {
+                                          ...newSteps[idx],
+                                          overrideMaxAssignments: e.target.value ? Number(e.target.value) : null
+                                        };
+                                        setBatchDutySteps(newSteps);
+                                      }}
+                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                                    >
+                                      <option value="">プリセット値</option>
+                                      <option value="1">1回</option>
+                                      <option value="2">2回</option>
+                                      <option value="3">3回</option>
+                                      <option value="4">4回</option>
+                                      <option value="5">5回</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ステップ追加 */}
+                      <div className="flex gap-2">
+                        <select
+                          id="add-duty-step-preset"
+                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                          defaultValue=""
+                        >
+                          <option value="">プリセットを選択...</option>
+                          {dutyAssignPresets.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const select = document.getElementById('add-duty-step-preset') as HTMLSelectElement;
+                            const presetId = Number(select.value);
+                            const preset = dutyAssignPresets.find(p => p.id === presetId);
+                            if (preset) {
+                              setBatchDutySteps([...batchDutySteps, {
+                                id: `step-${Date.now()}`,
+                                presetId: preset.id,
+                                presetName: preset.name,
+                                overrideNightShiftTypeId: null,
+                                overrideDayAfterShiftTypeId: null,
+                                overrideMaxAssignments: null,
+                                overrideMaxAssignmentsMode: null,
+                              }]);
+                              select.value = '';
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700"
+                        >
+                          追加
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 試行回数 */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">試行回数</label>
+                      <select
+                        value={batchDutyTrialCount}
+                        onChange={(e) => setBatchDutyTrialCount(Number(e.target.value))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      >
+                        <option value={1}>1回</option>
+                        <option value={5}>5回</option>
+                        <option value={10}>10回（推奨）</option>
+                        <option value={20}>20回</option>
+                      </select>
+                    </div>
+
+                    {/* プレビューボタン */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={handleBatchDutyPreview}
+                        disabled={isAutoAssigning || batchDutySteps.length === 0}
+                        className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50"
+                      >
+                        {isAutoAssigning ? 'プレビュー生成中...' : '連続実行プレビュー'}
+                      </button>
+                    </div>
+
+                    {/* バッチ結果表示 */}
+                    {batchDutyResult && (
+                      <div className="space-y-3 border-t border-gray-200 pt-4">
+                        <h3 className="text-sm font-bold text-gray-700">連続実行結果</h3>
+                        <div className="space-y-2">
+                          {batchDutyResult.results.map((result, idx) => (
+                            <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-medium text-gray-700">
+                                  ステップ{result.stepIndex + 1}: {result.presetName}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {result.usedNightShiftTypeName}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                割り振り: {result.assignments.filter(a => a.type === 'night_shift').length}件
+                                {result.unassignedDates.length > 0 && (
+                                  <span className="text-red-500 ml-2">
+                                    割り振り不可: {result.unassignedDates.length}日
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                          <span className="text-sm font-medium text-emerald-700">
+                            合計: {batchDutyResult.totalAssignments}件
+                            {batchDutyResult.totalUnassigned > 0 && (
+                              <span className="text-red-500 ml-2">
+                                （割り振り不可: {batchDutyResult.totalUnassigned}日）
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* 適用ボタン */}
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setBatchDutyResult(null)}
+                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            onClick={handleBatchDutyApply}
+                            disabled={isAutoAssigning}
+                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"
+                          >
+                            {isAutoAssigning ? '適用中...' : 'すべて適用'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                {/* 単一実行モード（既存のUI） */}
                 {/* プリセット選択（一番上に配置） */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -9244,12 +10279,275 @@ export default function ScheduleViewPage() {
                     {isAutoAssigning ? '適用中...' : '適用'}
                   </button>
                 </div>
+                  </>
+                )}
               </div>
               )}
 
               {/* 一般シフト割り振りタブ */}
               {autoAssignMode === 'general_shift' && (
               <div className="p-4 space-y-4">
+                {/* 単一実行/連続実行モード切り替え */}
+                <div className="flex gap-2 border-b border-gray-200 pb-2">
+                  <button
+                    onClick={() => { setBatchShiftMode(false); setBatchShiftResult(null); }}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      !batchShiftMode
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    単一実行
+                  </button>
+                  <button
+                    onClick={() => { setBatchShiftMode(true); setGeneralShiftPreview(null); }}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      batchShiftMode
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    連続実行
+                  </button>
+                </div>
+
+                {/* 連続実行モード */}
+                {batchShiftMode ? (
+                  <div className="space-y-4">
+                    {/* ステップ一覧 */}
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-bold text-gray-700">実行ステップ</h3>
+                      {batchShiftSteps.length === 0 ? (
+                        <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
+                          ステップを追加してください
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {batchShiftSteps.map((step, idx) => {
+                            const preset = shiftAssignPresets.find(p => p.id === step.presetId);
+                            const shiftTypeName = step.overrideShiftTypeId
+                              ? shiftTypes.find(t => t.id === step.overrideShiftTypeId)?.name
+                              : shiftTypes.find(t => t.id === preset?.shift_type_id)?.name;
+                            return (
+                              <div key={step.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    ステップ{idx + 1}: {step.presetName}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    {idx > 0 && (
+                                      <button
+                                        onClick={() => {
+                                          const newSteps = [...batchShiftSteps];
+                                          [newSteps[idx - 1], newSteps[idx]] = [newSteps[idx], newSteps[idx - 1]];
+                                          setBatchShiftSteps(newSteps);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                        title="上に移動"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    {idx < batchShiftSteps.length - 1 && (
+                                      <button
+                                        onClick={() => {
+                                          const newSteps = [...batchShiftSteps];
+                                          [newSteps[idx], newSteps[idx + 1]] = [newSteps[idx + 1], newSteps[idx]];
+                                          setBatchShiftSteps(newSteps);
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                        title="下に移動"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => setBatchShiftSteps(batchShiftSteps.filter((_, i) => i !== idx))}
+                                      className="p-1 text-red-400 hover:text-red-600"
+                                      title="削除"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                                {/* 上書き設定 */}
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div>
+                                    <label className="text-gray-600">シフトタイプ</label>
+                                    <select
+                                      value={step.overrideShiftTypeId ?? ''}
+                                      onChange={(e) => {
+                                        const newSteps = [...batchShiftSteps];
+                                        newSteps[idx] = {
+                                          ...newSteps[idx],
+                                          overrideShiftTypeId: e.target.value ? Number(e.target.value) : null
+                                        };
+                                        setBatchShiftSteps(newSteps);
+                                      }}
+                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                                    >
+                                      <option value="">プリセット値（{shiftTypeName}）</option>
+                                      {shiftTypes.map(t => (
+                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-gray-600">回数制限</label>
+                                    <select
+                                      value={step.overrideMaxAssignments ?? ''}
+                                      onChange={(e) => {
+                                        const newSteps = [...batchShiftSteps];
+                                        newSteps[idx] = {
+                                          ...newSteps[idx],
+                                          overrideMaxAssignments: e.target.value ? Number(e.target.value) : null
+                                        };
+                                        setBatchShiftSteps(newSteps);
+                                      }}
+                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                                    >
+                                      <option value="">プリセット値</option>
+                                      <option value="1">1回</option>
+                                      <option value="2">2回</option>
+                                      <option value="3">3回</option>
+                                      <option value="4">4回</option>
+                                      <option value="5">5回</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* ステップ追加 */}
+                      <div className="flex gap-2">
+                        <select
+                          id="add-shift-step-preset"
+                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                          defaultValue=""
+                        >
+                          <option value="">プリセットを選択...</option>
+                          {shiftAssignPresets.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const select = document.getElementById('add-shift-step-preset') as HTMLSelectElement;
+                            const presetId = Number(select.value);
+                            const preset = shiftAssignPresets.find(p => p.id === presetId);
+                            if (preset) {
+                              setBatchShiftSteps([...batchShiftSteps, {
+                                id: `step-${Date.now()}`,
+                                presetId: preset.id,
+                                presetName: preset.name,
+                                overrideShiftTypeId: null,
+                                overrideMaxAssignments: null,
+                                overrideMaxAssignmentsMode: null,
+                              }]);
+                              select.value = '';
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                        >
+                          追加
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 試行回数 */}
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">試行回数</label>
+                      <select
+                        value={batchShiftTrialCount}
+                        onChange={(e) => setBatchShiftTrialCount(Number(e.target.value))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      >
+                        <option value={1}>1回</option>
+                        <option value={5}>5回</option>
+                        <option value={10}>10回（推奨）</option>
+                        <option value={20}>20回</option>
+                      </select>
+                    </div>
+
+                    {/* プレビューボタン */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={handleBatchShiftPreview}
+                        disabled={isAutoAssigning || batchShiftSteps.length === 0}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50"
+                      >
+                        {isAutoAssigning ? 'プレビュー生成中...' : '連続実行プレビュー'}
+                      </button>
+                    </div>
+
+                    {/* バッチ結果表示 */}
+                    {batchShiftResult && (
+                      <div className="space-y-3 border-t border-gray-200 pt-4">
+                        <h3 className="text-sm font-bold text-gray-700">連続実行結果</h3>
+                        <div className="space-y-2">
+                          {batchShiftResult.results.map((result, idx) => (
+                            <div key={idx} className="bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-medium text-gray-700">
+                                  ステップ{result.stepIndex + 1}: {result.presetName}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {result.usedShiftTypeName}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                割り振り: {result.assignments.length}件
+                                {result.unassignedDates.length > 0 && (
+                                  <span className="text-red-500 ml-2">
+                                    割り振り不可: {result.unassignedDates.length}日
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-blue-50 rounded-lg p-3 text-center">
+                          <span className="text-sm font-medium text-blue-700">
+                            合計: {batchShiftResult.totalAssignments}件
+                            {batchShiftResult.totalUnassigned > 0 && (
+                              <span className="text-red-500 ml-2">
+                                （割り振り不可: {batchShiftResult.totalUnassigned}日）
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* 適用ボタン */}
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setBatchShiftResult(null)}
+                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            onClick={handleBatchShiftApply}
+                            disabled={isAutoAssigning}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+                          >
+                            {isAutoAssigning ? '適用中...' : 'すべて適用'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                {/* 単一実行モード（既存のUI） */}
                 {/* プリセット（一番上に配置） */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -10164,6 +11462,24 @@ export default function ScheduleViewPage() {
                   ))}
                 </div>
 
+                {/* 試行回数設定 */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">試行回数</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={generalShiftConfig.trialCount}
+                      onChange={(e) => setGeneralShiftConfig(prev => ({ ...prev, trialCount: Number(e.target.value) }))}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value={1}>1回</option>
+                      <option value={5}>5回</option>
+                      <option value={10}>10回（推奨）</option>
+                      <option value={20}>20回</option>
+                    </select>
+                    <span className="text-xs text-gray-500">複数回試行して最も割り振り不可が少ない結果を選択</span>
+                  </div>
+                </div>
+
                 {/* プレビューボタン */}
                 <div className="flex justify-center">
                   <button
@@ -10180,11 +11496,68 @@ export default function ScheduleViewPage() {
                   <div className="space-y-3 border-t border-gray-200 pt-4">
                     <h3 className="text-sm font-bold text-gray-700">プレビュー結果</h3>
 
-                    {generalShiftPreview.assignments.length === 0 ? (
+                    {/* 試行結果比較（複数試行の場合） */}
+                    {generalShiftPreview.trialResults && generalShiftPreview.trialResults.length > 1 && (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="text-xs font-medium text-gray-700 mb-2">試行結果比較（{generalShiftPreview.trialResults.length}回）</div>
+                        <div className="flex flex-wrap gap-1">
+                          {generalShiftPreview.trialResults.map((trial, idx) => {
+                            const isSelected = generalShiftPreview.selectedTrialIndex === idx;
+                            const isBest = trial.unassignedDates.length === Math.min(...generalShiftPreview.trialResults!.map(t => t.unassignedDates.length));
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setGeneralShiftPreview({
+                                    ...generalShiftPreview,
+                                    assignments: trial.assignments,
+                                    summary: trial.summary,
+                                    unassignedDates: trial.unassignedDates,
+                                    selectedTrialIndex: idx,
+                                  });
+                                }}
+                                className={`px-2 py-1 text-xs rounded transition-colors ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white'
+                                    : isBest
+                                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                    : 'bg-white text-gray-700 hover:bg-gray-100'
+                                }`}
+                              >
+                                #{idx + 1}: {trial.assignments.length}件
+                                {trial.unassignedDates.length > 0 && (
+                                  <span className={isSelected ? 'text-red-200' : 'text-red-500'}>
+                                    （不可{trial.unassignedDates.length}）
+                                  </span>
+                                )}
+                                {isBest && !isSelected && <span className="ml-1">★</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 割り振り不可日表示 */}
+                    {generalShiftPreview.unassignedDates && generalShiftPreview.unassignedDates.length > 0 && (
+                      <div className="bg-red-50 rounded-lg p-3">
+                        <div className="text-xs font-medium text-red-700 mb-1">
+                          割り振り不可日（{generalShiftPreview.unassignedDates.length}件）
+                        </div>
+                        <div className="text-xs text-red-600">
+                          {generalShiftPreview.unassignedDates.map(d => {
+                            const date = new Date(d);
+                            return `${date.getMonth() + 1}/${date.getDate()}`;
+                          }).join(', ')}
+                        </div>
+                      </div>
+                    )}
+
+                    {generalShiftPreview.assignments.length === 0 && (!generalShiftPreview.unassignedDates || generalShiftPreview.unassignedDates.length === 0) ? (
                       <div className="text-sm text-gray-900 text-center py-4 bg-gray-50 rounded-lg">
                         割り振り可能な日がありませんでした
                       </div>
-                    ) : (
+                    ) : generalShiftPreview.assignments.length > 0 && (
                       <>
                         <div className="max-h-40 overflow-y-auto bg-gray-50 rounded-lg p-3 text-sm">
                           {generalShiftPreview.assignments.map((a, idx) => (
@@ -10236,6 +11609,8 @@ export default function ScheduleViewPage() {
                     {isAutoAssigning ? '適用中...' : '適用'}
                   </button>
                 </div>
+                  </>
+                )}
               </div>
               )}
 
