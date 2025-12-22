@@ -912,6 +912,8 @@ export default function ScheduleViewPage() {
     // 割り振り回数制限
     maxAssignmentsPerMember: number | null; // nullは制限なし
     maxAssignmentsMode: 'execution' | 'monthly'; // この実行での回数 or 月間総回数
+    // 複数回試行設定
+    trialCount: number; // 試行回数（デフォルト10）
   }>(() => {
     // 初期値計算
     const now = new Date();
@@ -945,11 +947,20 @@ export default function ScheduleViewPage() {
       priorityMode: 'count',
       maxAssignmentsPerMember: null,
       maxAssignmentsMode: 'execution',
+      trialCount: 10,
     };
   });
   const [autoAssignPreview, setAutoAssignPreview] = useState<{
     assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
     summary: Map<string, number>;
+    unassignedDates: string[];
+    trialResults?: Array<{
+      trialIndex: number;
+      assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+      unassignedDates: string[];
+      summary: Map<string, number>;
+    }>;
+    selectedTrialIndex?: number;
   } | null>(null);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
 
@@ -2258,7 +2269,151 @@ export default function ScheduleViewPage() {
     }
   };
 
-  // 当直自動割り振り: プレビュー実行
+  // 当直自動割り振り: 1回分の割り振りを実行（内部用）
+  const runSingleAutoAssignTrial = (
+    targetMembers: MemberData[],
+    targetDates: DayData[],
+    existingCountsInit: Map<string, number>
+  ): {
+    assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+    summary: Map<string, number>;
+    unassignedDates: string[];
+  } => {
+    // 各メンバーの当直回数カウンタ初期化
+    const assignmentCount = new Map<string, number>();
+    const existingCounts = new Map<string, number>();
+    existingCountsInit.forEach((count, staffId) => {
+      assignmentCount.set(staffId, count);
+      existingCounts.set(staffId, count);
+    });
+
+    // 最大回数制限チェック関数
+    const isWithinMaxAssignments = (memberId: string): boolean => {
+      if (autoAssignConfig.maxAssignmentsPerMember === null) return true;
+
+      const currentCount = assignmentCount.get(memberId) || 0;
+      const existingCount = existingCounts.get(memberId) || 0;
+
+      if (autoAssignConfig.maxAssignmentsMode === 'execution') {
+        const newAssignCount = currentCount - existingCount;
+        return newAssignCount < autoAssignConfig.maxAssignmentsPerMember;
+      } else {
+        return currentCount < autoAssignConfig.maxAssignmentsPerMember;
+      }
+    };
+
+    // 結果格納用
+    const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
+    const unassignedDates: string[] = [];
+
+    // 当直可能人数の少ない日からソートする関数
+    const sortByAvailableCount = (dates: DayData[]) => {
+      return [...dates].sort((a, b) => {
+        const availableA = targetMembers.filter(m =>
+          canAssignNightShift(a.date, m, assignments, a) && isWithinMaxAssignments(m.staff_id)
+        ).length;
+        const availableB = targetMembers.filter(m =>
+          canAssignNightShift(b.date, m, assignments, b) && isWithinMaxAssignments(m.staff_id)
+        ).length;
+        return availableA - availableB;
+      });
+    };
+
+    // 割り振り中のシフトを含めた得点計算
+    const calculateMemberScoreWithPreview = (
+      member: MemberData,
+      previewAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[],
+      targetShiftTypeId: number
+    ): number => {
+      let score = calculateMemberScore(member);
+      const activeConfigs = scoreConfigs.filter(c => c.is_active);
+      const memberPreviewAssignments = previewAssignments.filter(
+        a => a.staffId === member.staff_id && a.type === 'night_shift'
+      );
+
+      for (const assignment of memberPreviewAssignments) {
+        const day = daysData.find(d => d.date === assignment.date);
+        if (!day) continue;
+
+        for (const config of activeConfigs) {
+          if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+          if (!isDateMatchForScore(day, config)) continue;
+          score += config.points;
+        }
+      }
+
+      return Math.round(score * 10) / 10;
+    };
+
+    // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
+    const selectLeastAssigned = (
+      availableMembers: MemberData[],
+      currentAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
+    ): MemberData | null => {
+      if (availableMembers.length === 0) return null;
+
+      if (autoAssignConfig.priorityMode === 'score') {
+        const memberScores = availableMembers.map(m => ({
+          member: m,
+          score: calculateMemberScoreWithPreview(m, currentAssignments, autoAssignConfig.nightShiftTypeId!)
+        }));
+        const minScore = Math.min(...memberScores.map(ms => ms.score));
+        const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+        return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+      } else {
+        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+        const leastAssignedMembers = availableMembers.filter(m =>
+          (assignmentCount.get(m.staff_id) || 0) === minCount
+        );
+        return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+      }
+    };
+
+    // その日に既に当直シフトが入っているかチェック
+    const isDayAlreadyAssigned = (date: string): boolean => {
+      for (const member of members) {
+        const shifts = member.shifts?.[date] || [];
+        if (shifts.some(s => s.shift_type_id === autoAssignConfig.nightShiftTypeId)) {
+          return true;
+        }
+      }
+      return assignments.some(a => a.date === date && a.type === 'night_shift');
+    };
+
+    // 未割り振りの日を管理
+    let remainingDates = [...targetDates];
+
+    while (remainingDates.length > 0) {
+      remainingDates = sortByAvailableCount(remainingDates);
+      const day = remainingDates.shift();
+      if (!day) break;
+
+      if (isDayAlreadyAssigned(day.date)) continue;
+
+      const availableMembers = targetMembers.filter(m =>
+        canAssignNightShift(day.date, m, assignments, day) && isWithinMaxAssignments(m.staff_id)
+      );
+
+      if (availableMembers.length > 0) {
+        const selected = selectLeastAssigned(availableMembers, assignments);
+        if (selected) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
+          const nextDate = new Date(day.date);
+          nextDate.setDate(nextDate.getDate() + 1);
+          const nextDateStr = nextDate.toISOString().split('T')[0];
+          assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
+          assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
+        }
+      } else {
+        // 割り振り不可日として記録
+        unassignedDates.push(day.date);
+      }
+    }
+
+    return { assignments, summary: assignmentCount, unassignedDates };
+  };
+
+  // 当直自動割り振り: プレビュー実行（複数回試行対応）
   const handleAutoAssignPreview = () => {
     setIsAutoAssigning(true);
     try {
@@ -2276,15 +2431,12 @@ export default function ScheduleViewPage() {
         return;
       }
 
-      // 各メンバーの当直回数カウンタ初期化（既存の当直シフトをカウント）
-      const assignmentCount = new Map<string, number>();
-      const existingCounts = new Map<string, number>(); // 既存回数を別途記録（execution modeチェック用）
+      // 既存の当直シフト数をカウント（初期値として全試行で共有）
+      const existingCountsInit = new Map<string, number>();
       targetMembers.forEach(m => {
-        // 既存の当直シフト数をカウント（対象期間内）
         let existingCount = 0;
         if (m.shifts) {
           Object.entries(m.shifts).forEach(([date, shifts]) => {
-            // 対象期間内かチェック
             const inPeriod = (!autoAssignConfig.startDate || date >= autoAssignConfig.startDate) &&
                             (!autoAssignConfig.endDate || date <= autoAssignConfig.endDate);
             if (inPeriod && autoAssignConfig.nightShiftTypeId) {
@@ -2293,147 +2445,46 @@ export default function ScheduleViewPage() {
             }
           });
         }
-        assignmentCount.set(m.staff_id, existingCount);
-        existingCounts.set(m.staff_id, existingCount);
+        existingCountsInit.set(m.staff_id, existingCount);
       });
 
-      // 最大回数制限チェック関数
-      const isWithinMaxAssignments = (memberId: string): boolean => {
-        if (autoAssignConfig.maxAssignmentsPerMember === null) return true;
+      // 複数回試行
+      const trialResults: Array<{
+        trialIndex: number;
+        assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[];
+        unassignedDates: string[];
+        summary: Map<string, number>;
+      }> = [];
 
-        const currentCount = assignmentCount.get(memberId) || 0;
-        const existingCount = existingCounts.get(memberId) || 0;
-
-        if (autoAssignConfig.maxAssignmentsMode === 'execution') {
-          // この実行での新規割り当て回数のみチェック
-          const newAssignCount = currentCount - existingCount;
-          return newAssignCount < autoAssignConfig.maxAssignmentsPerMember;
-        } else {
-          // 月間総回数（既存 + 新規）をチェック
-          return currentCount < autoAssignConfig.maxAssignmentsPerMember;
-        }
-      };
-
-      // 結果格納用
-      const assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[] = [];
-
-      // 当直可能人数の少ない日からソートする関数
-      const sortByAvailableCount = (dates: DayData[]) => {
-        return [...dates].sort((a, b) => {
-          const availableA = targetMembers.filter(m =>
-            canAssignNightShift(a.date, m, assignments, a) && isWithinMaxAssignments(m.staff_id)
-          ).length;
-          const availableB = targetMembers.filter(m =>
-            canAssignNightShift(b.date, m, assignments, b) && isWithinMaxAssignments(m.staff_id)
-          ).length;
-          return availableA - availableB;
+      for (let i = 0; i < autoAssignConfig.trialCount; i++) {
+        const result = runSingleAutoAssignTrial(targetMembers, targetDates, existingCountsInit);
+        trialResults.push({
+          trialIndex: i,
+          assignments: result.assignments,
+          unassignedDates: result.unassignedDates,
+          summary: result.summary,
         });
-      };
+      }
 
-      // 割り振り中のシフトを含めた得点計算（プレビュー用）
-      const calculateMemberScoreWithPreview = (
-        member: MemberData,
-        previewAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[],
-        targetShiftTypeId: number
-      ): number => {
-        // 既存の得点
-        let score = calculateMemberScore(member);
-
-        // プレビューで割り振ったシフトの得点を加算
-        const activeConfigs = scoreConfigs.filter(c => c.is_active);
-        const memberPreviewAssignments = previewAssignments.filter(
-          a => a.staffId === member.staff_id && a.type === 'night_shift'
-        );
-
-        for (const assignment of memberPreviewAssignments) {
-          const day = daysData.find(d => d.date === assignment.date);
-          if (!day) continue;
-
-          for (const config of activeConfigs) {
-            // 対象シフトタイプかチェック
-            if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
-            // 日付フィルタチェック
-            if (!isDateMatchForScore(day, config)) continue;
-            // 得点加算
-            score += config.points;
-          }
-        }
-
-        // 小数点以下1桁に丸める（浮動小数点精度問題対策）
-        return Math.round(score * 10) / 10;
-      };
-
-      // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
-      const selectLeastAssigned = (
-        availableMembers: MemberData[],
-        currentAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
-      ): MemberData | null => {
-        if (availableMembers.length === 0) return null;
-
-        if (autoAssignConfig.priorityMode === 'score') {
-          // 得点ベース: プレビュー割り振りを含めた得点で判断
-          const memberScores = availableMembers.map(m => ({
-            member: m,
-            score: calculateMemberScoreWithPreview(m, currentAssignments, autoAssignConfig.nightShiftTypeId!)
-          }));
-          const minScore = Math.min(...memberScores.map(ms => ms.score));
-          const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
-          return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
-        } else {
-          // 回数ベース（現行通り）
-          const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-          const leastAssignedMembers = availableMembers.filter(m =>
-            (assignmentCount.get(m.staff_id) || 0) === minCount
-          );
-          return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
-        }
-      };
-
-      // その日に既に当直シフトが入っているかチェック（誰かに入っていたらスキップ）
-      const isDayAlreadyAssigned = (date: string): boolean => {
-        // DBの既存シフトをチェック
-        for (const member of members) {
-          const shifts = member.shifts?.[date] || [];
-          if (shifts.some(s => s.shift_type_id === autoAssignConfig.nightShiftTypeId)) {
-            return true;
-          }
-        }
-        // 新規割り振り分もチェック
-        return assignments.some(a => a.date === date && a.type === 'night_shift');
-      };
-
-      // 未割り振りの日を管理（毎回難易度を再計算して割り振り）
-      let remainingDates = [...targetDates];
-
-      while (remainingDates.length > 0) {
-        // 毎回再計算して最も難易度の高い日（割り振れる人数が少ない日）を取得
-        remainingDates = sortByAvailableCount(remainingDates);
-        const day = remainingDates.shift();
-        if (!day) break;
-
-        // その日に既に当直が入っていたらスキップ
-        if (isDayAlreadyAssigned(day.date)) continue;
-
-        const availableMembers = targetMembers.filter(m =>
-          canAssignNightShift(day.date, m, assignments, day) && isWithinMaxAssignments(m.staff_id)
-        );
-        if (availableMembers.length > 0) {
-          const selected = selectLeastAssigned(availableMembers, assignments);
-          if (selected) {
-            // 当直を追加
-            assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, type: 'night_shift' });
-            // 翌日の当直明けを追加
-            const nextDate = new Date(day.date);
-            nextDate.setDate(nextDate.getDate() + 1);
-            const nextDateStr = nextDate.toISOString().split('T')[0];
-            assignments.push({ date: nextDateStr, staffId: selected.staff_id, staffName: selected.name, type: 'day_after' });
-            // カウント更新
-            assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
-          }
+      // 最も割り振り不可が少ない結果を選択
+      let bestIndex = 0;
+      let minUnassigned = trialResults[0].unassignedDates.length;
+      for (let i = 1; i < trialResults.length; i++) {
+        if (trialResults[i].unassignedDates.length < minUnassigned) {
+          minUnassigned = trialResults[i].unassignedDates.length;
+          bestIndex = i;
         }
       }
 
-      setAutoAssignPreview({ assignments, summary: assignmentCount });
+      const bestResult = trialResults[bestIndex];
+
+      setAutoAssignPreview({
+        assignments: bestResult.assignments,
+        summary: bestResult.summary,
+        unassignedDates: bestResult.unassignedDates,
+        trialResults,
+        selectedTrialIndex: bestIndex,
+      });
     } catch (error) {
       console.error('Auto assign preview error:', error);
       alert('プレビュー生成中にエラーが発生しました: ' + (error instanceof Error ? error.message : String(error)));
@@ -9050,6 +9101,22 @@ export default function ScheduleViewPage() {
                   )}
                 </div>
 
+                {/* 試行回数設定 */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-gray-700">試行回数:</label>
+                  <select
+                    value={autoAssignConfig.trialCount}
+                    onChange={(e) => setAutoAssignConfig(prev => ({ ...prev, trialCount: parseInt(e.target.value) }))}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value={1}>1回（試行なし）</option>
+                    <option value={5}>5回</option>
+                    <option value={10}>10回（推奨）</option>
+                    <option value={20}>20回</option>
+                  </select>
+                  <span className="text-xs text-gray-500">※複数回試行し最良結果を選択</span>
+                </div>
+
                 {/* プレビュー実行ボタン */}
                 <div className="pt-2">
                   <button
@@ -9066,9 +9133,59 @@ export default function ScheduleViewPage() {
                   <div className="space-y-3 pt-2 border-t border-gray-200">
                     <h3 className="text-sm font-bold text-gray-700">プレビュー結果</h3>
 
-                    {autoAssignPreview.assignments.length === 0 ? (
+                    {/* 試行結果サマリー */}
+                    {autoAssignPreview.trialResults && autoAssignPreview.trialResults.length > 1 && (
+                      <div className="bg-blue-50 p-2 rounded-lg">
+                        <div className="text-xs font-medium text-blue-700 mb-1">
+                          {autoAssignPreview.trialResults.length}回試行の結果
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {autoAssignPreview.trialResults.map((trial, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setAutoAssignPreview({
+                                  ...autoAssignPreview,
+                                  assignments: trial.assignments,
+                                  summary: trial.summary,
+                                  unassignedDates: trial.unassignedDates,
+                                  selectedTrialIndex: idx,
+                                });
+                              }}
+                              className={`px-2 py-1 text-xs rounded transition-colors ${
+                                autoAssignPreview.selectedTrialIndex === idx
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-white text-blue-700 hover:bg-blue-100'
+                              }`}
+                            >
+                              #{idx + 1}
+                              {trial.unassignedDates.length > 0
+                                ? ` (不可:${trial.unassignedDates.length})`
+                                : ' ✓'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 割り振り不可日 */}
+                    {autoAssignPreview.unassignedDates.length > 0 && (
+                      <div className="bg-red-50 p-2 rounded-lg">
+                        <div className="text-xs font-medium text-red-700 mb-1">
+                          割り振り不可日 ({autoAssignPreview.unassignedDates.length}件)
+                        </div>
+                        <div className="text-xs text-red-600">
+                          {autoAssignPreview.unassignedDates.map(d => {
+                            const date = new Date(d);
+                            return `${d.slice(5)}(${WEEKDAYS[date.getDay()]})`;
+                          }).join(', ')}
+                        </div>
+                      </div>
+                    )}
+
+                    {autoAssignPreview.assignments.length === 0 && autoAssignPreview.unassignedDates.length === 0 ? (
                       <p className="text-sm text-gray-900">割り振り可能な組み合わせがありません</p>
-                    ) : (
+                    ) : autoAssignPreview.assignments.length > 0 && (
                       <>
                         <div className="max-h-48 overflow-y-auto bg-gray-50 rounded-lg p-2 space-y-1">
                           {autoAssignPreview.assignments
