@@ -1,8 +1,8 @@
 // @ts-nocheck
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getUser, isAdmin } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Database, DisplaySettings, ShortcutConfig } from "@/lib/database.types";
@@ -103,7 +103,15 @@ interface WorkLocationBasedExclusionFilter {
   exclude_work_location_ids: number[];
 }
 
-type ExclusionFilter = DateBasedExclusionFilter | WorkLocationBasedExclusionFilter;
+// 日付スキップフィルター（特定条件のメンバーが指定シフトを持つ日をスキップ）
+interface DateSkipFilter {
+  type: 'date_skip';
+  conditionShiftTypeId: number;  // チェックするシフトタイプ
+  conditionTeams: ('A' | 'B')[];  // チームフィルター（空=全チーム）
+  conditionNightShiftLevels: string[];  // 当直レベルフィルター（空=全レベル）
+}
+
+type ExclusionFilter = DateBasedExclusionFilter | WorkLocationBasedExclusionFilter | DateSkipFilter;
 
 interface MemberData {
   staff_id: string;
@@ -210,15 +218,24 @@ function SortableRow({ id, children, index }: SortableRowProps) {
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
-export default function ScheduleViewPage() {
+function ScheduleViewPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [currentYear, setCurrentYear] = useState(() => {
+    const yearParam = searchParams.get('year');
+    if (yearParam && !isNaN(Number(yearParam))) {
+      return Number(yearParam);
+    }
     const now = new Date();
     const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     return next.getFullYear();
   });
   const [currentMonth, setCurrentMonth] = useState(() => {
+    const monthParam = searchParams.get('month');
+    if (monthParam && !isNaN(Number(monthParam)) && Number(monthParam) >= 1 && Number(monthParam) <= 12) {
+      return Number(monthParam);
+    }
     const now = new Date();
     const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     return next.getMonth() + 1;
@@ -878,7 +895,7 @@ export default function ScheduleViewPage() {
 
   // 当直自動割り振り
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
-  const [autoAssignMode, setAutoAssignMode] = useState<'night_shift' | 'general_shift'>('night_shift'); // 当直 or 一般シフト
+  const [autoAssignMode, setAutoAssignMode] = useState<'night_shift' | 'general_shift' | 'unified_batch'>('night_shift'); // 当直 or 一般シフト or 統合連続
   // 現在表示月の初日・末日を計算
   const getMonthRange = () => {
     const firstDay = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
@@ -964,61 +981,58 @@ export default function ScheduleViewPage() {
   } | null>(null);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
 
-  // バッチ実行（連続割り振り）用のステップ型定義
-  type BatchAssignStep = {
-    id: string; // ユニークID
-    presetId: number;
-    presetName: string;
-    // 上書き設定（nullの場合はプリセットの値を使用）
-    overrideNightShiftTypeId: number | null;        // 当直シフトタイプ
-    overrideDayAfterShiftTypeId: number | null;     // 明けシフトタイプ
-    overrideMaxAssignments: number | null;
-    overrideMaxAssignmentsMode: 'execution' | 'monthly' | null;
-  };
-  type BatchShiftStep = {
+  // 統合バッチ実行（当直+一般シフト連続割り振り）
+  type UnifiedBatchStep = {
     id: string;
+    type: 'duty' | 'shift';  // ステップタイプを識別
     presetId: number;
     presetName: string;
-    overrideShiftTypeId: number | null;
+    // 当直用オーバーライド
+    overrideNightShiftTypeId?: number | null;
+    overrideDayAfterShiftTypeId?: number | null;
+    // 一般シフト用オーバーライド
+    overrideShiftTypeId?: number | null;
+    // 共通オーバーライド
     overrideMaxAssignments: number | null;
     overrideMaxAssignmentsMode: 'execution' | 'monthly' | null;
   };
-
-  // 当直バッチ実行
-  const [batchDutyMode, setBatchDutyMode] = useState(false);
-  const [batchDutySteps, setBatchDutySteps] = useState<BatchAssignStep[]>([]);
-  const [batchDutyTrialCount, setBatchDutyTrialCount] = useState(10);
-  const [batchDutyResult, setBatchDutyResult] = useState<{
-    results: Array<{
-      stepIndex: number;
-      presetId: number;
-      presetName: string;
-      usedNightShiftTypeName: string;
-      assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
-      unassignedDates: string[];
-      summary: Map<string, number>;
-    }>;
+  type UnifiedBatchResultItem = {
+    stepIndex: number;
+    type: 'duty' | 'shift';
+    presetName: string;
+    usedShiftTypeName: string;
+    // 当直の場合
+    dutyAssignments?: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
+    // シフトの場合
+    shiftAssignments?: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
+    unassignedDates: string[];
+    summary: Map<string, number>;
+  };
+  type UnifiedBatchPreset = {
+    id: number;
+    name: string;
+    description: string | null;
+    steps: UnifiedBatchStep[];
+    trial_count: number;
+    display_order: number;
+  };
+  const [unifiedBatchMode, setUnifiedBatchMode] = useState(false);
+  const [unifiedBatchSteps, setUnifiedBatchSteps] = useState<UnifiedBatchStep[]>([]);
+  const [unifiedBatchTrialCount, setUnifiedBatchTrialCount] = useState(10);
+  const [addUnifiedDutyPresetId, setAddUnifiedDutyPresetId] = useState<string>('');
+  const [addUnifiedShiftPresetId, setAddUnifiedShiftPresetId] = useState<string>('');
+  const [unifiedBatchResult, setUnifiedBatchResult] = useState<{
+    results: UnifiedBatchResultItem[];
     totalAssignments: number;
     totalUnassigned: number;
   } | null>(null);
-
-  // 一般シフトバッチ実行
-  const [batchShiftMode, setBatchShiftMode] = useState(false);
-  const [batchShiftSteps, setBatchShiftSteps] = useState<BatchShiftStep[]>([]);
-  const [batchShiftTrialCount, setBatchShiftTrialCount] = useState(10);
-  const [batchShiftResult, setBatchShiftResult] = useState<{
-    results: Array<{
-      stepIndex: number;
-      presetId: number;
-      presetName: string;
-      usedShiftTypeName: string;
-      assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
-      unassignedDates: string[];
-      summary: Map<string, number>;
-    }>;
-    totalAssignments: number;
-    totalUnassigned: number;
-  } | null>(null);
+  // 統合連続割り振りプリセット
+  const [unifiedBatchPresets, setUnifiedBatchPresets] = useState<UnifiedBatchPreset[]>([]);
+  const [showUnifiedPresetSaveModal, setShowUnifiedPresetSaveModal] = useState(false);
+  const [unifiedPresetName, setUnifiedPresetName] = useState('');
+  const [showUnifiedPresetManageModal, setShowUnifiedPresetManageModal] = useState(false);
+  const [selectedUnifiedPresetId, setSelectedUnifiedPresetId] = useState<string>('');
+  const [editingUnifiedPreset, setEditingUnifiedPreset] = useState<UnifiedBatchPreset | null>(null);
 
   // 一般シフト自動割り振り用の設定
   const [generalShiftConfig, setGeneralShiftConfig] = useState<{
@@ -1347,6 +1361,7 @@ export default function ScheduleViewPage() {
         { data: scoreConfigsData },
         { data: shiftAssignPresetsData },
         { data: dutyAssignPresetsData },
+        { data: unifiedBatchPresetsData },
         { data: hiddenMembersData },
         { data: nameListConfigsData },
         { data: monthlyAttributesData },
@@ -1390,6 +1405,7 @@ export default function ScheduleViewPage() {
         supabase.from("score_config").select("*").order("display_order"),
         supabase.from("shift_assign_preset").select("*").order("display_order"),
         supabase.from("duty_assign_preset").select("*").order("display_order"),
+        supabase.from("unified_batch_preset").select("*").order("display_order"),
         supabase.from("schedule_hidden_members").select("staff_id").eq("year", currentYear).eq("month", currentMonth),
         supabase.from("name_list_config").select("*").order("display_order"),
         supabase.from("user_monthly_attributes").select("*").eq("year", currentYear).eq("month", currentMonth),
@@ -1411,6 +1427,10 @@ export default function ScheduleViewPage() {
       setScoreConfigs(scoreConfigsData || []);
       setShiftAssignPresets(shiftAssignPresetsData || []);
       setDutyAssignPresets(dutyAssignPresetsData || []);
+      setUnifiedBatchPresets((unifiedBatchPresetsData || []).map((p: { id: number; name: string; description: string | null; steps: unknown; trial_count: number; display_order: number }) => ({
+        ...p,
+        steps: (typeof p.steps === 'string' ? JSON.parse(p.steps) : p.steps) as UnifiedBatchStep[]
+      })));
       setNameListConfigs(nameListConfigsData || []);
 
       // システム予約タイプからdisplaySettingsを構築
@@ -2059,10 +2079,21 @@ export default function ScheduleViewPage() {
     return { type: 'normal', am: amContent, pm: pmContent, night: nightContent, amPmMerged, allMerged, canNightShift };
   };
 
+  // URLパラメータを更新するヘルパー関数
+  const updateMonthUrl = (year: number, month: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('year', String(year));
+    params.set('month', String(month));
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
   const changeMonth = (offset: number) => {
     const newDate = new Date(currentYear, currentMonth - 1 + offset, 1);
-    setCurrentYear(newDate.getFullYear());
-    setCurrentMonth(newDate.getMonth() + 1);
+    const newYear = newDate.getFullYear();
+    const newMonth = newDate.getMonth() + 1;
+    setCurrentYear(newYear);
+    setCurrentMonth(newMonth);
+    updateMonthUrl(newYear, newMonth);
   };
 
   // 当直自動割り振り: 対象メンバーをフィルタで取得
@@ -2412,12 +2443,28 @@ export default function ScheduleViewPage() {
       return Math.round(score * 10) / 10;
     };
 
-    // 最も割り振り回数/得点の少ないメンバーを選択（同じ場合はランダム）
+    // 最も割り振り回数/得点の少ないメンバーを選択（同スコアなら当直可能日数が少ない人優先、それでも同じならランダム）
     const selectLeastAssigned = (
       availableMembers: MemberData[],
       currentAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after' }[]
     ): MemberData | null => {
       if (availableMembers.length === 0) return null;
+
+      // 当直可能日数を計算
+      const countAvailableDays = (member: MemberData): number => {
+        return targetDates.filter(day =>
+          canAssignNightShift(day.date, member, currentAssignments, day) &&
+          isWithinMaxAssignments(member.staff_id)
+        ).length;
+      };
+
+      // 当直可能日数で絞り込むヘルパー
+      const filterByAvailableDays = (candidates: MemberData[]): MemberData[] => {
+        if (candidates.length <= 1) return candidates;
+        const dayCounts = candidates.map(m => ({ member: m, days: countAvailableDays(m) }));
+        const minDays = Math.min(...dayCounts.map(c => c.days));
+        return dayCounts.filter(c => c.days === minDays).map(c => c.member);
+      };
 
       if (autoAssignConfig.priorityMode === 'score') {
         const memberScores = availableMembers.map(m => ({
@@ -2425,14 +2472,16 @@ export default function ScheduleViewPage() {
           score: calculateMemberScoreWithPreview(m, currentAssignments, autoAssignConfig.nightShiftTypeId!)
         }));
         const minScore = Math.min(...memberScores.map(ms => ms.score));
-        const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
-        return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+        let candidates = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+        candidates = filterByAvailableDays(candidates);
+        return candidates[Math.floor(Math.random() * candidates.length)];
       } else {
         const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-        const leastAssignedMembers = availableMembers.filter(m =>
+        let candidates = availableMembers.filter(m =>
           (assignmentCount.get(m.staff_id) || 0) === minCount
         );
-        return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+        candidates = filterByAvailableDays(candidates);
+        return candidates[Math.floor(Math.random() * candidates.length)];
       }
     };
 
@@ -2483,6 +2532,8 @@ export default function ScheduleViewPage() {
   // 当直自動割り振り: プレビュー実行（複数回試行対応）
   const handleAutoAssignPreview = () => {
     setIsAutoAssigning(true);
+    // UIがローディング状態をレンダリングできるよう遅延実行
+    setTimeout(() => {
     try {
       const targetMembers = getTargetMembersForAutoAssign();
       if (targetMembers.length === 0) {
@@ -2523,7 +2574,8 @@ export default function ScheduleViewPage() {
         summary: Map<string, number>;
       }> = [];
 
-      for (let i = 0; i < autoAssignConfig.trialCount; i++) {
+      const trialCountSafe = Math.max(1, autoAssignConfig.trialCount || 1);
+      for (let i = 0; i < trialCountSafe; i++) {
         const result = runSingleAutoAssignTrial(targetMembers, targetDates, existingCountsInit);
         trialResults.push({
           trialIndex: i,
@@ -2534,6 +2586,11 @@ export default function ScheduleViewPage() {
       }
 
       // 最も割り振り不可が少ない結果を選択
+      if (trialResults.length === 0) {
+        alert('試行結果がありません');
+        setIsAutoAssigning(false);
+        return;
+      }
       let bestIndex = 0;
       let minUnassigned = trialResults[0].unassignedDates.length;
       for (let i = 1; i < trialResults.length; i++) {
@@ -2558,6 +2615,7 @@ export default function ScheduleViewPage() {
     } finally {
       setIsAutoAssigning(false);
     }
+    }, 50);
   };
 
   // 当直自動割り振り: 適用（DBに保存）
@@ -2691,151 +2749,7 @@ export default function ScheduleViewPage() {
   // 当直バッチ実行（連続割り振り）
   // ========================================
 
-  // 当直バッチ: プレビュー実行
-  const handleBatchDutyPreview = () => {
-    if (batchDutySteps.length === 0) {
-      alert('実行するステップを追加してください');
-      return;
-    }
-
-    setIsAutoAssigning(true);
-    try {
-      const results: typeof batchDutyResult['results'] = [];
-      let allAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[] = [];
-
-      for (let stepIndex = 0; stepIndex < batchDutySteps.length; stepIndex++) {
-        const step = batchDutySteps[stepIndex];
-        const preset = dutyAssignPresets.find(p => p.id === step.presetId);
-        if (!preset) continue;
-
-        // 上書き設定を適用したコンフィグを作成
-        const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset.night_shift_type_id;
-        const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset.day_after_shift_type_id;
-        const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
-        const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
-
-        // 対象メンバーを取得
-        let targetMembers: MemberData[] = [];
-        if (preset.selection_mode === 'individual') {
-          targetMembers = members.filter(m => (preset.selected_member_ids || []).includes(m.staff_id));
-        } else {
-          targetMembers = members.filter(m => {
-            if ((preset.filter_teams || []).length > 0 && !(preset.filter_teams || []).includes(m.team as 'A' | 'B')) return false;
-            if ((preset.filter_night_shift_levels || []).length > 0 && !(preset.filter_night_shift_levels || []).includes(m.nightShiftLevel || '')) return false;
-            if (preset.filter_can_cardiac !== null && m.can_cardiac !== preset.filter_can_cardiac) return false;
-            if (preset.filter_can_obstetric !== null && m.can_obstetric !== preset.filter_can_obstetric) return false;
-            if (preset.filter_can_icu !== null && m.can_icu !== preset.filter_can_icu) return false;
-            return true;
-          });
-        }
-
-        if (targetMembers.length === 0) continue;
-
-        // 対象日を取得
-        const startD = preset.start_date || autoAssignConfig.startDate;
-        const endD = preset.end_date || autoAssignConfig.endDate;
-        let targetDates = generateDaysForPeriod(startD, endD);
-
-        // 日付フィルタ適用
-        if (preset.date_selection_mode === 'weekday') {
-          targetDates = targetDates.filter(day => {
-            if (preset.exclude_holidays && day.isHoliday) return false;
-            if (preset.exclude_pre_holidays && isPreHoliday(day.date)) return false;
-            const weekdayMatch = (preset.target_weekdays || []).includes(day.dayOfWeek);
-            const holidayMatch = preset.include_holidays && day.isHoliday;
-            const preHolidayMatch = preset.include_pre_holidays && isPreHoliday(day.date);
-            if ((preset.target_weekdays || []).length > 0 || preset.include_holidays || preset.include_pre_holidays) {
-              return weekdayMatch || holidayMatch || preHolidayMatch;
-            }
-            return true;
-          });
-        }
-
-        if (targetDates.length === 0) continue;
-
-        // 既存カウント計算（前のステップの結果を含める）
-        const existingCountsInit = new Map<string, number>();
-        targetMembers.forEach(m => {
-          let existingCount = 0;
-          if (m.shifts) {
-            Object.entries(m.shifts).forEach(([date, shifts]) => {
-              const inPeriod = (!startD || date >= startD) && (!endD || date <= endD);
-              if (inPeriod && nightShiftTypeId) {
-                const hasNightShift = shifts.some(s => s.shift_type_id === nightShiftTypeId);
-                if (hasNightShift) existingCount++;
-              }
-            });
-          }
-          // 前のステップで割り振った分を加算（同じ当直タイプのみ）
-          const prevAssignCount = allAssignments.filter(a =>
-            a.staffId === m.staff_id && a.type === 'night_shift' && a.nightShiftTypeId === nightShiftTypeId
-          ).length;
-          existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
-        });
-
-        // 複数回試行
-        const trialResults: Array<{
-          assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
-          unassignedDates: string[];
-          summary: Map<string, number>;
-        }> = [];
-
-        for (let i = 0; i < batchDutyTrialCount; i++) {
-          // 前のステップの割り振りを考慮したスケジュールで試行
-          const result = runSingleAutoAssignTrialWithConfig(
-            targetMembers,
-            targetDates,
-            existingCountsInit,
-            nightShiftTypeId,
-            dayAfterShiftTypeId,
-            maxAssignmentsPerMember,
-            maxAssignmentsMode,
-            allAssignments
-          );
-          trialResults.push(result);
-        }
-
-        // 最良結果を選択
-        let bestIndex = 0;
-        let minUnassigned = trialResults[0].unassignedDates.length;
-        for (let i = 1; i < trialResults.length; i++) {
-          if (trialResults[i].unassignedDates.length < minUnassigned) {
-            minUnassigned = trialResults[i].unassignedDates.length;
-            bestIndex = i;
-          }
-        }
-        const bestResult = trialResults[bestIndex];
-
-        const nightShiftTypeName = shiftTypes.find(t => t.id === nightShiftTypeId)?.name || '不明';
-
-        results.push({
-          stepIndex,
-          presetId: step.presetId,
-          presetName: step.presetName,
-          usedNightShiftTypeName: nightShiftTypeName,
-          assignments: bestResult.assignments,
-          unassignedDates: bestResult.unassignedDates,
-          summary: bestResult.summary,
-        });
-
-        // この結果を次のステップに引き継ぐ
-        allAssignments = [...allAssignments, ...bestResult.assignments];
-      }
-
-      setBatchDutyResult({
-        results,
-        totalAssignments: allAssignments.filter(a => a.type === 'night_shift').length,
-        totalUnassigned: results.reduce((sum, r) => sum + r.unassignedDates.length, 0),
-      });
-    } catch (error) {
-      console.error('Batch duty preview error:', error);
-      alert('バッチプレビュー生成中にエラーが発生しました');
-    } finally {
-      setIsAutoAssigning(false);
-    }
-  };
-
-  // 設定を上書きして単一試行を実行するヘルパー
+  // 設定を上書きして単一試行を実行するヘルパー（統合連続実行で使用）
   const runSingleAutoAssignTrialWithConfig = (
     targetMembers: MemberData[],
     targetDates: DayData[],
@@ -2844,7 +2758,8 @@ export default function ScheduleViewPage() {
     dayAfterShiftTypeId: number | null,
     maxAssignmentsPerMember: number | null,
     maxAssignmentsMode: 'execution' | 'monthly',
-    previousAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[]
+    previousAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[],
+    priorityMode: 'score' | 'count' = 'count'
   ): {
     assignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[];
     summary: Map<string, number>;
@@ -2901,13 +2816,68 @@ export default function ScheduleViewPage() {
       });
     };
 
+    // 割り振り中のシフトを含めた得点計算（priorityMode='score'時に使用）
+    const calculateMemberScoreWithPreviewForBatch = (
+      member: MemberData,
+      previewAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[],
+      targetShiftTypeId: number
+    ): number => {
+      let score = calculateMemberScore(member);
+      const activeConfigs = scoreConfigs.filter(c => c.is_active);
+      const memberPreviewAssignments = [...previousAssignments, ...previewAssignments].filter(
+        a => a.staffId === member.staff_id && a.type === 'night_shift'
+      );
+
+      for (const assignment of memberPreviewAssignments) {
+        const day = daysData.find(d => d.date === assignment.date);
+        if (!day) continue;
+
+        for (const config of activeConfigs) {
+          if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+          if (!isDateMatchForScore(day, config)) continue;
+          score += config.points;
+        }
+      }
+
+      return Math.round(score * 10) / 10;
+    };
+
+    // 最も割り振り回数/得点の少ないメンバーを選択（同スコアなら当直可能日数が少ない人優先、それでも同じならランダム）
     const selectLeastAssigned = (availableMembers: MemberData[]): MemberData | null => {
       if (availableMembers.length === 0) return null;
-      const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-      const leastAssignedMembers = availableMembers.filter(m =>
-        (assignmentCount.get(m.staff_id) || 0) === minCount
-      );
-      return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+
+      // 当直可能日数を計算
+      const countAvailableDays = (member: MemberData): number => {
+        return targetDates.filter(day =>
+          canAssignMember(day.date, member, day) && isWithinMaxAssignments(member.staff_id)
+        ).length;
+      };
+
+      // 当直可能日数で絞り込むヘルパー
+      const filterByAvailableDays = (candidates: MemberData[]): MemberData[] => {
+        if (candidates.length <= 1) return candidates;
+        const dayCounts = candidates.map(m => ({ member: m, days: countAvailableDays(m) }));
+        const minDays = Math.min(...dayCounts.map(c => c.days));
+        return dayCounts.filter(c => c.days === minDays).map(c => c.member);
+      };
+
+      if (priorityMode === 'score' && nightShiftTypeId) {
+        const memberScores = availableMembers.map(m => ({
+          member: m,
+          score: calculateMemberScoreWithPreviewForBatch(m, assignments, nightShiftTypeId)
+        }));
+        const minScore = Math.min(...memberScores.map(ms => ms.score));
+        let candidates = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+        candidates = filterByAvailableDays(candidates);
+        return candidates[Math.floor(Math.random() * candidates.length)];
+      } else {
+        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+        let candidates = availableMembers.filter(m =>
+          (assignmentCount.get(m.staff_id) || 0) === minCount
+        );
+        candidates = filterByAvailableDays(candidates);
+        return candidates[Math.floor(Math.random() * candidates.length)];
+      }
     };
 
     let remainingDates = [...targetDates];
@@ -2940,89 +2910,6 @@ export default function ScheduleViewPage() {
     }
 
     return { assignments, summary: assignmentCount, unassignedDates };
-  };
-
-  // 当直バッチ: 適用
-  const handleBatchDutyApply = async () => {
-    if (!batchDutyResult || batchDutyResult.results.length === 0) return;
-
-    setIsAutoAssigning(true);
-    try {
-      const allInsertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
-
-      for (const result of batchDutyResult.results) {
-        const step = batchDutySteps[result.stepIndex];
-        const preset = dutyAssignPresets.find(p => p.id === step.presetId);
-        if (!preset) continue;
-
-        const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset.night_shift_type_id;
-        const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset.day_after_shift_type_id;
-        const nightShiftType = shiftTypes.find(t => t.id === nightShiftTypeId);
-        const dayAfterShiftType = shiftTypes.find(t => t.id === dayAfterShiftTypeId);
-
-        for (const assignment of result.assignments) {
-          const shiftTypeId = assignment.type === 'night_shift' ? nightShiftTypeId! : dayAfterShiftTypeId!;
-          const workLocationId = assignment.type === 'night_shift'
-            ? (nightShiftType?.default_work_location_id || null)
-            : (dayAfterShiftType?.default_work_location_id || null);
-
-          allInsertData.push({
-            staff_id: assignment.staffId,
-            shift_date: assignment.date,
-            shift_type_id: shiftTypeId,
-            work_location_id: workLocationId,
-          });
-        }
-      }
-
-      // 重複チェック
-      const { data: existingShifts } = await supabase
-        .from('user_shift')
-        .select('staff_id, shift_date, shift_type_id')
-        .in('staff_id', [...new Set(allInsertData.map(d => d.staff_id))])
-        .in('shift_date', [...new Set(allInsertData.map(d => d.shift_date))]);
-
-      const existingSet = new Set(
-        existingShifts?.map(s => `${s.staff_id}|${s.shift_date}|${s.shift_type_id}`) || []
-      );
-
-      const filteredData = allInsertData.filter(d =>
-        !existingSet.has(`${d.staff_id}|${d.shift_date}|${d.shift_type_id}`)
-      );
-
-      if (filteredData.length === 0) {
-        alert('すべてのシフトが既に登録されています');
-        setBatchDutyResult(null);
-        setIsAutoAssigning(false);
-        return;
-      }
-
-      const { data: insertedData, error } = await supabase
-        .from('user_shift')
-        .insert(filteredData)
-        .select('id');
-
-      if (error) throw error;
-
-      // 取り消し用にIDを保存
-      localStorage.setItem('lastAutoAssignment', JSON.stringify({
-        insertedShiftIds: insertedData?.map(d => d.id) || [],
-        timestamp: new Date().toISOString(),
-        type: 'batch_duty',
-      }));
-
-      alert(`${filteredData.length}件のシフトを登録しました`);
-      setBatchDutyResult(null);
-      setBatchDutySteps([]);
-      setBatchDutyMode(false);
-      setShowAutoAssignModal(false);
-      fetchData();
-    } catch (error) {
-      console.error('Batch apply error:', error);
-      alert('適用中にエラーが発生しました');
-    } finally {
-      setIsAutoAssigning(false);
-    }
   };
 
   // ========================================
@@ -3115,7 +3002,8 @@ export default function ScheduleViewPage() {
     existingAssignments: { date: string; staffId: string }[],
     targetShiftType: ShiftType | undefined,
     dayOfWeek: number,
-    isHoliday: boolean
+    isHoliday: boolean,
+    overrideExcludeNightShiftUnavailable?: boolean  // バッチ実行時にプリセット値を渡す
   ): boolean => {
     // 出向中は不可
     if (member.isSecondment) return false;
@@ -3123,41 +3011,44 @@ export default function ScheduleViewPage() {
     // 休職中は不可
     if (isDateInLeaveOfAbsence(date, member.leaveOfAbsence)) return false;
 
-    // 当直不可（×）の日は割り振らないオプション
-    if (generalShiftConfig.excludeNightShiftUnavailable) {
+    // 当直不可（×）の日は割り振らないオプション（プリセット値があればそれを使用）
+    const excludeNightShiftUnavailable = overrideExcludeNightShiftUnavailable ?? generalShiftConfig.excludeNightShiftUnavailable;
+    if (excludeNightShiftUnavailable) {
       if (!checkNightShiftAvailability(date, member, dayOfWeek, isHoliday)) {
         return false;
       }
 
       // 仮割り振りによる当直不可もチェック
-      // 割り振り対象のシフトタイプの制約を取得
-      const targetShiftTypeConstraints = shiftTypes.find(t => t.id === generalShiftConfig.shiftTypeId);
+      // 前日・翌日に割り振られたシフトタイプの制約を確認
+      const prevDateObj = new Date(date);
+      prevDateObj.setDate(prevDateObj.getDate() - 1);
+      const prevDateStr = prevDateObj.toISOString().split('T')[0];
 
-      if (targetShiftTypeConstraints) {
-        const prevDateObj = new Date(date);
-        prevDateObj.setDate(prevDateObj.getDate() - 1);
-        const prevDateStr = prevDateObj.toISOString().split('T')[0];
+      const nextDateObj = new Date(date);
+      nextDateObj.setDate(nextDateObj.getDate() + 1);
+      const nextDateStr = nextDateObj.toISOString().split('T')[0];
 
-        const nextDateObj = new Date(date);
-        nextDateObj.setDate(nextDateObj.getDate() + 1);
-        const nextDateStr = nextDateObj.toISOString().split('T')[0];
-
-        // 前日に仮割り振りがある場合、そのシフトのnext_day_night_shiftをチェック
-        // → next_day_night_shift=falseなら今日は当直不可
-        if (targetShiftTypeConstraints.next_day_night_shift === false) {
-          const hasPrevDayAssignment = existingAssignments.some(
-            a => a.staffId === member.staff_id && a.date === prevDateStr
-          );
-          if (hasPrevDayAssignment) return false;
+      // 前日に仮割り振りがある場合、そのシフトのnext_day_night_shiftをチェック
+      // → 前日のシフトがnext_day_night_shift=falseなら今日は当直不可
+      const prevDayAssignments = existingAssignments.filter(
+        a => a.staffId === member.staff_id && a.date === prevDateStr && 'shiftTypeId' in a
+      );
+      for (const assignment of prevDayAssignments) {
+        const prevDayShiftType = shiftTypes.find(t => t.id === (assignment as { shiftTypeId: number }).shiftTypeId);
+        if (prevDayShiftType && prevDayShiftType.next_day_night_shift === false) {
+          return false;  // 前日のシフトが翌日当直不可なら除外
         }
+      }
 
-        // 翌日に仮割り振りがある場合、そのシフトのprev_day_night_shiftをチェック
-        // → prev_day_night_shift=falseなら今日は当直不可
-        if (targetShiftTypeConstraints.prev_day_night_shift === false) {
-          const hasNextDayAssignment = existingAssignments.some(
-            a => a.staffId === member.staff_id && a.date === nextDateStr
-          );
-          if (hasNextDayAssignment) return false;
+      // 翌日に仮割り振りがある場合、そのシフトのprev_day_night_shiftをチェック
+      // → 翌日のシフトがprev_day_night_shift=falseなら今日は当直不可
+      const nextDayAssignments = existingAssignments.filter(
+        a => a.staffId === member.staff_id && a.date === nextDateStr && 'shiftTypeId' in a
+      );
+      for (const assignment of nextDayAssignments) {
+        const nextDayShiftType = shiftTypes.find(t => t.id === (assignment as { shiftTypeId: number }).shiftTypeId);
+        if (nextDayShiftType && nextDayShiftType.prev_day_night_shift === false) {
+          return false;  // 翌日のシフトが前日当直不可なら除外
         }
       }
     }
@@ -3258,11 +3149,15 @@ export default function ScheduleViewPage() {
             if (shifts.some(s => filter.exclude_shift_type_ids.includes(s.shift_type_id))) {
               return false;
             }
-            // 今回の割り振り結果もチェック（現在割り振り中のシフトタイプが除外対象なら）
-            if (generalShiftConfig.shiftTypeId && filter.exclude_shift_type_ids.includes(generalShiftConfig.shiftTypeId)) {
-              if (existingAssignments.some(a => a.staffId === member.staff_id && a.date === checkDate)) {
-                return false;
-              }
+            // 前ステップの割り振り結果もすべてチェック（shiftTypeIdを持つ割り振りに限る）
+            const hasExcludedAssignment = existingAssignments.some(a =>
+              a.staffId === member.staff_id &&
+              a.date === checkDate &&
+              'shiftTypeId' in a &&
+              filter.exclude_shift_type_ids.includes((a as { shiftTypeId: number }).shiftTypeId)
+            );
+            if (hasExcludedAssignment) {
+              return false;
             }
           }
 
@@ -3334,6 +3229,25 @@ export default function ScheduleViewPage() {
                 );
                 if (matchesPeriod && s.work_location_id) {
                   workLocationId = s.work_location_id;
+                  break;
+                }
+              }
+            }
+
+            // 2.5. existingAssignments（前ステップの割り振り結果）のシフトもチェック
+            if (!workLocationId) {
+              for (const a of existingAssignments) {
+                if (a.staffId !== member.staff_id || a.date !== checkDate) continue;
+                if (!('shiftTypeId' in a && 'workLocationId' in a)) continue;
+                const assignedShiftType = shiftTypes.find(t => t.id === (a as { shiftTypeId: number }).shiftTypeId);
+                if (!assignedShiftType) continue;
+                const matchesPeriod = (
+                  (period === 'am' && assignedShiftType.position_am) ||
+                  (period === 'pm' && assignedShiftType.position_pm) ||
+                  (period === 'night' && assignedShiftType.position_night)
+                );
+                if (matchesPeriod && (a as { workLocationId?: number | null }).workLocationId) {
+                  workLocationId = (a as { workLocationId?: number | null }).workLocationId!;
                   break;
                 }
               }
@@ -3483,6 +3397,37 @@ export default function ScheduleViewPage() {
       return assignments.some(a => a.date === date);
     };
 
+    // 日付スキップフィルター: 指定条件のメンバーが指定シフトを持つ日をスキップ
+    const shouldSkipDateByFilterGeneral = (date: string): boolean => {
+      const dateSkipFilters = generalShiftConfig.exclusionFilters.filter(
+        f => f.type === 'date_skip'
+      ) as DateSkipFilter[];
+
+      for (const filter of dateSkipFilters) {
+        if (!filter.conditionShiftTypeId) continue;
+
+        // この日にfilter.conditionShiftTypeIdのシフトを持つメンバーを探す
+        const membersWithShift = members.filter(m => {
+          const shifts = m.shifts?.[date] || [];
+          return shifts.some(s => s.shift_type_id === filter.conditionShiftTypeId);
+        });
+
+        // 属性条件に一致するメンバーがいるかチェック
+        const matchingMembers = membersWithShift.filter(m => {
+          const teamMatch = filter.conditionTeams.length === 0 ||
+            filter.conditionTeams.includes(m.team);
+          const levelMatch = filter.conditionNightShiftLevels.length === 0 ||
+            filter.conditionNightShiftLevels.includes(m.nightShiftLevel || '');
+          return teamMatch && levelMatch;
+        });
+
+        if (matchingMembers.length > 0) {
+          return true;  // この日をスキップ
+        }
+      }
+      return false;
+    };
+
     // 一般シフト用: 割り振れる人数の少ない日からソートする関数
     const sortByAvailableCountGeneral = (dates: DayData[]) => {
       return [...dates].sort((a, b) => {
@@ -3508,6 +3453,9 @@ export default function ScheduleViewPage() {
 
       if (isDayAlreadyAssignedGeneral(day.date)) continue;
 
+      // 日付スキップフィルターでスキップ
+      if (shouldSkipDateByFilterGeneral(day.date)) continue;
+
       const availableMembers = targetMembers.filter(m =>
         canAssignGeneralShift(day.date, m, assignments, targetShiftType, day.dayOfWeek, day.isHoliday) &&
         isWithinMaxAssignments(m.staff_id)
@@ -3531,6 +3479,8 @@ export default function ScheduleViewPage() {
   // 一般シフト: プレビュー実行（複数回試行対応）
   const handleGeneralShiftPreview = () => {
     setIsAutoAssigning(true);
+    // UIがローディング状態をレンダリングできるよう遅延実行
+    setTimeout(() => {
     try {
       const targetMembers = getTargetMembersForGeneralShift();
       if (targetMembers.length === 0) {
@@ -3580,7 +3530,8 @@ export default function ScheduleViewPage() {
         summary: Map<string, number>;
       }> = [];
 
-      for (let i = 0; i < generalShiftConfig.trialCount; i++) {
+      const trialCountSafe = Math.max(1, generalShiftConfig.trialCount || 1);
+      for (let i = 0; i < trialCountSafe; i++) {
         const result = runSingleGeneralShiftTrial(targetMembers, targetDates, existingCountsInit, targetShiftType);
         trialResults.push({
           trialIndex: i,
@@ -3591,6 +3542,11 @@ export default function ScheduleViewPage() {
       }
 
       // 最も割り振り不可が少ない結果を選択
+      if (trialResults.length === 0) {
+        alert('試行結果がありません');
+        setIsAutoAssigning(false);
+        return;
+      }
       let bestIndex = 0;
       let minUnassigned = trialResults[0].unassignedDates.length;
       for (let i = 1; i < trialResults.length; i++) {
@@ -3614,6 +3570,7 @@ export default function ScheduleViewPage() {
     } finally {
       setIsAutoAssigning(false);
     }
+    }, 50);
   };
 
   // 一般シフト: 適用（DBに保存）
@@ -3694,155 +3651,6 @@ export default function ScheduleViewPage() {
     }
   };
 
-  // ========================================
-  // 一般シフトバッチ実行（連続割り振り）
-  // ========================================
-
-  // 一般シフトバッチ: プレビュー実行
-  const handleBatchShiftPreview = () => {
-    if (batchShiftSteps.length === 0) {
-      alert('実行するステップを追加してください');
-      return;
-    }
-
-    setIsAutoAssigning(true);
-    try {
-      const results: typeof batchShiftResult['results'] = [];
-      let allAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
-
-      for (let stepIndex = 0; stepIndex < batchShiftSteps.length; stepIndex++) {
-        const step = batchShiftSteps[stepIndex];
-        const preset = shiftAssignPresets.find(p => p.id === step.presetId);
-        if (!preset) continue;
-
-        // 上書き設定を適用
-        const shiftTypeId = step.overrideShiftTypeId ?? preset.shift_type_id;
-        const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
-        const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
-
-        // 対象シフトタイプを取得
-        const targetShiftType = shiftTypes.find(st => st.id === shiftTypeId);
-
-        // 対象メンバーを取得
-        let targetMembers: MemberData[] = [];
-        if (preset.selection_mode === 'individual') {
-          targetMembers = members.filter(m => (preset.selected_member_ids || []).includes(m.staff_id));
-        } else {
-          targetMembers = members.filter(m => {
-            if ((preset.filter_teams || []).length > 0 && !(preset.filter_teams || []).includes(m.team as 'A' | 'B')) return false;
-            if ((preset.filter_night_shift_levels || []).length > 0 && !(preset.filter_night_shift_levels || []).includes(m.nightShiftLevel || '')) return false;
-            if ((preset.filter_positions || []).length > 0 && !(preset.filter_positions || []).includes(m.position)) return false;
-            if (preset.filter_can_cardiac !== null && m.can_cardiac !== preset.filter_can_cardiac) return false;
-            if (preset.filter_can_obstetric !== null && m.can_obstetric !== preset.filter_can_obstetric) return false;
-            if (preset.filter_can_icu !== null && m.can_icu !== preset.filter_can_icu) return false;
-            if (preset.filter_can_remaining_duty !== null && m.can_remaining_duty !== preset.filter_can_remaining_duty) return false;
-            return true;
-          });
-        }
-
-        if (targetMembers.length === 0) continue;
-
-        // 対象日を取得
-        const startD = generalShiftConfig.startDate;
-        const endD = generalShiftConfig.endDate;
-        let targetDates = generateDaysForPeriod(startD, endD);
-
-        // 日付フィルタ適用
-        if (preset.date_selection_mode === 'weekday') {
-          targetDates = targetDates.filter(day => {
-            if (preset.exclude_holidays && day.isHoliday) return false;
-            if (preset.exclude_pre_holidays && isPreHoliday(day.date)) return false;
-            const weekdayMatch = (preset.target_weekdays || []).includes(day.dayOfWeek);
-            const holidayMatch = preset.include_holidays && day.isHoliday;
-            const preHolidayMatch = preset.include_pre_holidays && isPreHoliday(day.date);
-            if ((preset.target_weekdays || []).length > 0 || preset.include_holidays || preset.include_pre_holidays) {
-              return weekdayMatch || holidayMatch || preHolidayMatch;
-            }
-            return true;
-          });
-        }
-
-        if (targetDates.length === 0) continue;
-
-        // 既存カウント計算（前のステップの結果を含める）
-        const existingCountsInit = new Map<string, number>();
-        targetMembers.forEach(m => {
-          let existingCount = 0;
-          if (m.shifts) {
-            Object.entries(m.shifts).forEach(([date, shifts]) => {
-              const inPeriod = (!startD || date >= startD) && (!endD || date <= endD);
-              if (inPeriod && shiftTypeId) {
-                const hasShift = shifts.some(s => s.shift_type_id === shiftTypeId);
-                if (hasShift) existingCount++;
-              }
-            });
-          }
-          // 前のステップで割り振った分を加算（同じシフトタイプのみ）
-          const prevAssignCount = allAssignments.filter(a => a.staffId === m.staff_id && a.shiftTypeId === shiftTypeId).length;
-          existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
-        });
-
-        // 複数回試行
-        const trialResults: Array<{
-          assignments: { date: string; staffId: string; staffName: string }[];
-          unassignedDates: string[];
-          summary: Map<string, number>;
-        }> = [];
-
-        for (let i = 0; i < batchShiftTrialCount; i++) {
-          const result = runSingleGeneralShiftTrialWithConfig(
-            targetMembers,
-            targetDates,
-            existingCountsInit,
-            targetShiftType,
-            shiftTypeId,
-            maxAssignmentsPerMember,
-            maxAssignmentsMode,
-            allAssignments
-          );
-          trialResults.push(result);
-        }
-
-        // 最良結果を選択
-        let bestIndex = 0;
-        let minUnassigned = trialResults[0].unassignedDates.length;
-        for (let i = 1; i < trialResults.length; i++) {
-          if (trialResults[i].unassignedDates.length < minUnassigned) {
-            minUnassigned = trialResults[i].unassignedDates.length;
-            bestIndex = i;
-          }
-        }
-        const bestResult = trialResults[bestIndex];
-
-        const shiftTypeName = shiftTypes.find(t => t.id === shiftTypeId)?.name || '不明';
-
-        results.push({
-          stepIndex,
-          presetId: step.presetId,
-          presetName: step.presetName,
-          usedShiftTypeName: shiftTypeName,
-          assignments: bestResult.assignments,
-          unassignedDates: bestResult.unassignedDates,
-          summary: bestResult.summary,
-        });
-
-        // この結果を次のステップに引き継ぐ
-        allAssignments = [...allAssignments, ...bestResult.assignments];
-      }
-
-      setBatchShiftResult({
-        results,
-        totalAssignments: allAssignments.length,
-        totalUnassigned: results.reduce((sum, r) => sum + r.unassignedDates.length, 0),
-      });
-    } catch (error) {
-      console.error('Batch shift preview error:', error);
-      alert('バッチプレビュー生成中にエラーが発生しました');
-    } finally {
-      setIsAutoAssigning(false);
-    }
-  };
-
   // 設定を上書きして一般シフト単一試行を実行するヘルパー
   const runSingleGeneralShiftTrialWithConfig = (
     targetMembers: MemberData[],
@@ -3852,9 +3660,12 @@ export default function ScheduleViewPage() {
     shiftTypeId: number | null,
     maxAssignmentsPerMember: number | null,
     maxAssignmentsMode: 'execution' | 'monthly',
-    previousAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[]
+    previousAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number; workLocationId?: number | null }[],
+    exclusionFilters: ExclusionFilter[] = [],
+    priorityMode: 'score' | 'count' = 'count',
+    excludeNightShiftUnavailable: boolean = false  // プリセットから渡される当直不可設定
   ): {
-    assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
+    assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number; workLocationId?: number | null }[];
     summary: Map<string, number>;
     unassignedDates: string[];
   } => {
@@ -3876,7 +3687,48 @@ export default function ScheduleViewPage() {
       }
     };
 
-    const assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
+    // 日付スキップフィルター: 指定条件のメンバーが指定シフトを持つ日をスキップ
+    const shouldSkipDateByFilter = (date: string): boolean => {
+      const dateSkipFilters = exclusionFilters.filter(
+        f => f.type === 'date_skip'
+      ) as DateSkipFilter[];
+
+      for (const filter of dateSkipFilters) {
+        if (!filter.conditionShiftTypeId) continue;
+
+        // この日にfilter.conditionShiftTypeIdのシフトを持つメンバーを探す
+        // targetMembersを使用することで、統合連続実行時に当直結果がマージされたメンバー情報を参照
+        const membersWithShift = targetMembers.filter(m => {
+          const shifts = m.shifts?.[date] || [];
+          return shifts.some(s => s.shift_type_id === filter.conditionShiftTypeId);
+        });
+
+        // 前のステップの結果も考慮
+        const prevAssignmentsForDate = previousAssignments.filter(a =>
+          a.date === date && a.shiftTypeId === filter.conditionShiftTypeId
+        );
+        const prevAssignedMemberIds = prevAssignmentsForDate.map(a => a.staffId);
+        const prevAssignedMembers = targetMembers.filter(m => prevAssignedMemberIds.includes(m.staff_id));
+
+        const allMembersWithShift = [...membersWithShift, ...prevAssignedMembers];
+
+        // 属性条件に一致するメンバーがいるかチェック
+        const matchingMembers = allMembersWithShift.filter(m => {
+          const teamMatch = filter.conditionTeams.length === 0 ||
+            filter.conditionTeams.includes(m.team);
+          const levelMatch = filter.conditionNightShiftLevels.length === 0 ||
+            filter.conditionNightShiftLevels.includes(m.nightShiftLevel || '');
+          return teamMatch && levelMatch;
+        });
+
+        if (matchingMembers.length > 0) {
+          return true;  // この日をスキップ
+        }
+      }
+      return false;
+    };
+
+    const assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number; workLocationId?: number | null }[] = [];
     const unassignedDates: string[] = [];
 
     // その日に既にシフトが入っているかチェック（前のステップの結果も含む）
@@ -3893,24 +3745,65 @@ export default function ScheduleViewPage() {
     const sortByAvailableCount = (dates: DayData[]) => {
       return [...dates].sort((a, b) => {
         const availableA = targetMembers.filter(m =>
-          canAssignGeneralShift(a.date, m, [...previousAssignments, ...assignments], targetShiftType, a.dayOfWeek, a.isHoliday) &&
+          canAssignGeneralShift(a.date, m, [...previousAssignments, ...assignments], targetShiftType, a.dayOfWeek, a.isHoliday, excludeNightShiftUnavailable) &&
           isWithinMaxAssignments(m.staff_id)
         ).length;
         const availableB = targetMembers.filter(m =>
-          canAssignGeneralShift(b.date, m, [...previousAssignments, ...assignments], targetShiftType, b.dayOfWeek, b.isHoliday) &&
+          canAssignGeneralShift(b.date, m, [...previousAssignments, ...assignments], targetShiftType, b.dayOfWeek, b.isHoliday, excludeNightShiftUnavailable) &&
           isWithinMaxAssignments(m.staff_id)
         ).length;
         return availableA - availableB;
       });
     };
 
+    // スコア計算（バッチ用 - previousAssignmentsも考慮）
+    const calculateMemberScoreWithPreviewForGeneralBatch = (
+      member: MemberData,
+      previewAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number; workLocationId?: number | null }[],
+      targetShiftTypeId: number
+    ): number => {
+      let score = calculateMemberScore(member);
+      const activeConfigs = scoreConfigs.filter(c => c.is_active);
+
+      // previousAssignmentsとpreviewAssignmentsの両方を考慮
+      const memberPreviewAssignments = [...previousAssignments, ...previewAssignments].filter(
+        a => a.staffId === member.staff_id
+      );
+
+      for (const assignment of memberPreviewAssignments) {
+        const day = daysData.find(d => d.date === assignment.date);
+        if (!day) continue;
+
+        for (const config of activeConfigs) {
+          if (!(config.target_shift_type_ids || []).includes(targetShiftTypeId)) continue;
+          if (!isDateMatchForScore(day, config)) continue;
+          score += config.points;
+        }
+      }
+
+      return Math.round(score * 10) / 10;
+    };
+
     const selectLeastAssigned = (availableMembers: MemberData[]): MemberData | null => {
       if (availableMembers.length === 0) return null;
-      const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
-      const leastAssignedMembers = availableMembers.filter(m =>
-        (assignmentCount.get(m.staff_id) || 0) === minCount
-      );
-      return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+
+      if (priorityMode === 'score' && shiftTypeId) {
+        // scoreモード: スコアが最も低いメンバーを選択
+        const memberScores = availableMembers.map(m => ({
+          member: m,
+          score: calculateMemberScoreWithPreviewForGeneralBatch(m, assignments, shiftTypeId)
+        }));
+        const minScore = Math.min(...memberScores.map(ms => ms.score));
+        const lowestScoreMembers = memberScores.filter(ms => ms.score === minScore).map(ms => ms.member);
+        return lowestScoreMembers[Math.floor(Math.random() * lowestScoreMembers.length)];
+      } else {
+        // countモード: 割り振り回数が最も少ないメンバーを選択
+        const minCount = Math.min(...availableMembers.map(m => assignmentCount.get(m.staff_id) || 0));
+        const leastAssignedMembers = availableMembers.filter(m =>
+          (assignmentCount.get(m.staff_id) || 0) === minCount
+        );
+        return leastAssignedMembers[Math.floor(Math.random() * leastAssignedMembers.length)];
+      }
     };
 
     let remainingDates = [...targetDates];
@@ -3921,15 +3814,19 @@ export default function ScheduleViewPage() {
 
       if (isDayAlreadyAssigned(day.date)) continue;
 
+      // 日付スキップフィルターでスキップ
+      if (shouldSkipDateByFilter(day.date)) continue;
+
       const availableMembers = targetMembers.filter(m =>
-        canAssignGeneralShift(day.date, m, [...previousAssignments, ...assignments], targetShiftType, day.dayOfWeek, day.isHoliday) &&
+        canAssignGeneralShift(day.date, m, [...previousAssignments, ...assignments], targetShiftType, day.dayOfWeek, day.isHoliday, excludeNightShiftUnavailable) &&
         isWithinMaxAssignments(m.staff_id)
       );
 
       if (availableMembers.length > 0) {
         const selected = selectLeastAssigned(availableMembers);
         if (selected && shiftTypeId) {
-          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, shiftTypeId });
+          const workLocationId = targetShiftType?.default_work_location_id || null;
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, shiftTypeId, workLocationId });
           assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
         }
       } else {
@@ -3940,31 +3837,385 @@ export default function ScheduleViewPage() {
     return { assignments, summary: assignmentCount, unassignedDates };
   };
 
-  // 一般シフトバッチ: 適用
-  const handleBatchShiftApply = async () => {
-    if (!batchShiftResult || batchShiftResult.results.length === 0) return;
+  // ========================================
+  // 統合バッチ実行（当直+一般シフト連続割り振り）
+  // ========================================
+
+  // 統合バッチ: プレビュー実行
+  const handleUnifiedBatchPreview = () => {
+    if (unifiedBatchSteps.length === 0) {
+      alert('実行するステップを追加してください');
+      return;
+    }
+
+    setIsAutoAssigning(true);
+    setTimeout(() => {
+      try {
+        const results: UnifiedBatchResultItem[] = [];
+        // 全ステップの割り振り結果を蓄積
+        let allDutyAssignments: { date: string; staffId: string; staffName: string; type: 'night_shift' | 'day_after'; nightShiftTypeId: number }[] = [];
+        let allShiftAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
+
+        for (let stepIndex = 0; stepIndex < unifiedBatchSteps.length; stepIndex++) {
+          const step = unifiedBatchSteps[stepIndex];
+
+          if (step.type === 'duty') {
+            // 当直割り振り
+            const preset = dutyAssignPresets.find(p => p.id === step.presetId);
+            if (!preset) continue;
+
+            const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset.night_shift_type_id;
+            const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset.day_after_shift_type_id;
+            const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
+            const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
+
+            // 対象メンバー取得
+            const targetMembers = members.filter(m => {
+              if (preset.selection_mode === 'filter') {
+                const teamMatch = !preset.filter_teams?.length || preset.filter_teams.includes(m.team);
+                const levelMatch = !preset.filter_night_shift_levels?.length || preset.filter_night_shift_levels.includes(m.nightShiftLevel || '');
+                const positionMatch = !preset.filter_positions?.length || preset.filter_positions.includes(m.position || '');
+                return teamMatch && levelMatch && positionMatch;
+              } else {
+                return preset.selected_member_ids?.includes(m.staff_id);
+              }
+            });
+
+            if (targetMembers.length === 0) {
+              results.push({
+                stepIndex,
+                type: 'duty',
+                presetName: step.presetName,
+                usedShiftTypeName: shiftTypes.find(t => t.id === nightShiftTypeId)?.name || '',
+                dutyAssignments: [],
+                unassignedDates: [],
+                summary: new Map()
+              });
+              continue;
+            }
+
+            // 対象日付取得（プリセット設定で絞り込み）
+            let targetDates = getTargetDatesForAutoAssign();
+
+            // プリセットの曜日・祝日設定を適用
+            const presetTargetWeekdays = preset.target_weekdays || [];
+            const presetExcludeHolidays = (preset as Record<string, unknown>).exclude_holidays as boolean || false;
+            const presetExcludePreHolidays = (preset as Record<string, unknown>).exclude_pre_holidays as boolean || false;
+            const presetIncludeHolidays = (preset as Record<string, unknown>).include_holidays as boolean || false;
+            const presetIncludePreHolidays = (preset as Record<string, unknown>).include_pre_holidays as boolean || false;
+
+            targetDates = targetDates.filter(day => {
+              // 除外チェック（優先）
+              if (presetExcludeHolidays && day.isHoliday) return false;
+              if (presetExcludePreHolidays && isPreHoliday(day.date)) return false;
+
+              // 曜日・祝日含めるフィルター
+              const weekdayMatch = presetTargetWeekdays.length === 0 || presetTargetWeekdays.includes(day.dayOfWeek);
+              const holidayMatch = presetIncludeHolidays && day.isHoliday;
+              const preHolidayMatch = presetIncludePreHolidays && isPreHoliday(day.date);
+
+              if (presetTargetWeekdays.length > 0 || presetIncludeHolidays || presetIncludePreHolidays) {
+                return weekdayMatch || holidayMatch || preHolidayMatch;
+              }
+              return true;
+            });
+
+            if (targetDates.length === 0) continue;
+
+            // 既存カウント計算（前ステップの結果も含む）
+            const existingCountsInit = new Map<string, number>();
+            targetMembers.forEach(m => {
+              let existingCount = 0;
+              // monthlyモード時はDB既存分もカウント
+              if (maxAssignmentsMode === 'monthly' && m.shifts) {
+                Object.entries(m.shifts).forEach(([date, shifts]) => {
+                  const inPeriod = (!autoAssignConfig.startDate || date >= autoAssignConfig.startDate) &&
+                                  (!autoAssignConfig.endDate || date <= autoAssignConfig.endDate);
+                  if (inPeriod && nightShiftTypeId) {
+                    const hasNightShift = shifts.some(s => s.shift_type_id === nightShiftTypeId);
+                    if (hasNightShift) existingCount++;
+                  }
+                });
+              }
+              // 前ステップの当直結果は常に考慮（executionモードでも前ステップは考慮する）
+              const prevDutyCount = allDutyAssignments.filter(a =>
+                a.staffId === m.staff_id &&
+                a.type === 'night_shift' &&
+                a.nightShiftTypeId === nightShiftTypeId
+              ).length;
+              existingCountsInit.set(m.staff_id, existingCount + prevDutyCount);
+            });
+
+            // プリセットから優先モードを取得
+            const priorityMode = ((preset as Record<string, unknown>).priority_mode as 'score' | 'count') || 'count';
+
+            // 複数試行して最良結果を選択
+            let bestResult: { assignments: typeof allDutyAssignments; summary: Map<string, number>; unassignedDates: string[] } | null = null;
+            let bestUnassignedCount = Infinity;
+
+            for (let trial = 0; trial < unifiedBatchTrialCount; trial++) {
+              const trialResult = runSingleAutoAssignTrialWithConfig(
+                targetMembers,
+                targetDates,
+                new Map(existingCountsInit),
+                nightShiftTypeId,
+                dayAfterShiftTypeId,
+                maxAssignmentsPerMember,
+                maxAssignmentsMode,
+                allDutyAssignments,
+                priorityMode
+              );
+              if (trialResult.unassignedDates.length < bestUnassignedCount) {
+                bestUnassignedCount = trialResult.unassignedDates.length;
+                bestResult = trialResult;
+              }
+              if (bestUnassignedCount === 0) break;
+            }
+
+            if (bestResult) {
+              results.push({
+                stepIndex,
+                type: 'duty',
+                presetName: step.presetName,
+                usedShiftTypeName: shiftTypes.find(t => t.id === nightShiftTypeId)?.name || '',
+                dutyAssignments: bestResult.assignments,
+                unassignedDates: bestResult.unassignedDates,
+                summary: bestResult.summary
+              });
+              allDutyAssignments = [...allDutyAssignments, ...bestResult.assignments];
+            }
+          } else {
+            // 一般シフト割り振り
+            const preset = shiftAssignPresets.find(p => p.id === step.presetId);
+            if (!preset) continue;
+
+            const shiftTypeId = step.overrideShiftTypeId ?? preset.shift_type_id;
+            const maxAssignmentsPerMember = step.overrideMaxAssignments ?? (preset as Record<string, unknown>).max_assignments_per_member as number | null;
+            const maxAssignmentsMode = step.overrideMaxAssignmentsMode ?? ((preset as Record<string, unknown>).max_assignments_mode as 'execution' | 'monthly') ?? 'execution';
+
+            const targetShiftType = shiftTypes.find(st => st.id === shiftTypeId);
+
+            // 対象メンバー取得
+            const targetMembers = members.filter(m => {
+              if (preset.selection_mode === 'filter') {
+                const teamMatch = !preset.filter_teams?.length || preset.filter_teams.includes(m.team);
+                const levelMatch = !preset.filter_night_shift_levels?.length || preset.filter_night_shift_levels.includes(m.nightShiftLevel || '');
+                const positionMatch = !(preset as Record<string, unknown>).filter_positions?.length ||
+                  ((preset as Record<string, unknown>).filter_positions as string[])?.includes(m.position || '');
+                const canRemainingDutyMatch = (preset as Record<string, unknown>).filter_can_remaining_duty === null ||
+                  (preset as Record<string, unknown>).filter_can_remaining_duty === undefined ||
+                  m.canRemainingDuty === (preset as Record<string, unknown>).filter_can_remaining_duty;
+                return teamMatch && levelMatch && positionMatch && canRemainingDutyMatch;
+              } else {
+                return preset.selected_member_ids?.includes(m.staff_id);
+              }
+            });
+
+            if (targetMembers.length === 0) {
+              results.push({
+                stepIndex,
+                type: 'shift',
+                presetName: step.presetName,
+                usedShiftTypeName: shiftTypes.find(t => t.id === shiftTypeId)?.name || '',
+                shiftAssignments: [],
+                unassignedDates: [],
+                summary: new Map()
+              });
+              continue;
+            }
+
+            // 対象日付取得（プリセット設定で絞り込み）
+            let targetDates = getTargetDatesForGeneralShift();
+
+            // プリセットの曜日・祝日除外設定を適用
+            const presetShiftTargetWeekdays = preset.target_weekdays || [];
+            const presetShiftExcludeHolidays = (preset as Record<string, unknown>).exclude_holidays as boolean || false;
+            const presetShiftExcludePreHolidays = (preset as Record<string, unknown>).exclude_pre_holidays as boolean || false;
+            const presetIncludeHolidays = preset.include_holidays || false;
+            const presetIncludePreHolidays = preset.include_pre_holidays || false;
+
+            targetDates = targetDates.filter(day => {
+              // 除外チェック（優先）
+              if (presetShiftExcludeHolidays && day.isHoliday) return false;
+              if (presetShiftExcludePreHolidays && isPreHoliday(day.date)) return false;
+
+              // 曜日・祝日・祝前日のいずれかにマッチ
+              const weekdayMatch = presetShiftTargetWeekdays.length === 0 || presetShiftTargetWeekdays.includes(day.dayOfWeek);
+              const holidayMatch = presetIncludeHolidays && day.isHoliday;
+              const preHolidayMatch = presetIncludePreHolidays && isPreHoliday(day.date);
+
+              const hasAnySelection = presetShiftTargetWeekdays.length > 0 || presetIncludeHolidays || presetIncludePreHolidays;
+              if (!hasAnySelection) return true;
+
+              return weekdayMatch || holidayMatch || preHolidayMatch;
+            });
+
+            if (targetDates.length === 0) continue;
+
+            // 既存カウント計算
+            const existingCountsInit = new Map<string, number>();
+            targetMembers.forEach(m => {
+              let existingCount = 0;
+              if (maxAssignmentsMode === 'monthly' && m.shifts) {
+                Object.entries(m.shifts).forEach(([date, shifts]) => {
+                  const inPeriod = (!generalShiftConfig.startDate || date >= generalShiftConfig.startDate) &&
+                                  (!generalShiftConfig.endDate || date <= generalShiftConfig.endDate);
+                  if (inPeriod && shiftTypeId) {
+                    const hasShift = shifts.some(s => s.shift_type_id === shiftTypeId);
+                    if (hasShift) existingCount++;
+                  }
+                });
+              }
+              // 前ステップのシフト結果も考慮（executionモードでも統合実行内での回数制限を適用）
+              const prevShiftCount = allShiftAssignments.filter(a =>
+                a.staffId === m.staff_id &&
+                a.shiftTypeId === shiftTypeId
+              ).length;
+              existingCountsInit.set(m.staff_id, existingCount + prevShiftCount);
+            });
+
+            // 前ステップの当直結果をmembersに仮想的に追加してフィルター判定に使用
+            const membersWithPreviousDuty = targetMembers.map(m => {
+              const prevDutyShifts: Record<string, { shift_type_id: number; shift_type: ShiftType }[]> = {};
+              allDutyAssignments.forEach(a => {
+                if (a.staffId === m.staff_id) {
+                  if (!prevDutyShifts[a.date]) prevDutyShifts[a.date] = [];
+                  const dutyShiftType = shiftTypes.find(st => st.id === a.nightShiftTypeId);
+                  if (dutyShiftType) {
+                    prevDutyShifts[a.date].push({
+                      shift_type_id: a.nightShiftTypeId,
+                      shift_type: dutyShiftType
+                    });
+                  }
+                }
+              });
+              // 既存shiftsと前ステップ結果をマージ
+              const mergedShifts: typeof m.shifts = { ...m.shifts };
+              Object.entries(prevDutyShifts).forEach(([date, shifts]) => {
+                if (!mergedShifts[date]) mergedShifts[date] = [];
+                mergedShifts[date] = [...mergedShifts[date], ...shifts as typeof mergedShifts[string]];
+              });
+              return { ...m, shifts: mergedShifts };
+            });
+
+            // 除外フィルター取得
+            const exclusionFilters = (preset as Record<string, unknown>).exclusion_filters as ExclusionFilter[] || [];
+
+            // priorityMode取得
+            const priorityMode = ((preset as Record<string, unknown>).priority_mode as 'score' | 'count') || 'count';
+
+            // 当直不可設定を取得
+            const excludeNightShiftUnavailable = ((preset as Record<string, unknown>).exclude_night_shift_unavailable as boolean) || false;
+
+            // 複数試行して最良結果を選択
+            let bestResult: { assignments: typeof allShiftAssignments; summary: Map<string, number>; unassignedDates: string[] } | null = null;
+            let bestUnassignedCount = Infinity;
+
+            for (let trial = 0; trial < unifiedBatchTrialCount; trial++) {
+              const trialResult = runSingleGeneralShiftTrialWithConfig(
+                membersWithPreviousDuty,
+                targetDates,
+                new Map(existingCountsInit),
+                targetShiftType,
+                shiftTypeId,
+                maxAssignmentsPerMember,
+                maxAssignmentsMode,
+                allShiftAssignments,
+                exclusionFilters,
+                priorityMode,
+                excludeNightShiftUnavailable
+              );
+              if (trialResult.unassignedDates.length < bestUnassignedCount) {
+                bestUnassignedCount = trialResult.unassignedDates.length;
+                bestResult = trialResult;
+              }
+              if (bestUnassignedCount === 0) break;
+            }
+
+            if (bestResult) {
+              results.push({
+                stepIndex,
+                type: 'shift',
+                presetName: step.presetName,
+                usedShiftTypeName: shiftTypes.find(t => t.id === shiftTypeId)?.name || '',
+                shiftAssignments: bestResult.assignments,
+                unassignedDates: bestResult.unassignedDates,
+                summary: bestResult.summary
+              });
+              allShiftAssignments = [...allShiftAssignments, ...bestResult.assignments];
+            }
+          }
+        }
+
+        // 結果を保存
+        const totalDutyAssignments = results.reduce((sum, r) =>
+          sum + (r.dutyAssignments?.filter(a => a.type === 'night_shift').length || 0), 0);
+        const totalShiftAssignments = results.reduce((sum, r) =>
+          sum + (r.shiftAssignments?.length || 0), 0);
+
+        setUnifiedBatchResult({
+          results,
+          totalAssignments: totalDutyAssignments + totalShiftAssignments,
+          totalUnassigned: results.reduce((sum, r) => sum + r.unassignedDates.length, 0)
+        });
+      } catch (error) {
+        console.error('Unified batch preview error:', error);
+        alert('プレビュー生成中にエラーが発生しました');
+      } finally {
+        setIsAutoAssigning(false);
+      }
+    }, 50);
+  };
+
+  // 統合バッチ: 適用（DBに保存）
+  const handleUnifiedBatchApply = async () => {
+    if (!unifiedBatchResult || unifiedBatchResult.results.length === 0) return;
 
     setIsAutoAssigning(true);
     try {
-      const allInsertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[] = [];
+      const allInsertData: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id: number | null }[] = [];
 
-      for (const result of batchShiftResult.results) {
-        const step = batchShiftSteps[result.stepIndex];
-        const preset = shiftAssignPresets.find(p => p.id === step.presetId);
-        if (!preset) continue;
+      for (const result of unifiedBatchResult.results) {
+        const step = unifiedBatchSteps[result.stepIndex];
 
-        const shiftTypeId = step.overrideShiftTypeId ?? preset.shift_type_id;
-        const targetShiftType = shiftTypes.find(t => t.id === shiftTypeId);
-        const workLocationId = targetShiftType?.default_work_location_id || null;
+        if (result.type === 'duty' && result.dutyAssignments) {
+          // 当直割り振りをinsertデータに変換
+          const preset = dutyAssignPresets.find(p => p.id === step.presetId);
+          const nightShiftTypeId = step.overrideNightShiftTypeId ?? preset?.night_shift_type_id;
+          const dayAfterShiftTypeId = step.overrideDayAfterShiftTypeId ?? preset?.day_after_shift_type_id;
+          const nightShiftType = shiftTypes.find(t => t.id === nightShiftTypeId);
+          const dayAfterShiftType = shiftTypes.find(t => t.id === dayAfterShiftTypeId);
 
-        for (const assignment of result.assignments) {
-          allInsertData.push({
-            staff_id: assignment.staffId,
-            shift_date: assignment.date,
-            shift_type_id: shiftTypeId!,
-            work_location_id: workLocationId,
-          });
+          for (const a of result.dutyAssignments) {
+            const shiftType = a.type === 'night_shift' ? nightShiftType : dayAfterShiftType;
+            allInsertData.push({
+              staff_id: a.staffId,
+              shift_date: a.date,
+              shift_type_id: a.type === 'night_shift' ? (nightShiftTypeId || 0) : (dayAfterShiftTypeId || 0),
+              work_location_id: shiftType?.default_work_location_id || null
+            });
+          }
+        } else if (result.type === 'shift' && result.shiftAssignments) {
+          // シフト割り振りをinsertデータに変換
+          const preset = shiftAssignPresets.find(p => p.id === step.presetId);
+          const shiftTypeId = step.overrideShiftTypeId ?? preset?.shift_type_id;
+          const shiftType = shiftTypes.find(t => t.id === shiftTypeId);
+
+          for (const a of result.shiftAssignments) {
+            allInsertData.push({
+              staff_id: a.staffId,
+              shift_date: a.date,
+              shift_type_id: a.shiftTypeId,
+              work_location_id: shiftType?.default_work_location_id || null
+            });
+          }
         }
+      }
+
+      if (allInsertData.length === 0) {
+        alert('適用するシフトがありません');
+        setIsAutoAssigning(false);
+        return;
       }
 
       // 重複チェック
@@ -3984,7 +4235,7 @@ export default function ScheduleViewPage() {
 
       if (filteredData.length === 0) {
         alert('すべてのシフトが既に登録されています');
-        setBatchShiftResult(null);
+        setUnifiedBatchResult(null);
         setIsAutoAssigning(false);
         return;
       }
@@ -4000,17 +4251,17 @@ export default function ScheduleViewPage() {
       localStorage.setItem('lastAutoAssignment', JSON.stringify({
         insertedShiftIds: insertedData?.map(d => d.id) || [],
         timestamp: new Date().toISOString(),
-        type: 'batch_shift',
+        type: 'unified_batch',
       }));
 
       alert(`${filteredData.length}件のシフトを登録しました`);
-      setBatchShiftResult(null);
-      setBatchShiftSteps([]);
-      setBatchShiftMode(false);
+      setUnifiedBatchResult(null);
+      setUnifiedBatchSteps([]);
+      setUnifiedBatchMode(false);
       setShowAutoAssignModal(false);
       fetchData();
     } catch (error) {
-      console.error('Batch apply error:', error);
+      console.error('Unified batch apply error:', error);
       alert('適用中にエラーが発生しました');
     } finally {
       setIsAutoAssigning(false);
@@ -6500,6 +6751,7 @@ export default function ScheduleViewPage() {
                       onClick={() => {
                         setCurrentYear(tabYear);
                         setCurrentMonth(tabMonth);
+                        updateMonthUrl(tabYear, tabMonth);
                       }}
                       onMouseDown={(e) => keyboardMode && e.preventDefault()}
                       className={`px-2 py-1 rounded whitespace-nowrap text-xs font-medium transition-all ${isActive
@@ -9196,273 +9448,26 @@ export default function ScheduleViewPage() {
                 >
                   一般シフト割り振り
                 </button>
+                <button
+                  onClick={() => {
+                    setAutoAssignMode('unified_batch');
+                    setAutoAssignPreview(null);
+                    setGeneralShiftPreview(null);
+                    setUnifiedBatchResult(null);
+                  }}
+                  className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    autoAssignMode === 'unified_batch'
+                      ? 'border-purple-500 text-purple-600 bg-purple-50'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  統合連続
+                </button>
               </div>
 
               {/* 当直割り振りタブ */}
               {autoAssignMode === 'night_shift' && (
               <div className="p-4 space-y-4">
-                {/* 単一実行/連続実行モード切り替え */}
-                <div className="flex gap-2 border-b border-gray-200 pb-2">
-                  <button
-                    onClick={() => { setBatchDutyMode(false); setBatchDutyResult(null); }}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      !batchDutyMode
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    単一実行
-                  </button>
-                  <button
-                    onClick={() => { setBatchDutyMode(true); setAutoAssignPreview(null); }}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      batchDutyMode
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    連続実行
-                  </button>
-                </div>
-
-                {/* 連続実行モード */}
-                {batchDutyMode ? (
-                  <div className="space-y-4">
-                    {/* ステップ一覧 */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-bold text-gray-700">実行ステップ</h3>
-                      {batchDutySteps.length === 0 ? (
-                        <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
-                          ステップを追加してください
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {batchDutySteps.map((step, idx) => {
-                            const preset = dutyAssignPresets.find(p => p.id === step.presetId);
-                            const nightShiftName = step.overrideNightShiftTypeId
-                              ? shiftTypes.find(t => t.id === step.overrideNightShiftTypeId)?.name
-                              : shiftTypes.find(t => t.id === preset?.night_shift_type_id)?.name;
-                            return (
-                              <div key={step.id} className="border border-gray-200 rounded-lg p-3 bg-white">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium text-gray-700">
-                                    ステップ{idx + 1}: {step.presetName}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    {idx > 0 && (
-                                      <button
-                                        onClick={() => {
-                                          const newSteps = [...batchDutySteps];
-                                          [newSteps[idx - 1], newSteps[idx]] = [newSteps[idx], newSteps[idx - 1]];
-                                          setBatchDutySteps(newSteps);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-gray-600"
-                                        title="上に移動"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    {idx < batchDutySteps.length - 1 && (
-                                      <button
-                                        onClick={() => {
-                                          const newSteps = [...batchDutySteps];
-                                          [newSteps[idx], newSteps[idx + 1]] = [newSteps[idx + 1], newSteps[idx]];
-                                          setBatchDutySteps(newSteps);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-gray-600"
-                                        title="下に移動"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => setBatchDutySteps(batchDutySteps.filter((_, i) => i !== idx))}
-                                      className="p-1 text-red-400 hover:text-red-600"
-                                      title="削除"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
-                                {/* 上書き設定 */}
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div>
-                                    <label className="text-gray-600">当直シフト</label>
-                                    <select
-                                      value={step.overrideNightShiftTypeId ?? ''}
-                                      onChange={(e) => {
-                                        const newSteps = [...batchDutySteps];
-                                        newSteps[idx] = {
-                                          ...newSteps[idx],
-                                          overrideNightShiftTypeId: e.target.value ? Number(e.target.value) : null
-                                        };
-                                        setBatchDutySteps(newSteps);
-                                      }}
-                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
-                                    >
-                                      <option value="">プリセット値（{nightShiftName}）</option>
-                                      {shiftTypes.filter(t => t.is_night_shift).map(t => (
-                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-gray-600">回数制限</label>
-                                    <select
-                                      value={step.overrideMaxAssignments ?? ''}
-                                      onChange={(e) => {
-                                        const newSteps = [...batchDutySteps];
-                                        newSteps[idx] = {
-                                          ...newSteps[idx],
-                                          overrideMaxAssignments: e.target.value ? Number(e.target.value) : null
-                                        };
-                                        setBatchDutySteps(newSteps);
-                                      }}
-                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
-                                    >
-                                      <option value="">プリセット値</option>
-                                      <option value="1">1回</option>
-                                      <option value="2">2回</option>
-                                      <option value="3">3回</option>
-                                      <option value="4">4回</option>
-                                      <option value="5">5回</option>
-                                    </select>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* ステップ追加 */}
-                      <div className="flex gap-2">
-                        <select
-                          id="add-duty-step-preset"
-                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-                          defaultValue=""
-                        >
-                          <option value="">プリセットを選択...</option>
-                          {dutyAssignPresets.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={() => {
-                            const select = document.getElementById('add-duty-step-preset') as HTMLSelectElement;
-                            const presetId = Number(select.value);
-                            const preset = dutyAssignPresets.find(p => p.id === presetId);
-                            if (preset) {
-                              setBatchDutySteps([...batchDutySteps, {
-                                id: `step-${Date.now()}`,
-                                presetId: preset.id,
-                                presetName: preset.name,
-                                overrideNightShiftTypeId: null,
-                                overrideDayAfterShiftTypeId: null,
-                                overrideMaxAssignments: null,
-                                overrideMaxAssignmentsMode: null,
-                              }]);
-                              select.value = '';
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700"
-                        >
-                          追加
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 試行回数 */}
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">試行回数</label>
-                      <select
-                        value={batchDutyTrialCount}
-                        onChange={(e) => setBatchDutyTrialCount(Number(e.target.value))}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      >
-                        <option value={1}>1回</option>
-                        <option value={5}>5回</option>
-                        <option value={10}>10回（推奨）</option>
-                        <option value={20}>20回</option>
-                      </select>
-                    </div>
-
-                    {/* プレビューボタン */}
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleBatchDutyPreview}
-                        disabled={isAutoAssigning || batchDutySteps.length === 0}
-                        className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium text-sm disabled:opacity-50"
-                      >
-                        {isAutoAssigning ? 'プレビュー生成中...' : '連続実行プレビュー'}
-                      </button>
-                    </div>
-
-                    {/* バッチ結果表示 */}
-                    {batchDutyResult && (
-                      <div className="space-y-3 border-t border-gray-200 pt-4">
-                        <h3 className="text-sm font-bold text-gray-700">連続実行結果</h3>
-                        <div className="space-y-2">
-                          {batchDutyResult.results.map((result, idx) => (
-                            <div key={idx} className="bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium text-gray-700">
-                                  ステップ{result.stepIndex + 1}: {result.presetName}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {result.usedNightShiftTypeName}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                割り振り: {result.assignments.filter(a => a.type === 'night_shift').length}件
-                                {result.unassignedDates.length > 0 && (
-                                  <span className="text-red-500 ml-2">
-                                    割り振り不可: {result.unassignedDates.length}日
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="bg-emerald-50 rounded-lg p-3 text-center">
-                          <span className="text-sm font-medium text-emerald-700">
-                            合計: {batchDutyResult.totalAssignments}件
-                            {batchDutyResult.totalUnassigned > 0 && (
-                              <span className="text-red-500 ml-2">
-                                （割り振り不可: {batchDutyResult.totalUnassigned}日）
-                              </span>
-                            )}
-                          </span>
-                        </div>
-
-                        {/* 適用ボタン */}
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setBatchDutyResult(null)}
-                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
-                          >
-                            キャンセル
-                          </button>
-                          <button
-                            onClick={handleBatchDutyApply}
-                            disabled={isAutoAssigning}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"
-                          >
-                            {isAutoAssigning ? '適用中...' : 'すべて適用'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                {/* 単一実行モード（既存のUI） */}
                 {/* プリセット選択（一番上に配置） */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -9658,7 +9663,7 @@ export default function ScheduleViewPage() {
                         <input
                           type="number"
                           min="1"
-                          value={autoAssignConfig.maxAssignmentsPerMember}
+                          value={autoAssignConfig.maxAssignmentsPerMember ?? ''}
                           onChange={(e) => setAutoAssignConfig(prev => ({
                             ...prev,
                             maxAssignmentsPerMember: Math.max(1, parseInt(e.target.value) || 1)
@@ -10150,6 +10155,8 @@ export default function ScheduleViewPage() {
                     <option value={5}>5回</option>
                     <option value={10}>10回（推奨）</option>
                     <option value={20}>20回</option>
+                    <option value={50}>50回</option>
+                    <option value={100}>100回</option>
                   </select>
                   <span className="text-xs text-gray-500">※複数回試行し最良結果を選択</span>
                 </div>
@@ -10281,275 +10288,12 @@ export default function ScheduleViewPage() {
                     {isAutoAssigning ? '適用中...' : '適用'}
                   </button>
                 </div>
-                  </>
-                )}
               </div>
               )}
 
               {/* 一般シフト割り振りタブ */}
               {autoAssignMode === 'general_shift' && (
               <div className="p-4 space-y-4">
-                {/* 単一実行/連続実行モード切り替え */}
-                <div className="flex gap-2 border-b border-gray-200 pb-2">
-                  <button
-                    onClick={() => { setBatchShiftMode(false); setBatchShiftResult(null); }}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      !batchShiftMode
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    単一実行
-                  </button>
-                  <button
-                    onClick={() => { setBatchShiftMode(true); setGeneralShiftPreview(null); }}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                      batchShiftMode
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    連続実行
-                  </button>
-                </div>
-
-                {/* 連続実行モード */}
-                {batchShiftMode ? (
-                  <div className="space-y-4">
-                    {/* ステップ一覧 */}
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-bold text-gray-700">実行ステップ</h3>
-                      {batchShiftSteps.length === 0 ? (
-                        <div className="text-sm text-gray-500 text-center py-4 bg-gray-50 rounded-lg">
-                          ステップを追加してください
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {batchShiftSteps.map((step, idx) => {
-                            const preset = shiftAssignPresets.find(p => p.id === step.presetId);
-                            const shiftTypeName = step.overrideShiftTypeId
-                              ? shiftTypes.find(t => t.id === step.overrideShiftTypeId)?.name
-                              : shiftTypes.find(t => t.id === preset?.shift_type_id)?.name;
-                            return (
-                              <div key={step.id} className="border border-gray-200 rounded-lg p-3 bg-white">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-sm font-medium text-gray-700">
-                                    ステップ{idx + 1}: {step.presetName}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    {idx > 0 && (
-                                      <button
-                                        onClick={() => {
-                                          const newSteps = [...batchShiftSteps];
-                                          [newSteps[idx - 1], newSteps[idx]] = [newSteps[idx], newSteps[idx - 1]];
-                                          setBatchShiftSteps(newSteps);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-gray-600"
-                                        title="上に移動"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    {idx < batchShiftSteps.length - 1 && (
-                                      <button
-                                        onClick={() => {
-                                          const newSteps = [...batchShiftSteps];
-                                          [newSteps[idx], newSteps[idx + 1]] = [newSteps[idx + 1], newSteps[idx]];
-                                          setBatchShiftSteps(newSteps);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-gray-600"
-                                        title="下に移動"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={() => setBatchShiftSteps(batchShiftSteps.filter((_, i) => i !== idx))}
-                                      className="p-1 text-red-400 hover:text-red-600"
-                                      title="削除"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
-                                {/* 上書き設定 */}
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div>
-                                    <label className="text-gray-600">シフトタイプ</label>
-                                    <select
-                                      value={step.overrideShiftTypeId ?? ''}
-                                      onChange={(e) => {
-                                        const newSteps = [...batchShiftSteps];
-                                        newSteps[idx] = {
-                                          ...newSteps[idx],
-                                          overrideShiftTypeId: e.target.value ? Number(e.target.value) : null
-                                        };
-                                        setBatchShiftSteps(newSteps);
-                                      }}
-                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
-                                    >
-                                      <option value="">プリセット値（{shiftTypeName}）</option>
-                                      {shiftTypes.map(t => (
-                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-gray-600">回数制限</label>
-                                    <select
-                                      value={step.overrideMaxAssignments ?? ''}
-                                      onChange={(e) => {
-                                        const newSteps = [...batchShiftSteps];
-                                        newSteps[idx] = {
-                                          ...newSteps[idx],
-                                          overrideMaxAssignments: e.target.value ? Number(e.target.value) : null
-                                        };
-                                        setBatchShiftSteps(newSteps);
-                                      }}
-                                      className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
-                                    >
-                                      <option value="">プリセット値</option>
-                                      <option value="1">1回</option>
-                                      <option value="2">2回</option>
-                                      <option value="3">3回</option>
-                                      <option value="4">4回</option>
-                                      <option value="5">5回</option>
-                                    </select>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* ステップ追加 */}
-                      <div className="flex gap-2">
-                        <select
-                          id="add-shift-step-preset"
-                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
-                          defaultValue=""
-                        >
-                          <option value="">プリセットを選択...</option>
-                          {shiftAssignPresets.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={() => {
-                            const select = document.getElementById('add-shift-step-preset') as HTMLSelectElement;
-                            const presetId = Number(select.value);
-                            const preset = shiftAssignPresets.find(p => p.id === presetId);
-                            if (preset) {
-                              setBatchShiftSteps([...batchShiftSteps, {
-                                id: `step-${Date.now()}`,
-                                presetId: preset.id,
-                                presetName: preset.name,
-                                overrideShiftTypeId: null,
-                                overrideMaxAssignments: null,
-                                overrideMaxAssignmentsMode: null,
-                              }]);
-                              select.value = '';
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-                        >
-                          追加
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 試行回数 */}
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">試行回数</label>
-                      <select
-                        value={batchShiftTrialCount}
-                        onChange={(e) => setBatchShiftTrialCount(Number(e.target.value))}
-                        className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      >
-                        <option value={1}>1回</option>
-                        <option value={5}>5回</option>
-                        <option value={10}>10回（推奨）</option>
-                        <option value={20}>20回</option>
-                      </select>
-                    </div>
-
-                    {/* プレビューボタン */}
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleBatchShiftPreview}
-                        disabled={isAutoAssigning || batchShiftSteps.length === 0}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm disabled:opacity-50"
-                      >
-                        {isAutoAssigning ? 'プレビュー生成中...' : '連続実行プレビュー'}
-                      </button>
-                    </div>
-
-                    {/* バッチ結果表示 */}
-                    {batchShiftResult && (
-                      <div className="space-y-3 border-t border-gray-200 pt-4">
-                        <h3 className="text-sm font-bold text-gray-700">連続実行結果</h3>
-                        <div className="space-y-2">
-                          {batchShiftResult.results.map((result, idx) => (
-                            <div key={idx} className="bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium text-gray-700">
-                                  ステップ{result.stepIndex + 1}: {result.presetName}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {result.usedShiftTypeName}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-600">
-                                割り振り: {result.assignments.length}件
-                                {result.unassignedDates.length > 0 && (
-                                  <span className="text-red-500 ml-2">
-                                    割り振り不可: {result.unassignedDates.length}日
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="bg-blue-50 rounded-lg p-3 text-center">
-                          <span className="text-sm font-medium text-blue-700">
-                            合計: {batchShiftResult.totalAssignments}件
-                            {batchShiftResult.totalUnassigned > 0 && (
-                              <span className="text-red-500 ml-2">
-                                （割り振り不可: {batchShiftResult.totalUnassigned}日）
-                              </span>
-                            )}
-                          </span>
-                        </div>
-
-                        {/* 適用ボタン */}
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setBatchShiftResult(null)}
-                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
-                          >
-                            キャンセル
-                          </button>
-                          <button
-                            onClick={handleBatchShiftApply}
-                            disabled={isAutoAssigning}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
-                          >
-                            {isAutoAssigning ? '適用中...' : 'すべて適用'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                {/* 単一実行モード（既存のUI） */}
                 {/* プリセット（一番上に配置） */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -10712,7 +10456,7 @@ export default function ScheduleViewPage() {
                         <input
                           type="number"
                           min="1"
-                          value={generalShiftConfig.maxAssignmentsPerMember}
+                          value={generalShiftConfig.maxAssignmentsPerMember ?? ''}
                           onChange={(e) => setGeneralShiftConfig(prev => ({
                             ...prev,
                             maxAssignmentsPerMember: Math.max(1, parseInt(e.target.value) || 1)
@@ -11212,6 +10956,23 @@ export default function ScheduleViewPage() {
                         >
                           勤務場所ベース
                         </button>
+                        <button
+                          onClick={() => {
+                            setGeneralShiftConfig(prev => ({
+                              ...prev,
+                              exclusionFilters: [...prev.exclusionFilters, {
+                                type: 'date_skip',
+                                conditionShiftTypeId: 0,
+                                conditionTeams: [],
+                                conditionNightShiftLevels: [],
+                              }]
+                            }));
+                            document.getElementById('exclusion-filter-menu')?.classList.add('hidden');
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-gray-100 transition-colors"
+                        >
+                          日付スキップ条件
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -11237,42 +10998,44 @@ export default function ScheduleViewPage() {
                         ×
                       </button>
                       <div className="text-xs font-medium text-gray-600 mb-2">
-                        {filter.type === 'date_based' ? '日付ベース' : '勤務場所ベース'} ルール {filterIdx + 1}
+                        {filter.type === 'date_based' ? '日付ベース' : filter.type === 'work_location_based' ? '勤務場所ベース' : '日付スキップ'} ルール {filterIdx + 1}
                       </div>
 
-                      {/* 対象日（共通） */}
-                      <div className="mb-2">
-                        <label className="block text-xs text-gray-900 mb-1">対象日</label>
-                        <div className="flex gap-2">
-                          {[
-                            { value: 'prev_day', label: '前日' },
-                            { value: 'same_day', label: '当日' },
-                            { value: 'next_day', label: '翌日' },
-                          ].map(opt => (
-                            <label key={opt.value} className="flex items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={filter.target_days.includes(opt.value as TargetDay)}
-                                onChange={(e) => {
-                                  setGeneralShiftConfig(prev => ({
-                                    ...prev,
-                                    exclusionFilters: prev.exclusionFilters.map((f, i) =>
-                                      i === filterIdx ? {
-                                        ...f,
-                                        target_days: e.target.checked
-                                          ? [...f.target_days, opt.value as TargetDay]
-                                          : f.target_days.filter(d => d !== opt.value)
-                                      } : f
-                                    )
-                                  }));
-                                }}
-                                className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                              />
-                              <span className="text-xs text-gray-700">{opt.label}</span>
-                            </label>
-                          ))}
+                      {/* 対象日（date_basedとwork_location_basedのみ） */}
+                      {filter.type !== 'date_skip' && (
+                        <div className="mb-2">
+                          <label className="block text-xs text-gray-900 mb-1">対象日</label>
+                          <div className="flex gap-2">
+                            {[
+                              { value: 'prev_day', label: '前日' },
+                              { value: 'same_day', label: '当日' },
+                              { value: 'next_day', label: '翌日' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={(filter as DateBasedExclusionFilter | WorkLocationBasedExclusionFilter).target_days.includes(opt.value as TargetDay)}
+                                  onChange={(e) => {
+                                    setGeneralShiftConfig(prev => ({
+                                      ...prev,
+                                      exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                        i === filterIdx && f.type !== 'date_skip' ? {
+                                          ...f,
+                                          target_days: e.target.checked
+                                            ? [...(f as DateBasedExclusionFilter | WorkLocationBasedExclusionFilter).target_days, opt.value as TargetDay]
+                                            : (f as DateBasedExclusionFilter | WorkLocationBasedExclusionFilter).target_days.filter(d => d !== opt.value)
+                                        } : f
+                                      )
+                                    }));
+                                  }}
+                                  className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="text-xs text-gray-700">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {filter.type === 'date_based' && (
                         <>
@@ -11460,6 +11223,100 @@ export default function ScheduleViewPage() {
                           </div>
                         </>
                       )}
+
+                      {/* 日付スキップフィルター */}
+                      {filter.type === 'date_skip' && (
+                        <>
+                          <div className="text-xs text-gray-500 mb-3">
+                            以下の条件に該当するメンバーが指定シフトを持つ日は、割り振り対象から除外します
+                          </div>
+
+                          {/* シフトタイプ選択 */}
+                          <div className="mb-3">
+                            <label className="block text-xs text-gray-900 mb-1">チェックするシフト</label>
+                            <select
+                              value={(filter as DateSkipFilter).conditionShiftTypeId || 0}
+                              onChange={(e) => {
+                                setGeneralShiftConfig(prev => ({
+                                  ...prev,
+                                  exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                    i === filterIdx && f.type === 'date_skip' ? {
+                                      ...f,
+                                      conditionShiftTypeId: Number(e.target.value)
+                                    } : f
+                                  )
+                                }));
+                              }}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              <option value={0}>シフトを選択...</option>
+                              {shiftTypes.map(st => (
+                                <option key={st.id} value={st.id}>{st.display_label || st.name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* チームフィルター */}
+                          <div className="mb-2">
+                            <label className="block text-xs text-gray-900 mb-1">チーム（空=全チーム）</label>
+                            <div className="flex gap-2">
+                              {(['A', 'B'] as const).map(team => (
+                                <label key={team} className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={(filter as DateSkipFilter).conditionTeams.includes(team)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'date_skip' ? {
+                                            ...f,
+                                            conditionTeams: e.target.checked
+                                              ? [...(f as DateSkipFilter).conditionTeams, team]
+                                              : (f as DateSkipFilter).conditionTeams.filter(t => t !== team)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span className="text-xs text-gray-700">{team}チーム</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 当直レベルフィルター */}
+                          <div>
+                            <label className="block text-xs text-gray-900 mb-1">当直レベル（空=全レベル）</label>
+                            <div className="flex flex-wrap gap-1">
+                              {['上', '上中', '中', '中下', '下'].map(level => (
+                                <label key={level} className="flex items-center gap-1 px-2 py-0.5 bg-white border border-gray-200 rounded text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={(filter as DateSkipFilter).conditionNightShiftLevels.includes(level)}
+                                    onChange={(e) => {
+                                      setGeneralShiftConfig(prev => ({
+                                        ...prev,
+                                        exclusionFilters: prev.exclusionFilters.map((f, i) =>
+                                          i === filterIdx && f.type === 'date_skip' ? {
+                                            ...f,
+                                            conditionNightShiftLevels: e.target.checked
+                                              ? [...(f as DateSkipFilter).conditionNightShiftLevels, level]
+                                              : (f as DateSkipFilter).conditionNightShiftLevels.filter(l => l !== level)
+                                          } : f
+                                        )
+                                      }));
+                                    }}
+                                    className="w-3 h-3 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <span>{level}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -11477,6 +11334,8 @@ export default function ScheduleViewPage() {
                       <option value={5}>5回</option>
                       <option value={10}>10回（推奨）</option>
                       <option value={20}>20回</option>
+                      <option value={50}>50回</option>
+                      <option value={100}>100回</option>
                     </select>
                     <span className="text-xs text-gray-500">複数回試行して最も割り振り不可が少ない結果を選択</span>
                   </div>
@@ -11611,7 +11470,398 @@ export default function ScheduleViewPage() {
                     {isAutoAssigning ? '適用中...' : '適用'}
                   </button>
                 </div>
-                  </>
+              </div>
+              )}
+
+              {/* 統合連続実行タブ */}
+              {autoAssignMode === 'unified_batch' && (
+              <div className="p-4 space-y-4">
+                <p className="text-sm text-gray-600">
+                  当直プリセットと一般シフトプリセットを組み合わせて連続実行できます。
+                </p>
+
+                {/* プリセット読み込み・保存・管理 */}
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                  <select
+                    value={selectedUnifiedPresetId}
+                    onChange={(e) => setSelectedUnifiedPresetId(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">-- 保存済み構成を選択 --</option>
+                    {unifiedBatchPresets.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      const preset = unifiedBatchPresets.find(p => p.id === Number(selectedUnifiedPresetId));
+                      if (preset) {
+                        // IDを再生成して復元
+                        const restoredSteps = preset.steps.map(step => ({
+                          ...step,
+                          id: `unified-step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                        }));
+                        setUnifiedBatchSteps(restoredSteps);
+                        setUnifiedBatchTrialCount(preset.trial_count);
+                        setSelectedUnifiedPresetId('');
+                      }
+                    }}
+                    disabled={!selectedUnifiedPresetId}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    読み込み
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (unifiedBatchSteps.length === 0) {
+                        alert('保存するステップがありません');
+                        return;
+                      }
+                      setUnifiedPresetName('');
+                      setShowUnifiedPresetSaveModal(true);
+                    }}
+                    disabled={unifiedBatchSteps.length === 0}
+                    className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    構成を保存
+                  </button>
+                  <button
+                    onClick={() => setShowUnifiedPresetManageModal(true)}
+                    className="px-3 py-2 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700"
+                  >
+                    管理
+                  </button>
+                </div>
+
+                {/* ステップリスト */}
+                {unifiedBatchSteps.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-gray-700">実行ステップ</h3>
+                    {unifiedBatchSteps.map((step, idx) => {
+                      const preset = step.type === 'duty'
+                        ? dutyAssignPresets.find(p => p.id === step.presetId)
+                        : shiftAssignPresets.find(p => p.id === step.presetId);
+                      const presetName = preset?.name;
+                      const shiftTypeName = step.type === 'duty'
+                        ? (step.overrideNightShiftTypeId
+                            ? shiftTypes.find(t => t.id === step.overrideNightShiftTypeId)?.name
+                            : shiftTypes.find(t => t.id === dutyAssignPresets.find(p => p.id === step.presetId)?.night_shift_type_id)?.name)
+                        : (step.overrideShiftTypeId
+                            ? shiftTypes.find(t => t.id === step.overrideShiftTypeId)?.name
+                            : shiftTypes.find(t => t.id === shiftAssignPresets.find(p => p.id === step.presetId)?.shift_type_id)?.name);
+                      return (
+                        <div key={step.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                                step.type === 'duty'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {step.type === 'duty' ? '当直' : 'シフト'}
+                              </span>
+                              <span className="text-sm font-medium text-gray-700">
+                                ステップ{idx + 1}: {step.presetName}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {idx > 0 && (
+                                <button
+                                  onClick={() => {
+                                    const newSteps = [...unifiedBatchSteps];
+                                    [newSteps[idx - 1], newSteps[idx]] = [newSteps[idx], newSteps[idx - 1]];
+                                    setUnifiedBatchSteps(newSteps);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-600"
+                                  title="上に移動"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                  </svg>
+                                </button>
+                              )}
+                              {idx < unifiedBatchSteps.length - 1 && (
+                                <button
+                                  onClick={() => {
+                                    const newSteps = [...unifiedBatchSteps];
+                                    [newSteps[idx], newSteps[idx + 1]] = [newSteps[idx + 1], newSteps[idx]];
+                                    setUnifiedBatchSteps(newSteps);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-600"
+                                  title="下に移動"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setUnifiedBatchSteps(unifiedBatchSteps.filter((_, i) => i !== idx))}
+                                className="p-1 text-red-400 hover:text-red-600"
+                                title="削除"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          {/* 上書き設定 */}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <label className="text-gray-600">{step.type === 'duty' ? '当直シフト' : 'シフトタイプ'}</label>
+                              <select
+                                value={step.type === 'duty' ? (step.overrideNightShiftTypeId ?? '') : (step.overrideShiftTypeId ?? '')}
+                                onChange={(e) => {
+                                  const newSteps = [...unifiedBatchSteps];
+                                  if (step.type === 'duty') {
+                                    newSteps[idx] = { ...newSteps[idx], overrideNightShiftTypeId: e.target.value ? Number(e.target.value) : null };
+                                  } else {
+                                    newSteps[idx] = { ...newSteps[idx], overrideShiftTypeId: e.target.value ? Number(e.target.value) : null };
+                                  }
+                                  setUnifiedBatchSteps(newSteps);
+                                }}
+                                className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                              >
+                                <option value="">プリセット値（{shiftTypeName}）</option>
+                                {shiftTypes.map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-gray-600">回数制限</label>
+                              <select
+                                value={step.overrideMaxAssignments ?? ''}
+                                onChange={(e) => {
+                                  const newSteps = [...unifiedBatchSteps];
+                                  newSteps[idx] = { ...newSteps[idx], overrideMaxAssignments: e.target.value ? Number(e.target.value) : null };
+                                  setUnifiedBatchSteps(newSteps);
+                                }}
+                                className="w-full px-2 py-1 border border-gray-200 rounded text-xs"
+                              >
+                                <option value="">プリセット値（{preset?.max_assignments_per_member ? `${preset.max_assignments_per_member}回` : '制限なし'}）</option>
+                                {[...Array(10)].map((_, i) => (
+                                  <option key={i + 1} value={i + 1}>{i + 1}回</option>
+                                ))}
+                              </select>
+                              {/* モード選択 */}
+                              <div className="flex gap-2 mt-1">
+                                <label className="flex items-center gap-1">
+                                  <input
+                                    type="radio"
+                                    name={`unified-mode-${idx}`}
+                                    checked={step.overrideMaxAssignmentsMode === null || step.overrideMaxAssignmentsMode === 'execution'}
+                                    onChange={() => {
+                                      const newSteps = [...unifiedBatchSteps];
+                                      newSteps[idx] = { ...newSteps[idx], overrideMaxAssignmentsMode: 'execution' };
+                                      setUnifiedBatchSteps(newSteps);
+                                    }}
+                                    className="w-3 h-3"
+                                  />
+                                  <span className="text-xs text-gray-600">この実行</span>
+                                </label>
+                                <label className="flex items-center gap-1">
+                                  <input
+                                    type="radio"
+                                    name={`unified-mode-${idx}`}
+                                    checked={step.overrideMaxAssignmentsMode === 'monthly'}
+                                    onChange={() => {
+                                      const newSteps = [...unifiedBatchSteps];
+                                      newSteps[idx] = { ...newSteps[idx], overrideMaxAssignmentsMode: 'monthly' };
+                                      setUnifiedBatchSteps(newSteps);
+                                    }}
+                                    className="w-3 h-3"
+                                  />
+                                  <span className="text-xs text-gray-600">月間総回数</span>
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ステップ追加 */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">当直プリセット追加</label>
+                    <div className="flex gap-1">
+                      <select
+                        value={addUnifiedDutyPresetId}
+                        onChange={(e) => setAddUnifiedDutyPresetId(e.target.value)}
+                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      >
+                        <option value="">選択...</option>
+                        {dutyAssignPresets.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          const presetId = Number(addUnifiedDutyPresetId);
+                          const preset = dutyAssignPresets.find(p => p.id === presetId);
+                          if (preset) {
+                            setUnifiedBatchSteps([...unifiedBatchSteps, {
+                              id: `step-${Date.now()}`,
+                              type: 'duty',
+                              presetId: preset.id,
+                              presetName: preset.name,
+                              overrideNightShiftTypeId: null,
+                              overrideDayAfterShiftTypeId: null,
+                              overrideMaxAssignments: null,
+                              overrideMaxAssignmentsMode: null,
+                            }]);
+                            setAddUnifiedDutyPresetId('');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700"
+                      >
+                        追加
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">シフトプリセット追加</label>
+                    <div className="flex gap-1">
+                      <select
+                        value={addUnifiedShiftPresetId}
+                        onChange={(e) => setAddUnifiedShiftPresetId(e.target.value)}
+                        className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm"
+                      >
+                        <option value="">選択...</option>
+                        {shiftAssignPresets.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          const presetId = Number(addUnifiedShiftPresetId);
+                          const preset = shiftAssignPresets.find(p => p.id === presetId);
+                          if (preset) {
+                            setUnifiedBatchSteps([...unifiedBatchSteps, {
+                              id: `step-${Date.now()}`,
+                              type: 'shift',
+                              presetId: preset.id,
+                              presetName: preset.name,
+                              overrideShiftTypeId: null,
+                              overrideMaxAssignments: null,
+                              overrideMaxAssignmentsMode: null,
+                            }]);
+                            setAddUnifiedShiftPresetId('');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                      >
+                        追加
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 試行回数 */}
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">試行回数:</label>
+                  <select
+                    value={unifiedBatchTrialCount}
+                    onChange={(e) => setUnifiedBatchTrialCount(Number(e.target.value))}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="1">1回</option>
+                    <option value="5">5回</option>
+                    <option value="10">10回（推奨）</option>
+                    <option value="20">20回</option>
+                    <option value="50">50回</option>
+                    <option value="100">100回</option>
+                  </select>
+                </div>
+
+                {/* プレビューボタン */}
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleUnifiedBatchPreview}
+                    disabled={isAutoAssigning || unifiedBatchSteps.length === 0}
+                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm disabled:opacity-50"
+                  >
+                    {isAutoAssigning ? 'プレビュー生成中...' : '統合実行プレビュー'}
+                  </button>
+                </div>
+
+                {/* バッチ結果表示 */}
+                {unifiedBatchResult && (
+                  <div className="space-y-3 border-t border-gray-200 pt-4">
+                    <h3 className="text-sm font-bold text-gray-700">統合実行結果</h3>
+
+                    {unifiedBatchResult.results.map((result, idx) => (
+                      <div key={idx} className={`p-3 rounded-lg ${
+                        result.type === 'duty' ? 'bg-emerald-50' : 'bg-blue-50'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                              result.type === 'duty'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {result.type === 'duty' ? '当直' : 'シフト'}
+                            </span>
+                            <span className="text-sm font-medium text-gray-700">{result.presetName}</span>
+                            <span className="text-xs text-gray-500">({result.usedShiftTypeName})</span>
+                          </div>
+                          <div className="text-sm">
+                            <span className={`font-bold ${
+                              result.type === 'duty' ? 'text-emerald-600' : 'text-blue-600'
+                            }`}>
+                              {result.type === 'duty'
+                                ? result.dutyAssignments?.filter(a => a.type === 'night_shift').length || 0
+                                : result.shiftAssignments?.length || 0}件
+                            </span>
+                            {result.unassignedDates.length > 0 && (
+                              <span className="text-red-600 ml-2">不可{result.unassignedDates.length}日</span>
+                            )}
+                          </div>
+                        </div>
+                        {result.unassignedDates.length > 0 && (
+                          <div className="text-xs text-red-600 mt-1">
+                            割り振り不可日: {result.unassignedDates.slice(0, 5).join(', ')}
+                            {result.unassignedDates.length > 5 && ` 他${result.unassignedDates.length - 5}日`}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* 合計 */}
+                    <div className="bg-purple-50 rounded-lg p-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-700">合計</span>
+                        <div className="text-sm">
+                          <span className="font-bold text-purple-600">{unifiedBatchResult.totalAssignments}件</span>
+                          {unifiedBatchResult.totalUnassigned > 0 && (
+                            <span className="text-red-600 ml-2">不可{unifiedBatchResult.totalUnassigned}日</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 適用ボタン */}
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setUnifiedBatchResult(null)}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        onClick={handleUnifiedBatchApply}
+                        disabled={isAutoAssigning || unifiedBatchResult.totalAssignments === 0}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm disabled:opacity-50"
+                      >
+                        {isAutoAssigning ? '適用中...' : 'すべて適用'}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
               )}
@@ -11728,6 +11978,204 @@ export default function ScheduleViewPage() {
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {editingShiftPreset ? '更新' : '保存'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 統合連続プリセット保存モーダル */}
+      {showUnifiedPresetSaveModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowUnifiedPresetSaveModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[400px] max-w-[90vw]">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-800">統合連続構成を保存</h3>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">プリセット名</label>
+                <input
+                  type="text"
+                  value={unifiedPresetName}
+                  onChange={(e) => setUnifiedPresetName(e.target.value)}
+                  placeholder="例：月末当直＋研鑽日シフト"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="text-sm text-gray-600">
+                <p>保存されるステップ数: {unifiedBatchSteps.length}</p>
+                <p>試行回数: {unifiedBatchTrialCount}</p>
+              </div>
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowUnifiedPresetSaveModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={async () => {
+                  if (!unifiedPresetName.trim()) {
+                    alert('プリセット名を入力してください');
+                    return;
+                  }
+                  const maxOrder = Math.max(0, ...unifiedBatchPresets.map(p => p.display_order));
+                  const { data, error } = await supabase
+                    .from('unified_batch_preset')
+                    .insert({
+                      name: unifiedPresetName.trim(),
+                      steps: JSON.stringify(unifiedBatchSteps),
+                      trial_count: unifiedBatchTrialCount,
+                      display_order: maxOrder + 1
+                    })
+                    .select()
+                    .single();
+                  if (error) {
+                    alert('保存に失敗しました: ' + error.message);
+                    return;
+                  }
+                  setUnifiedBatchPresets([...unifiedBatchPresets, {
+                    ...data,
+                    steps: unifiedBatchSteps
+                  }]);
+                  setShowUnifiedPresetSaveModal(false);
+                  setUnifiedPresetName('');
+                }}
+                disabled={!unifiedPresetName.trim()}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 統合連続プリセット管理モーダル */}
+      {showUnifiedPresetManageModal && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setShowUnifiedPresetManageModal(false)} />
+          <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl z-50 w-[500px] max-w-[90vw] max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-800">統合連続プリセット管理</h3>
+            </div>
+            <div className="p-4 overflow-y-auto flex-grow">
+              {unifiedBatchPresets.length === 0 ? (
+                <div className="text-center text-gray-900 py-8">
+                  保存されたプリセットがありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {unifiedBatchPresets.map((preset, index) => (
+                    <div
+                      key={preset.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', index.toString());
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.add('bg-blue-100', 'border-blue-400');
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('bg-blue-100', 'border-blue-400');
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-blue-100', 'border-blue-400');
+                        const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                        if (fromIndex === index) return;
+                        const newPresets = [...unifiedBatchPresets];
+                        const [moved] = newPresets.splice(fromIndex, 1);
+                        newPresets.splice(index, 0, moved);
+                        // display_orderを更新
+                        const updates = newPresets.map((p, i) => ({ id: p.id, display_order: i }));
+                        for (const u of updates) {
+                          await supabase.from('unified_batch_preset').update({ display_order: u.display_order }).eq('id', u.id);
+                        }
+                        setUnifiedBatchPresets(newPresets.map((p, i) => ({ ...p, display_order: i })));
+                      }}
+                      className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white cursor-move hover:bg-gray-50"
+                    >
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                        </svg>
+                        {editingUnifiedPreset?.id === preset.id ? (
+                          <input
+                            type="text"
+                            value={editingUnifiedPreset.name}
+                            onChange={(e) => setEditingUnifiedPreset({ ...editingUnifiedPreset, name: e.target.value })}
+                            className="px-2 py-1 border border-gray-300 rounded text-sm"
+                            autoFocus
+                          />
+                        ) : (
+                          <div>
+                            <span className="font-medium text-gray-800">{preset.name}</span>
+                            <span className="ml-2 text-xs text-gray-500">({preset.steps.length}ステップ)</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {editingUnifiedPreset?.id === preset.id ? (
+                          <>
+                            <button
+                              onClick={async () => {
+                                await supabase.from('unified_batch_preset').update({ name: editingUnifiedPreset.name }).eq('id', preset.id);
+                                setUnifiedBatchPresets(unifiedBatchPresets.map(p => p.id === preset.id ? { ...p, name: editingUnifiedPreset.name } : p));
+                                setEditingUnifiedPreset(null);
+                              }}
+                              className="px-2 py-1 bg-blue-600 text-white rounded text-xs"
+                            >
+                              保存
+                            </button>
+                            <button
+                              onClick={() => setEditingUnifiedPreset(null)}
+                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                            >
+                              キャンセル
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setEditingUnifiedPreset(preset)}
+                              className="p-1 text-gray-400 hover:text-blue-600"
+                              title="編集"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`「${preset.name}」を削除しますか？`)) return;
+                                await supabase.from('unified_batch_preset').delete().eq('id', preset.id);
+                                setUnifiedBatchPresets(unifiedBatchPresets.filter(p => p.id !== preset.id));
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                              title="削除"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setShowUnifiedPresetManageModal(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium text-sm"
+              >
+                閉じる
               </button>
             </div>
           </div>
@@ -13331,5 +13779,17 @@ export default function ScheduleViewPage() {
       )}
 
     </div>
+  );
+}
+
+export default function ScheduleViewPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    }>
+      <ScheduleViewPageContent />
+    </Suspense>
   );
 }
