@@ -6799,7 +6799,31 @@ export default function ScheduleViewPage() {
                       }
                     }
 
-                    // 2. 年休の勤務場所（displaySettingsから）
+                    // 2. シフトタイプのデフォルト勤務場所
+                    for (const s of shifts) {
+                      const matchesPeriod = (
+                        (period === 'am' && s.shift_type.position_am) ||
+                        (period === 'pm' && s.shift_type.position_pm) ||
+                        (period === 'night' && s.shift_type.position_night)
+                      );
+                      if (matchesPeriod && s.shift_type.default_work_location_id) {
+                        return workLocationMaster.find(wl => wl.id === s.shift_type.default_work_location_id);
+                      }
+                    }
+
+                    // 3. 予定タイプのデフォルト勤務場所
+                    for (const s of schedules) {
+                      const matchesPeriod = (
+                        (period === 'am' && s.schedule_type.position_am) ||
+                        (period === 'pm' && s.schedule_type.position_pm) ||
+                        (period === 'night' && s.schedule_type.position_night)
+                      );
+                      if (matchesPeriod && s.schedule_type.default_work_location_id) {
+                        return workLocationMaster.find(wl => wl.id === s.schedule_type.default_work_location_id);
+                      }
+                    }
+
+                    // 4. 年休の勤務場所（displaySettingsから）
                     if (vacation && period !== 'night') {
                       const matchesPeriod = (
                         vacation.period === 'full_day' ||
@@ -6821,7 +6845,7 @@ export default function ScheduleViewPage() {
                       }
                     }
 
-                    // 3. 研究日の勤務場所（displaySettingsから）
+                    // 5. 研究日の勤務場所（displaySettingsから）
                     if (isResearchDay && period !== 'night') {
                       const researchSettings = displaySettings.research_day;
                       if (researchSettings && researchSettings.default_work_location_id) {
@@ -6829,13 +6853,13 @@ export default function ScheduleViewPage() {
                       }
                     }
 
-                    // 4. user_work_location（日全体の設定）
+                    // 6. user_work_location（日全体の設定）
                     const userWorkLocationId = selectedCell.member.workLocations[selectedCell.date];
                     if (userWorkLocationId) {
                       return workLocationMaster.find(wl => wl.id === userWorkLocationId);
                     }
 
-                    // 5. デフォルト勤務場所
+                    // 7. デフォルト勤務場所
                     if (day.isHoliday || day.dayOfWeek === 0) {
                       return workLocationMaster.find(wl => wl.is_default_holiday);
                     }
