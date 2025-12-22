@@ -1012,7 +1012,7 @@ export default function ScheduleViewPage() {
       presetId: number;
       presetName: string;
       usedShiftTypeName: string;
-      assignments: { date: string; staffId: string; staffName: string }[];
+      assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
       unassignedDates: string[];
       summary: Map<string, number>;
     }>;
@@ -3707,7 +3707,7 @@ export default function ScheduleViewPage() {
     setIsAutoAssigning(true);
     try {
       const results: typeof batchShiftResult['results'] = [];
-      let allAssignments: { date: string; staffId: string; staffName: string }[] = [];
+      let allAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
 
       for (let stepIndex = 0; stepIndex < batchShiftSteps.length; stepIndex++) {
         const step = batchShiftSteps[stepIndex];
@@ -3776,8 +3776,8 @@ export default function ScheduleViewPage() {
               }
             });
           }
-          // 前のステップで割り振った分を加算
-          const prevAssignCount = allAssignments.filter(a => a.staffId === m.staff_id).length;
+          // 前のステップで割り振った分を加算（同じシフトタイプのみ）
+          const prevAssignCount = allAssignments.filter(a => a.staffId === m.staff_id && a.shiftTypeId === shiftTypeId).length;
           existingCountsInit.set(m.staff_id, existingCount + prevAssignCount);
         });
 
@@ -3851,9 +3851,9 @@ export default function ScheduleViewPage() {
     shiftTypeId: number | null,
     maxAssignmentsPerMember: number | null,
     maxAssignmentsMode: 'execution' | 'monthly',
-    previousAssignments: { date: string; staffId: string; staffName: string }[]
+    previousAssignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[]
   ): {
-    assignments: { date: string; staffId: string; staffName: string }[];
+    assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
     summary: Map<string, number>;
     unassignedDates: string[];
   } => {
@@ -3875,7 +3875,7 @@ export default function ScheduleViewPage() {
       }
     };
 
-    const assignments: { date: string; staffId: string; staffName: string }[] = [];
+    const assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
     const unassignedDates: string[] = [];
 
     // その日に既にシフトが入っているかチェック（前のステップの結果も含む）
@@ -3884,7 +3884,8 @@ export default function ScheduleViewPage() {
         const shifts = member.shifts?.[date] || [];
         if (shifts.some(s => s.shift_type_id === shiftTypeId)) return true;
       }
-      if (previousAssignments.some(a => a.date === date)) return true;
+      // 同じシフトタイプの場合のみスキップ
+      if (previousAssignments.some(a => a.date === date && a.shiftTypeId === shiftTypeId)) return true;
       return assignments.some(a => a.date === date);
     };
 
@@ -3926,8 +3927,8 @@ export default function ScheduleViewPage() {
 
       if (availableMembers.length > 0) {
         const selected = selectLeastAssigned(availableMembers);
-        if (selected) {
-          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
+        if (selected && shiftTypeId) {
+          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name, shiftTypeId });
           assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
         }
       } else {
