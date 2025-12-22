@@ -2734,7 +2734,7 @@ export default function ScheduleViewPage() {
         // 対象日を取得
         const startD = preset.start_date || autoAssignConfig.startDate;
         const endD = preset.end_date || autoAssignConfig.endDate;
-        let targetDates = generateDateRange(startD, endD);
+        let targetDates = generateDaysForPeriod(startD, endD);
 
         // 日付フィルタ適用
         if (preset.date_selection_mode === 'weekday') {
@@ -3744,7 +3744,7 @@ export default function ScheduleViewPage() {
         // 対象日を取得
         const startD = generalShiftConfig.startDate;
         const endD = generalShiftConfig.endDate;
-        let targetDates = generateDateRange(startD, endD);
+        let targetDates = generateDaysForPeriod(startD, endD);
 
         // 日付フィルタ適用
         if (preset.date_selection_mode === 'weekday') {
