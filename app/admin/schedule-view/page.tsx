@@ -171,6 +171,12 @@ const Icons = {
   Copy: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
   ),
+  Eye: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  ),
+  EyeOff: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  ),
 };
 
 // SortableRow コンポーネント（月別メンバー属性用）
@@ -443,6 +449,11 @@ function ScheduleViewPageContent() {
   const [restoringSnapshot, setRestoringSnapshot] = useState(false);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
 
+  // 非表示年休管理
+  const [hiddenVacations, setHiddenVacations] = useState<Set<string>>(new Set());
+  // キー形式: `${staffId}-${date}`
+  const [showHiddenVacationsModal, setShowHiddenVacationsModal] = useState(false);
+
   // ドラッグ&ドロップ用センサー
   const dndSensors = useSensors(
     useSensor(PointerSensor, {
@@ -693,6 +704,81 @@ function ScheduleViewPageContent() {
     }
   };
 
+  // 非表示年休をデータベースから読み込み
+  const loadHiddenVacations = async () => {
+    const { data, error } = await supabase
+      .from('hidden_schedule_vacations')
+      .select('staff_id, vacation_date')
+      .eq('year', currentYear)
+      .eq('month', currentMonth);
+
+    if (error) {
+      console.error("Error loading hidden vacations:", error);
+      return;
+    }
+
+    const set = new Set<string>();
+    data?.forEach(d => {
+      // vacation_dateはISO形式なのでYYYY-MM-DD形式に変換
+      const dateStr = typeof d.vacation_date === 'string'
+        ? d.vacation_date.split('T')[0]
+        : d.vacation_date;
+      set.add(`${d.staff_id}-${dateStr}`);
+    });
+    setHiddenVacations(set);
+  };
+
+  // 年休を非表示にする
+  const hideVacation = async (staffId: string, date: string) => {
+    const currentUser = getUser();
+    const { error } = await supabase.from('hidden_schedule_vacations').insert({
+      year: currentYear,
+      month: currentMonth,
+      staff_id: staffId,
+      vacation_date: date,
+      hidden_by_staff_id: currentUser?.staff_id || null
+    });
+
+    if (error) {
+      console.error("Error hiding vacation:", error);
+      alert("年休の非表示に失敗しました");
+      return;
+    }
+
+    await loadHiddenVacations();
+  };
+
+  // 年休を再表示する
+  const unhideVacation = async (staffId: string, date: string) => {
+    const { error } = await supabase.from('hidden_schedule_vacations')
+      .delete()
+      .eq('year', currentYear)
+      .eq('month', currentMonth)
+      .eq('staff_id', staffId)
+      .eq('vacation_date', date);
+
+    if (error) {
+      console.error("Error unhiding vacation:", error);
+      alert("年休の再表示に失敗しました");
+      return;
+    }
+
+    await loadHiddenVacations();
+  };
+
+  // 年休が非表示かどうかを判定
+  const isVacationHidden = (staffId: string, date: string): boolean => {
+    return hiddenVacations.has(`${staffId}-${date}`);
+  };
+
+  // 有効な年休を取得（非表示でなければ返す、非表示ならundefined）
+  const getEffectiveVacation = (member: MemberData, date: string): Application | undefined => {
+    const vacation = member.vacations[date];
+    if (!vacation) return undefined;
+    if (isVacationHidden(member.staff_id, date)) return undefined;
+    return vacation;
+  };
+
   const saveSnapshot = async () => {
     if (!newSnapshotName.trim()) {
       alert("保存名を入力してください");
@@ -738,6 +824,13 @@ function ScheduleViewPageContent() {
         .eq("year", currentYear)
         .eq("month", currentMonth);
 
+      // 非表示年休データを取得
+      const { data: hiddenVacationsData } = await supabase
+        .from("hidden_schedule_vacations")
+        .select("staff_id, vacation_date")
+        .eq("year", currentYear)
+        .eq("month", currentMonth);
+
       const snapshotData = {
         schedules: (schedulesData || []).map(s => ({
           staff_id: s.staff_id,
@@ -766,6 +859,10 @@ function ScheduleViewPageContent() {
           can_icu: a.can_icu,
           can_remaining_duty: a.can_remaining_duty,
           display_order: a.display_order ?? 0,
+        })),
+        hiddenVacations: (hiddenVacationsData || []).map(h => ({
+          staff_id: h.staff_id,
+          vacation_date: h.vacation_date,
         })),
         savedAt: new Date().toISOString(),
       };
@@ -807,6 +904,7 @@ function ScheduleViewPageContent() {
         shifts: { staff_id: string; shift_date: string; shift_type_id: number; work_location_id?: number | null }[];
         workLocations: { staff_id: string; work_date: string; work_location_id: number }[];
         monthlyAttributes: { staff_id: string; night_shift_level: string | null; position: string | null; team: string | null; can_cardiac: boolean; can_obstetric: boolean; can_icu: boolean; can_remaining_duty: boolean; display_order: number }[];
+        hiddenVacations?: { staff_id: string; vacation_date: string }[];
       };
 
       const startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
@@ -814,12 +912,13 @@ function ScheduleViewPageContent() {
         ? `${currentYear + 1}-01-01`
         : `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
 
-      // 既存データを削除
+      // 既存データを削除（非表示年休も含む）
       await Promise.all([
         supabase.from("user_schedule").delete().gte("schedule_date", startDate).lt("schedule_date", endDate),
         supabase.from("user_shift").delete().gte("shift_date", startDate).lt("shift_date", endDate),
         supabase.from("user_work_location").delete().gte("work_date", startDate).lt("work_date", endDate),
         supabase.from("user_monthly_attributes").delete().eq("year", currentYear).eq("month", currentMonth),
+        supabase.from("hidden_schedule_vacations").delete().eq("year", currentYear).eq("month", currentMonth),
       ]);
 
       // スナップショットデータを挿入
@@ -839,6 +938,17 @@ function ScheduleViewPageContent() {
           month: currentMonth,
         }));
         await supabase.from("user_monthly_attributes").insert(attrsToInsert);
+      }
+
+      // 非表示年休を復元
+      if (data.hiddenVacations && data.hiddenVacations.length > 0) {
+        const hiddenVacationsToInsert = data.hiddenVacations.map(h => ({
+          year: currentYear,
+          month: currentMonth,
+          staff_id: h.staff_id,
+          vacation_date: h.vacation_date,
+        }));
+        await supabase.from("hidden_schedule_vacations").insert(hiddenVacationsToInsert);
       }
 
       alert("予定表を復元しました。ページを再読み込みします。");
@@ -1210,6 +1320,7 @@ function ScheduleViewPageContent() {
       return;
     }
     fetchData();
+    loadHiddenVacations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, currentYear, currentMonth]);
 
@@ -1806,8 +1917,8 @@ function ScheduleViewPageContent() {
 
     if (isResearchDay) return false;
 
-    // 年休チェック
-    const vacation = member.vacations[date];
+    // 年休チェック（非表示年休は除外）
+    const vacation = getEffectiveVacation(member, date);
     if (vacation) {
       if (vacation.period === 'full_day' || vacation.period === 'pm') {
         return false;
@@ -1869,8 +1980,8 @@ function ScheduleViewPageContent() {
       nextDayOfWeek !== 0;
     if (nextIsResearchDay) return false;
 
-    // 翌日が年休
-    const nextVacation = member.vacations[nextDateStr];
+    // 翌日が年休（非表示年休は除外）
+    const nextVacation = getEffectiveVacation(member, nextDateStr);
     if (nextVacation) return false;
 
     // 翌日のカスタム予定
@@ -1905,7 +2016,7 @@ function ScheduleViewPageContent() {
     }
 
     const schedules = member.schedules[date] || [];
-    const vacation = member.vacations[date];
+    const vacation = getEffectiveVacation(member, date);  // 非表示年休は除外
 
     // 研究日判定
     const isResearchDay = member.researchDay !== null &&
@@ -3101,8 +3212,8 @@ function ScheduleViewPageContent() {
       }
     }
 
-    // 年休申請との競合チェック
-    const vacation = member.vacations?.[date];
+    // 年休申請との競合チェック（非表示年休は除外）
+    const vacation = getEffectiveVacation(member, date);
     if (vacation) {
       const vacationIsAM = vacation.period === 'am' || vacation.period === 'full_day';
       const vacationIsPM = vacation.period === 'pm' || vacation.period === 'full_day';
@@ -3174,9 +3285,9 @@ function ScheduleViewPageContent() {
             }
           }
 
-          // 年休除外チェック
+          // 年休除外チェック（非表示年休は除外）
           if (filter.exclude_vacation && filter.exclude_vacation_periods.length > 0) {
-            const vacationOnDay = member.vacations?.[checkDate];
+            const vacationOnDay = getEffectiveVacation(member, checkDate);
             if (vacationOnDay && filter.exclude_vacation_periods.includes(vacationOnDay.period as VacationPeriod)) {
               return false;
             }
@@ -3199,7 +3310,7 @@ function ScheduleViewPageContent() {
           const checkDayData = daysData.find(d => d.date === checkDate);
           const schedules = member.schedules?.[checkDate] || [];
           const shifts = member.shifts?.[checkDate] || [];
-          const vacation = member.vacations?.[checkDate];
+          const vacation = getEffectiveVacation(member, checkDate);  // 非表示年休は除外
 
           // 研究日判定
           const isResearchDay = member.researchDay !== null &&
@@ -5308,7 +5419,7 @@ function ScheduleViewPageContent() {
     const content = getCellContent(selectedCell.date, selectedCell.member, day.dayOfWeek, day.isHoliday);
     const schedules = selectedCell.member.schedules[selectedCell.date] || [];
     const shifts = selectedCell.member.shifts[selectedCell.date] || [];
-    const vacation = selectedCell.member.vacations[selectedCell.date];
+    const vacation = getEffectiveVacation(selectedCell.member, selectedCell.date);  // 非表示年休は除外
 
     const isResearchDay = selectedCell.member.researchDay !== null &&
       day.dayOfWeek === selectedCell.member.researchDay &&
@@ -5519,7 +5630,7 @@ function ScheduleViewPageContent() {
       // 4. 対象の予定/シフト/勤務場所/特殊タイプがあるかチェック
       const schedules = member.schedules[day.date] || [];
       const shifts = member.shifts[day.date] || [];
-      const vacation = member.vacations[day.date];
+      const vacation = getEffectiveVacation(member, day.date);  // 非表示年休は除外
       const workLocationId = member.workLocations[day.date];
 
       // 研究日判定
@@ -6610,6 +6721,23 @@ function ScheduleViewPageContent() {
                     <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
                     保存データ管理
                   </button>
+                  {/* 非表示年休一覧 */}
+                  <button
+                    onClick={() => {
+                      setShowHiddenVacationsModal(true);
+                      setShowToolMenu(false);
+                    }}
+                    onMouseDown={(e) => keyboardMode && e.preventDefault()}
+                    className="w-full text-left px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                    非表示年休一覧
+                    {hiddenVacations.size > 0 && (
+                      <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-orange-200 text-orange-800 rounded">
+                        {hiddenVacations.size}
+                      </span>
+                    )}
+                  </button>
                 </div>
               )}
             </div>
@@ -7553,10 +7681,13 @@ function ScheduleViewPageContent() {
                 const content = getCellContent(focusedCell.date, member, day.dayOfWeek, day.isHoliday);
                 const schedules = member.schedules[focusedCell.date] || [];
                 const shifts = member.shifts[focusedCell.date] || [];
-                const vacation = member.vacations[focusedCell.date];
+                const vacation = getEffectiveVacation(member, focusedCell.date);  // 非表示年休は除外
+                const originalVacation = member.vacations[focusedCell.date];  // 元の年休データ（非表示判定用）
+                const vacationIsHidden = originalVacation && isVacationHidden(member.staff_id, focusedCell.date);
 
-                // 勤務場所を取得
+                // 勤務場所を取得（通常モーダルと同じ7段階の優先順位）
                 const getWorkLocationForPeriod = (period: 'am' | 'pm' | 'night') => {
+                  // 1. 予定/シフトに設定された勤務場所を優先
                   for (const s of schedules) {
                     const matchesPeriod = (
                       (period === 'am' && s.schedule_type.position_am) ||
@@ -7567,6 +7698,7 @@ function ScheduleViewPageContent() {
                       return workLocationMaster.find(wl => wl.id === s.work_location_id);
                     }
                   }
+
                   for (const s of shifts) {
                     const matchesPeriod = (
                       (period === 'am' && s.shift_type.position_am) ||
@@ -7577,10 +7709,68 @@ function ScheduleViewPageContent() {
                       return workLocationMaster.find(wl => wl.id === s.work_location_id);
                     }
                   }
+
+                  // 2. シフトタイプのデフォルト勤務場所
+                  for (const s of shifts) {
+                    const matchesPeriod = (
+                      (period === 'am' && s.shift_type.position_am) ||
+                      (period === 'pm' && s.shift_type.position_pm) ||
+                      (period === 'night' && s.shift_type.position_night)
+                    );
+                    if (matchesPeriod && s.shift_type.default_work_location_id) {
+                      return workLocationMaster.find(wl => wl.id === s.shift_type.default_work_location_id);
+                    }
+                  }
+
+                  // 3. 予定タイプのデフォルト勤務場所
+                  for (const s of schedules) {
+                    const matchesPeriod = (
+                      (period === 'am' && s.schedule_type.position_am) ||
+                      (period === 'pm' && s.schedule_type.position_pm) ||
+                      (period === 'night' && s.schedule_type.position_night)
+                    );
+                    if (matchesPeriod && s.schedule_type.default_work_location_id) {
+                      return workLocationMaster.find(wl => wl.id === s.schedule_type.default_work_location_id);
+                    }
+                  }
+
+                  // 4. 年休の勤務場所（displaySettingsから）
+                  if (vacation && period !== 'night') {
+                    const matchesPeriod = (
+                      vacation.period === 'full_day' ||
+                      (period === 'am' && vacation.period === 'am') ||
+                      (period === 'pm' && vacation.period === 'pm')
+                    );
+                    if (matchesPeriod) {
+                      const onePersonnelStatus = vacation.one_personnel_status || 'not_applied';
+                      let settingsKey: string;
+                      if (onePersonnelStatus === 'kensanbi') {
+                        settingsKey = 'kensanbi_used';
+                      } else {
+                        settingsKey = 'vacation';
+                      }
+                      const settings = displaySettings[settingsKey as keyof DisplaySettings];
+                      if (settings && typeof settings === 'object' && 'default_work_location_id' in settings && settings.default_work_location_id) {
+                        return workLocationMaster.find(wl => wl.id === settings.default_work_location_id);
+                      }
+                    }
+                  }
+
+                  // 5. 研究日の勤務場所（displaySettingsから）
+                  if (content.isResearchDay && period !== 'night') {
+                    const researchSettings = displaySettings.research_day;
+                    if (researchSettings && researchSettings.default_work_location_id) {
+                      return workLocationMaster.find(wl => wl.id === researchSettings.default_work_location_id);
+                    }
+                  }
+
+                  // 6. user_work_location（日全体の設定）
                   const userWorkLocationId = member.workLocations[focusedCell.date];
                   if (userWorkLocationId) {
                     return workLocationMaster.find(wl => wl.id === userWorkLocationId);
                   }
+
+                  // 7. デフォルト勤務場所
                   if (day.isHoliday || day.dayOfWeek === 0) {
                     return workLocationMaster.find(wl => wl.is_default_holiday);
                   }
@@ -7607,8 +7797,30 @@ function ScheduleViewPageContent() {
                         </span>
                       )}
                       {vacation && (
-                        <span className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-black">
-                          年休{vacation.level}（{vacation.period === 'full_day' ? '終日' : vacation.period === 'am' ? 'AM' : 'PM'}）
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded border border-black">
+                          年休{vacation.priority ?? vacation.level}（{vacation.period === 'full_day' ? '終日' : vacation.period === 'am' ? 'AM' : 'PM'}）
+                          <button
+                            onClick={() => hideVacation(member.staff_id, focusedCell.date)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="text-orange-500 hover:text-orange-700 ml-0.5"
+                            title="非表示にする"
+                          >
+                            <Icons.EyeOff />
+                          </button>
+                        </span>
+                      )}
+                      {vacationIsHidden && originalVacation && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-300 line-through">
+                          年休{originalVacation.priority ?? originalVacation.level}（{originalVacation.period === 'full_day' ? '終日' : originalVacation.period === 'am' ? 'AM' : 'PM'}）
+                          <span className="text-orange-500 no-underline">[非表示]</span>
+                          <button
+                            onClick={() => unhideVacation(member.staff_id, focusedCell.date)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className="text-blue-500 hover:text-blue-700 ml-0.5 no-underline"
+                            title="再表示する"
+                          >
+                            <Icons.Eye />
+                          </button>
                         </span>
                       )}
                       {schedules.map(s => (
@@ -7643,7 +7855,7 @@ function ScheduleViewPageContent() {
                           </button>
                         </span>
                       ))}
-                      {content.type === 'normal' && schedules.length === 0 && shifts.length === 0 && !vacation && !content.isResearchDay && (
+                      {content.type === 'normal' && schedules.length === 0 && shifts.length === 0 && !vacation && !vacationIsHidden && !content.isResearchDay && (
                         <span className="text-[10px] text-gray-400">予定なし</span>
                       )}
                     </div>
@@ -7843,8 +8055,31 @@ function ScheduleViewPageContent() {
                     </li>
                   )}
                   {selectedCellDetails.vacation && (
-                    <li className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
-                      年休{selectedCellDetails.vacation.level}（{selectedCellDetails.vacation.period === 'full_day' ? '終日' : selectedCellDetails.vacation.period === 'am' ? 'AM' : 'PM'}）
+                    <li className="flex items-center justify-between text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
+                      <span>年休{selectedCellDetails.vacation.priority ?? selectedCellDetails.vacation.level}（{selectedCellDetails.vacation.period === 'full_day' ? '終日' : selectedCellDetails.vacation.period === 'am' ? 'AM' : 'PM'}）</span>
+                      <button
+                        onClick={() => hideVacation(selectedCell.member.staff_id, selectedCell.date)}
+                        className="text-orange-500 hover:text-orange-700 p-0.5 ml-2"
+                        title="この年休を非表示にする"
+                      >
+                        <Icons.EyeOff />
+                      </button>
+                    </li>
+                  )}
+                  {/* 非表示にされた年休の表示（元の年休データがあり、かつ非表示の場合） */}
+                  {!selectedCellDetails.vacation && selectedCell.member.vacations[selectedCell.date] && isVacationHidden(selectedCell.member.staff_id, selectedCell.date) && (
+                    <li className="flex items-center justify-between text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                      <span className="line-through">
+                        年休{selectedCell.member.vacations[selectedCell.date].priority ?? selectedCell.member.vacations[selectedCell.date].level}（{selectedCell.member.vacations[selectedCell.date].period === 'full_day' ? '終日' : selectedCell.member.vacations[selectedCell.date].period === 'am' ? 'AM' : 'PM'}）
+                        <span className="ml-1 text-orange-500">[非表示]</span>
+                      </span>
+                      <button
+                        onClick={() => unhideVacation(selectedCell.member.staff_id, selectedCell.date)}
+                        className="text-blue-500 hover:text-blue-700 p-0.5 ml-2"
+                        title="この年休を再表示する"
+                      >
+                        <Icons.Eye />
+                      </button>
                     </li>
                   )}
                   {selectedCellDetails.schedules.map(s => (
@@ -7911,7 +8146,7 @@ function ScheduleViewPageContent() {
                 <h3 className="text-xs font-medium text-gray-700 mb-1">勤務場所</h3>
                 {(() => {
                   const day = selectedCellDetails.day;
-                  const vacation = selectedCell.member.vacations[selectedCell.date];
+                  const vacation = getEffectiveVacation(selectedCell.member, selectedCell.date);  // 非表示年休は除外
                   const schedules = selectedCell.member.schedules[selectedCell.date] || [];
                   const shifts = selectedCell.member.shifts[selectedCell.date] || [];
 
@@ -8044,7 +8279,7 @@ function ScheduleViewPageContent() {
                 // 各勤務帯の使用状況をチェック
                 const schedules = selectedCell.member.schedules[selectedCell.date] || [];
                 const shifts = selectedCell.member.shifts[selectedCell.date] || [];
-                const vacation = selectedCell.member.vacations[selectedCell.date];
+                const vacation = getEffectiveVacation(selectedCell.member, selectedCell.date);  // 非表示年休は除外
                 const day = selectedCellDetails.day;
                 const isResearchDay = selectedCell.member.researchDay !== null &&
                   day.dayOfWeek === selectedCell.member.researchDay &&
@@ -8101,7 +8336,7 @@ function ScheduleViewPageContent() {
                 // 各勤務帯の使用状況をチェック
                 const schedules = selectedCell.member.schedules[selectedCell.date] || [];
                 const shifts = selectedCell.member.shifts[selectedCell.date] || [];
-                const vacation = selectedCell.member.vacations[selectedCell.date];
+                const vacation = getEffectiveVacation(selectedCell.member, selectedCell.date);  // 非表示年休は除外
                 const day = selectedCellDetails.day;
                 const isResearchDay = selectedCell.member.researchDay !== null &&
                   day.dayOfWeek === selectedCell.member.researchDay &&
@@ -13761,6 +13996,7 @@ function ScheduleViewPageContent() {
                           shifts: unknown[];
                           workLocations: unknown[];
                           monthlyAttributes: unknown[];
+                          hiddenVacations?: unknown[];
                           savedAt: string;
                         };
                         return (
@@ -13787,6 +14023,11 @@ function ScheduleViewPageContent() {
                                   <span className="bg-gray-100 px-2 py-0.5 rounded">
                                     属性: {data.monthlyAttributes?.length || 0}件
                                   </span>
+                                  {(data.hiddenVacations?.length || 0) > 0 && (
+                                    <span className="bg-orange-100 px-2 py-0.5 rounded text-orange-700">
+                                      非表示年休: {data.hiddenVacations?.length || 0}件
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-xs text-gray-400 mt-2">
                                   {new Date(snapshot.created_at).toLocaleString('ja-JP')} に保存
@@ -13824,6 +14065,90 @@ function ScheduleViewPageContent() {
                   </p>
                   <button
                     onClick={() => setShowSnapshotModal(false)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 非表示年休一覧モーダル */}
+      {showHiddenVacationsModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40"
+            onClick={() => setShowHiddenVacationsModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">非表示年休一覧</h2>
+                  <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月</p>
+                </div>
+                <button
+                  onClick={() => setShowHiddenVacationsModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <Icons.X />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-auto flex-1">
+                {hiddenVacations.size === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <p className="text-sm">非表示にした年休はありません</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {Array.from(hiddenVacations).map(key => {
+                      const [staffId, date] = key.split('-');
+                      const dateStr = key.substring(staffId.length + 1); // staff_id-yyyy-mm-dd形式なので
+                      const member = members.find(m => m.staff_id === staffId);
+                      const vacation = member?.vacations[dateStr];
+
+                      // 年休データが存在しない場合（キャンセルされた等）はスキップ
+                      if (!member || !vacation) return null;
+
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg"
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{member.name}</div>
+                            <div className="text-sm text-gray-600">
+                              {dateStr.replace(/-/g, '/')}（{vacation.period === 'full_day' ? '終日' : vacation.period === 'am' ? 'AM' : 'PM'}）
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              年休{vacation.priority ?? vacation.level}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => unhideVacation(staffId, dateStr)}
+                            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                          >
+                            <Icons.Eye />
+                            再表示
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    ※ 非表示の年休枠には他のシフトを割り当てられます
+                  </p>
+                  <button
+                    onClick={() => setShowHiddenVacationsModal(false)}
                     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium text-sm"
                   >
                     閉じる
