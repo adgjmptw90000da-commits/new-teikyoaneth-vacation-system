@@ -270,6 +270,7 @@ function ScheduleViewPageContent() {
     filter_can_cardiac: boolean | null;
     filter_can_obstetric: boolean | null;
     filter_can_icu: boolean | null;
+    target_count: number | null;
   }>({
     name: '',
     display_label: '',
@@ -287,6 +288,7 @@ function ScheduleViewPageContent() {
     filter_can_cardiac: null,
     filter_can_obstetric: null,
     filter_can_icu: null,
+    target_count: null,
   });
 
   // メンバー別カウント設定
@@ -5476,6 +5478,14 @@ function ScheduleViewPageContent() {
     return countConfigs.filter(c => c.is_active).sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
   }, [countConfigs]);
 
+  // カウントセルの背景色を取得（規定数との比較）
+  const getCountCellBgColor = (count: number, targetCount: number | null | undefined): string => {
+    if (targetCount === null || targetCount === undefined) return '';  // 規定数未設定
+    if (count < targetCount) return '#FEE2E2';   // 未満: 薄い赤
+    if (count === targetCount) return '#DCFCE7'; // ちょうど: 薄い緑
+    return '#DBEAFE';                            // オーバー: 薄い青
+  };
+
   // カウント計算
   const calculateCount = (day: DayData, config: CountConfig): number => {
     return filteredMembers.filter(member => {
@@ -5758,6 +5768,7 @@ function ScheduleViewPageContent() {
           filter_can_cardiac: newCountConfig.filter_can_cardiac,
           filter_can_obstetric: newCountConfig.filter_can_obstetric,
           filter_can_icu: newCountConfig.filter_can_icu,
+          target_count: newCountConfig.target_count,
           updated_at: new Date().toISOString(),
         }).eq("id", editingCountConfig.id);
 
@@ -5787,6 +5798,7 @@ function ScheduleViewPageContent() {
           filter_can_cardiac: newCountConfig.filter_can_cardiac,
           filter_can_obstetric: newCountConfig.filter_can_obstetric,
           filter_can_icu: newCountConfig.filter_can_icu,
+          target_count: newCountConfig.target_count,
         }).select().single();
 
         if (error) throw error;
@@ -5854,6 +5866,7 @@ function ScheduleViewPageContent() {
       filter_can_cardiac: null,
       filter_can_obstetric: null,
       filter_can_icu: null,
+      target_count: null,
     });
   };
 
@@ -5877,6 +5890,7 @@ function ScheduleViewPageContent() {
       filter_can_cardiac: config.filter_can_cardiac,
       filter_can_obstetric: config.filter_can_obstetric,
       filter_can_icu: config.filter_can_icu,
+      target_count: config.target_count ?? null,
     });
     setShowCountConfigModal(true);
   };
@@ -7100,15 +7114,22 @@ function ScheduleViewPageContent() {
                         </div>
                       </td>
                       {/* カウント列データ */}
-                      {activeCountConfigs.map((config, index) => (
-                        <td
-                          key={`count-${day.date}-${config.id}`}
-                          className="sticky z-10 bg-purple-50 border border-black px-1 py-1 text-center text-sm font-bold text-purple-800 w-10 min-w-10 max-w-10"
-                          style={{ right: `${(activeCountConfigs.length - 1 - index) * 40}px` }}
-                        >
-                          {calculateCount(day, config)}
-                        </td>
-                      ))}
+                      {activeCountConfigs.map((config, index) => {
+                        const count = calculateCount(day, config);
+                        const bgColor = getCountCellBgColor(count, config.target_count);
+                        return (
+                          <td
+                            key={`count-${day.date}-${config.id}`}
+                            className={`sticky z-10 border border-black px-1 py-1 text-center text-sm font-bold text-purple-800 w-10 min-w-10 max-w-10 ${!bgColor ? 'bg-purple-50' : ''}`}
+                            style={{
+                              right: `${(activeCountConfigs.length - 1 - index) * 40}px`,
+                              ...(bgColor ? { backgroundColor: bgColor } : {})
+                            }}
+                          >
+                            {count}
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                   })}
@@ -8323,7 +8344,7 @@ function ScheduleViewPageContent() {
                   </h3>
 
                   {/* 基本情報 */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-900 mb-1">設定名（内部用）</label>
                       <input
@@ -8343,6 +8364,21 @@ function ScheduleViewPageContent() {
                         className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                         placeholder="例: 当直"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-900 mb-1">規定数（色分け用）</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={newCountConfig.target_count ?? ''}
+                        onChange={(e) => setNewCountConfig(prev => ({
+                          ...prev,
+                          target_count: e.target.value === '' ? null : parseInt(e.target.value)
+                        }))}
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="未設定"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-0.5">未満:赤 / 達成:緑 / 超過:青</p>
                     </div>
                   </div>
 

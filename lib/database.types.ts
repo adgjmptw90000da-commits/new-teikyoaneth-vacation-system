@@ -821,6 +821,7 @@ export interface Database {
           filter_can_cardiac: boolean | null
           filter_can_obstetric: boolean | null
           filter_can_icu: boolean | null
+          target_count: number | null
           created_at: string
           updated_at: string
         }
@@ -843,6 +844,7 @@ export interface Database {
           filter_can_cardiac?: boolean | null
           filter_can_obstetric?: boolean | null
           filter_can_icu?: boolean | null
+          target_count?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -865,6 +867,7 @@ export interface Database {
           filter_can_cardiac?: boolean | null
           filter_can_obstetric?: boolean | null
           filter_can_icu?: boolean | null
+          target_count?: number | null
           created_at?: string
           updated_at?: string
         }
