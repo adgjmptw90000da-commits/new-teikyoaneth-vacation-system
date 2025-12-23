@@ -3307,7 +3307,7 @@ function ScheduleViewPageContent() {
     existingCountsInit: Map<string, number>,
     targetShiftType: ShiftType | undefined
   ): {
-    assignments: { date: string; staffId: string; staffName: string }[];
+    assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[];
     summary: Map<string, number>;
     unassignedDates: string[];
   } => {
@@ -3335,7 +3335,7 @@ function ScheduleViewPageContent() {
     };
 
     // 結果格納用
-    const assignments: { date: string; staffId: string; staffName: string }[] = [];
+    const assignments: { date: string; staffId: string; staffName: string; shiftTypeId: number }[] = [];
     const unassignedDates: string[] = [];
 
     // 割り振り中のシフトを含めた得点計算（一般シフトプレビュー用）
@@ -3463,8 +3463,13 @@ function ScheduleViewPageContent() {
 
       if (availableMembers.length > 0) {
         const selected = selectLeastAssignedForGeneral(availableMembers, assignments);
-        if (selected) {
-          assignments.push({ date: day.date, staffId: selected.staff_id, staffName: selected.name });
+        if (selected && generalShiftConfig.shiftTypeId) {
+          assignments.push({
+            date: day.date,
+            staffId: selected.staff_id,
+            staffName: selected.name,
+            shiftTypeId: generalShiftConfig.shiftTypeId
+          });
           assignmentCount.set(selected.staff_id, (assignmentCount.get(selected.staff_id) || 0) + 1);
         }
       } else {
