@@ -6850,15 +6850,19 @@ function ScheduleViewPageContent() {
                     <th className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-900 w-16">
                       日付
                     </th>
-                    {filteredMembers.map(member => (
-                      <th
-                        key={member.staff_id}
-                        colSpan={3}
-                        className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-900 text-center w-[78px] min-w-[78px] max-w-[78px]"
-                      >
-                        <span className="truncate block">{member.name}</span>
-                      </th>
-                    ))}
+                    {filteredMembers.map(member => {
+                      const isMemberFocused = focusedCell?.memberId === member.staff_id;
+                      return (
+                        <th
+                          key={member.staff_id}
+                          colSpan={3}
+                          className="border-y border-black border-l border-l-black border-r border-r-black px-0 py-1 text-[9px] font-bold text-gray-900 text-center w-[78px] min-w-[78px] max-w-[78px]"
+                          style={isMemberFocused ? { boxShadow: 'inset 0 0 0 2px #4F46E5', background: '#EEF2FF' } : {}}
+                        >
+                          <span className="truncate block">{member.name}</span>
+                        </th>
+                      );
+                    })}
                     {/* 右側日付列ヘッダー（カウントより内側） */}
                     <th
                       className="sticky z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-900 w-16"
@@ -6903,10 +6907,15 @@ function ScheduleViewPageContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {daysData.map(day => (
+                  {daysData.map(day => {
+                    const isDateFocused = focusedCell?.date === day.date;
+                    return (
                     <tr key={day.date} className={getRowBackgroundColor(day)}>
                       {/* 日付列 */}
-                      <td className={`sticky left-0 z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}>
+                      <td
+                        className={`sticky left-0 z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}
+                        style={isDateFocused ? { boxShadow: 'inset 0 0 0 2px #4F46E5', background: '#EEF2FF' } : {}}
+                      >
                         <div className="flex items-center gap-1">
                           <span>{day.day}</span>
                           <span className="text-[9px]">{WEEKDAYS[day.dayOfWeek]}</span>
@@ -7080,7 +7089,10 @@ function ScheduleViewPageContent() {
                       {/* 右側日付列 */}
                       <td
                         className={`sticky z-10 border border-black px-2 py-1 text-[10px] font-bold ${getRowBackgroundColor(day)} ${getDateTextColor(day)}`}
-                        style={{ right: `${activeCountConfigs.length * 40}px` }}
+                        style={{
+                          right: `${activeCountConfigs.length * 40}px`,
+                          ...(isDateFocused ? { boxShadow: 'inset 0 0 0 2px #4F46E5', background: '#EEF2FF' } : {})
+                        }}
                       >
                         <div className="flex items-center gap-1">
                           <span>{day.day}</span>
@@ -7098,7 +7110,8 @@ function ScheduleViewPageContent() {
                         </td>
                       ))}
                     </tr>
-                  ))}
+                  );
+                  })}
                   {/* 下側メンバー名ヘッダー行 */}
                   <tr className="bg-gray-100">
                     <td className="sticky left-0 z-20 bg-gray-100 border border-black px-2 py-2 text-[10px] font-bold text-gray-700">
