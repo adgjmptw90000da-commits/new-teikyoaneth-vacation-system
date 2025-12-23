@@ -3005,7 +3005,8 @@ function ScheduleViewPageContent() {
     targetShiftType: ShiftType | undefined,
     dayOfWeek: number,
     isHoliday: boolean,
-    overrideExcludeNightShiftUnavailable?: boolean  // バッチ実行時にプリセット値を渡す
+    overrideExcludeNightShiftUnavailable?: boolean,  // バッチ実行時にプリセット値を渡す
+    overrideExclusionFilters?: ExclusionFilter[]  // 統合連続実行時にプリセットの除外フィルターを渡す
   ): boolean => {
     // 出向中は不可
     if (member.isSecondment) return false;
@@ -3136,7 +3137,9 @@ function ScheduleViewPageContent() {
       return dateObj.toISOString().split('T')[0];
     };
 
-    for (const filter of generalShiftConfig.exclusionFilters) {
+    // 除外フィルター（統合連続実行時はプリセットのフィルターを使用）
+    const filtersToUse = overrideExclusionFilters ?? generalShiftConfig.exclusionFilters;
+    for (const filter of filtersToUse) {
       if (filter.type === 'date_based') {
         // 日付ベースの除外フィルター
         for (const targetDay of filter.target_days) {
@@ -3752,11 +3755,11 @@ function ScheduleViewPageContent() {
     const sortByAvailableCount = (dates: DayData[]) => {
       return [...dates].sort((a, b) => {
         const availableA = targetMembers.filter(m =>
-          canAssignGeneralShift(a.date, m, [...previousAssignments, ...assignments], targetShiftType, a.dayOfWeek, a.isHoliday, excludeNightShiftUnavailable) &&
+          canAssignGeneralShift(a.date, m, [...previousAssignments, ...assignments], targetShiftType, a.dayOfWeek, a.isHoliday, excludeNightShiftUnavailable, exclusionFilters) &&
           isWithinMaxAssignments(m.staff_id)
         ).length;
         const availableB = targetMembers.filter(m =>
-          canAssignGeneralShift(b.date, m, [...previousAssignments, ...assignments], targetShiftType, b.dayOfWeek, b.isHoliday, excludeNightShiftUnavailable) &&
+          canAssignGeneralShift(b.date, m, [...previousAssignments, ...assignments], targetShiftType, b.dayOfWeek, b.isHoliday, excludeNightShiftUnavailable, exclusionFilters) &&
           isWithinMaxAssignments(m.staff_id)
         ).length;
         return availableA - availableB;
@@ -3825,7 +3828,7 @@ function ScheduleViewPageContent() {
       if (shouldSkipDateByFilter(day.date)) continue;
 
       const availableMembers = targetMembers.filter(m =>
-        canAssignGeneralShift(day.date, m, [...previousAssignments, ...assignments], targetShiftType, day.dayOfWeek, day.isHoliday, excludeNightShiftUnavailable) &&
+        canAssignGeneralShift(day.date, m, [...previousAssignments, ...assignments], targetShiftType, day.dayOfWeek, day.isHoliday, excludeNightShiftUnavailable, exclusionFilters) &&
         isWithinMaxAssignments(m.staff_id)
       );
 
