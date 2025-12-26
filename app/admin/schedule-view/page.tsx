@@ -6536,9 +6536,9 @@ function ScheduleViewPageContent() {
 
       {/* ツールバー */}
       <div className="bg-gray-50 border-b border-gray-200 sticky top-14 z-40 px-4 py-2">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-center lg:justify-between items-center gap-y-2 gap-x-4">
           {/* 左: よく使う機能ボタン + メニュードロップダウン */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2 w-full lg:w-auto">
             {/* シフト自動割り振りボタン（直接表示） */}
             <button
               onClick={() => {
@@ -6744,7 +6744,7 @@ function ScheduleViewPageContent() {
           </div>
 
           {/* 中央: 表示切替 + メインタブ */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center gap-3 w-full lg:w-auto">
             {/* 全体/A/B表切り替え（名前一覧表では非表示） */}
             {mainTab !== 'nameList' && (
               <div className="flex items-center gap-1">
@@ -6812,7 +6812,7 @@ function ScheduleViewPageContent() {
           </div>
 
           {/* 右: キーボード操作 + アップロードボタン */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center gap-4 w-full lg:w-auto">
             {/* キーボード操作モード切り替え */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -6866,7 +6866,7 @@ function ScheduleViewPageContent() {
         <div className="space-y-4">
           {/* 月選択ヘッダー */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-3 py-2">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 md:gap-4">
               {/* 左: 年月ナビ */}
               <div className="flex items-center gap-1">
                 <button
@@ -6876,7 +6876,7 @@ function ScheduleViewPageContent() {
                 >
                   <Icons.ChevronLeft />
                 </button>
-                <span className="text-sm font-bold text-gray-900 min-w-[90px] text-center">{currentYear}年{currentMonth}月</span>
+                <span className="text-sm font-bold text-gray-900 min-w-[50px] md:min-w-[90px] text-center"><span className="hidden md:inline">{currentYear}年</span>{currentMonth}月</span>
                 <button
                   onClick={() => changeMonth(1)}
                   onMouseDown={(e) => keyboardMode && e.preventDefault()}
@@ -6909,14 +6909,14 @@ function ScheduleViewPageContent() {
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
-                      {tabYear}年{tabMonth}月
+                      <span className="hidden md:inline">{tabYear}年</span>{tabMonth}月
                     </button>
                   );
                 })}
               </div>
 
               {/* 右: 公開状態 + ロック */}
-              <div className="flex items-center gap-3 ml-auto">
+              <div className="flex items-center gap-2 md:gap-3 md:ml-auto">
                 {isPublished && publishedAt ? (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 rounded-full">
                     <span className="w-1 h-1 bg-green-500 rounded-full"></span>
