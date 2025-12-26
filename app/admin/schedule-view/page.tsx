@@ -995,11 +995,11 @@ function ScheduleViewPageContent() {
   const [showShortcutConfigModal, setShowShortcutConfigModal] = useState(false);
   const [shortcutConfig, setShortcutConfig] = useState<ShortcutConfig>({}); // キー -> {type, id}
   const [keyboardPanelOptions, setKeyboardPanelOptions] = useState({
-    showStatus: true,      // 登録状況
-    showSchedule: true,    // 予定
-    showShift: true,       // シフト
-    showWorkLocation: true, // 勤務場所
-    showShortcut: false    // ショートカット
+    showStatus: true,       // 登録状況
+    showSchedule: false,    // 予定
+    showShift: false,       // シフト
+    showWorkLocation: false, // 勤務場所
+    showShortcut: true      // ショートカット
   });
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const keyboardPanelRef = useRef<HTMLDivElement>(null);
@@ -7607,7 +7607,7 @@ function ScheduleViewPageContent() {
       {keyboardMode && (
         <div
           ref={keyboardPanelRef}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-gray-300 shadow-lg overflow-hidden"
+          className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-gray-300 shadow-lg overflow-hidden"
         >
           <div className="w-full px-4 py-3 min-h-[140px]">
             {/* 選択中のセル情報とエラー表示 */}
