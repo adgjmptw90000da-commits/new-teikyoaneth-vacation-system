@@ -525,7 +525,7 @@ export default function SharedCalendarPage() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.push(user.is_admin ? "/admin/home" : "/home")}
+              onClick={() => router.push("/schedule-system")}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <Icons.ChevronLeft />
@@ -546,7 +546,7 @@ export default function SharedCalendarPage() {
               </button>
             )}
             <button
-              onClick={() => router.push(user.is_admin ? "/admin/home" : "/home")}
+              onClick={() => router.push("/admin/home-dev")}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <Icons.Home />
