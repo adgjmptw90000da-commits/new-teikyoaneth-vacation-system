@@ -107,7 +107,7 @@ export default function ScheduleSystemPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <button
               onClick={() => router.push("/schedule/view")}
               className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-teal-300 transition-all duration-200 text-left"
@@ -128,6 +128,17 @@ export default function ScheduleSystemPage() {
               </div>
               <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-orange-600 transition-colors">予定提出</h4>
               <p className="text-sm text-gray-500">当直表作成用の予定提出</p>
+            </button>
+
+            <button
+              onClick={() => router.push("/schedule/shared-calendar")}
+              className="group bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-pink-300 transition-all duration-200 text-left"
+            >
+              <div className="bg-pink-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-pink-600 mb-4 group-hover:scale-110 transition-transform">
+                <Icons.Calendar />
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-pink-600 transition-colors">予定共有カレンダー</h4>
+              <p className="text-sm text-gray-500">予定を共有・閲覧</p>
             </button>
           </div>
         </div>
@@ -169,6 +180,19 @@ export default function ScheduleSystemPage() {
                 <div className="text-left">
                   <h4 className="font-semibold text-gray-900">予定・シフト設定</h4>
                   <p className="text-xs text-gray-500">予定タイプ・シフトの管理</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push("/admin/shared-calendar-settings")}
+                className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-pink-300 transition-all"
+              >
+                <div className="bg-pink-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-pink-600 mr-4">
+                  <Icons.Settings />
+                </div>
+                <div className="text-left">
+                  <h4 className="font-semibold text-gray-900">予定共有カレンダー設定</h4>
+                  <p className="text-xs text-gray-500">カテゴリの管理</p>
                 </div>
               </button>
             </div>
