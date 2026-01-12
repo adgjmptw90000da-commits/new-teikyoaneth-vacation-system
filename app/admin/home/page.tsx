@@ -828,6 +828,19 @@ export default function AdminHomePage() {
             </button>
 
             <button
+              onClick={() => router.push("/admin/shared-calendar-settings")}
+              className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-pink-300 transition-all"
+            >
+              <div className="bg-pink-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-pink-600 mr-4">
+                <Icons.Calendar />
+              </div>
+              <div className="text-left">
+                <h4 className="font-semibold text-gray-900">予定共有カレンダー設定</h4>
+                <p className="text-xs text-gray-500">カテゴリの管理</p>
+              </div>
+            </button>
+
+            <button
               onClick={() => router.push("/admin/members")}
               className="flex items-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all"
             >
