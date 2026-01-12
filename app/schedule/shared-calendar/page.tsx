@@ -33,12 +33,28 @@ interface Holiday {
   name: string;
 }
 
+interface Conference {
+  id: number;
+  conference_date: string;
+  name: string;
+}
+
+interface Event {
+  id: number;
+  event_date: string;
+  name: string;
+}
+
 interface DayData {
   date: string;
   day: number;
   dayOfWeek: number;
   isHoliday: boolean;
   holidayName?: string;
+  isConference: boolean;
+  conferenceName?: string;
+  isEvent: boolean;
+  eventName?: string;
   events: CalendarEvent[];
 }
 
@@ -95,6 +111,8 @@ export default function SharedCalendarPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [conferences, setConferences] = useState<Conference[]>([]);
+  const [systemEvents, setSystemEvents] = useState<Event[]>([]);
 
   // モーダル
   const [showAddModal, setShowAddModal] = useState(false);
@@ -129,6 +147,8 @@ export default function SharedCalendarPage() {
         { data: categoriesData },
         { data: eventsData },
         { data: holidaysData },
+        { data: conferencesData },
+        { data: systemEventsData },
       ] = await Promise.all([
         supabase.from("shared_calendar_category").select("*").eq("is_active", true).order("display_order"),
         supabase.from("shared_calendar_event")
@@ -137,11 +157,15 @@ export default function SharedCalendarPage() {
           .lte("event_date", endDate)
           .order("event_date"),
         supabase.from("holiday").select("*"),
+        supabase.from("conference").select("*"),
+        supabase.from("event").select("*"),
       ]);
 
       setCategories(categoriesData || []);
       setEvents(eventsData || []);
       setHolidays(holidaysData || []);
+      setConferences(conferencesData || []);
+      setSystemEvents(systemEventsData || []);
 
       // 初期カテゴリを設定
       if (categoriesData && categoriesData.length > 0 && newEvent.category_id === 0) {
@@ -161,6 +185,8 @@ export default function SharedCalendarPage() {
       const date = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const dayOfWeek = new Date(date).getDay();
       const holiday = holidays.find(h => h.holiday_date === date);
+      const conference = conferences.find(c => c.conference_date === date);
+      const systemEvent = systemEvents.find(e => e.event_date === date);
       const dayEvents = events.filter(e => e.event_date === date);
 
       days.push({
@@ -169,11 +195,15 @@ export default function SharedCalendarPage() {
         dayOfWeek,
         isHoliday: !!holiday,
         holidayName: holiday?.name,
+        isConference: !!conference,
+        conferenceName: conference?.name,
+        isEvent: !!systemEvent,
+        eventName: systemEvent?.name,
         events: dayEvents,
       });
     }
     return days;
-  }, [currentYear, currentMonth, holidays, events]);
+  }, [currentYear, currentMonth, holidays, conferences, systemEvents, events]);
 
   // 直近5ヶ月のタブ
   const monthTabs = useMemo(() => {
@@ -400,22 +430,29 @@ export default function SharedCalendarPage() {
         </div>
 
         {/* 凡例 */}
-        {categories.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">カテゴリ</h3>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className="px-3 py-1 rounded text-sm font-medium"
-                  style={{ backgroundColor: cat.color, color: cat.text_color }}
-                >
-                  {cat.display_label || cat.name}
-                </div>
-              ))}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">凡例</h3>
+          <div className="flex flex-wrap gap-2">
+            <div className="px-3 py-1 rounded text-sm font-medium bg-red-100 text-red-700">
+              祝日
             </div>
+            <div className="px-3 py-1 rounded text-sm font-medium bg-purple-100 text-purple-700">
+              主要学会
+            </div>
+            <div className="px-3 py-1 rounded text-sm font-medium bg-amber-100 text-amber-700">
+              イベント
+            </div>
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className="px-3 py-1 rounded text-sm font-medium"
+                style={{ backgroundColor: cat.color, color: cat.text_color }}
+              >
+                {cat.display_label || cat.name}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* カレンダー */}
         {loading ? (
@@ -454,12 +491,28 @@ export default function SharedCalendarPage() {
                 >
                   <div className={`text-sm font-medium mb-1 ${getDateTextColor(day)}`}>
                     {day.day}
+                  </div>
+
+                  {/* 祝日・学会・イベント */}
+                  <div className="space-y-0.5 mb-1">
                     {day.holidayName && (
-                      <span className="ml-1 text-xs text-red-500">{day.holidayName}</span>
+                      <div className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 truncate" title={day.holidayName}>
+                        {day.holidayName}
+                      </div>
+                    )}
+                    {day.conferenceName && (
+                      <div className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 truncate" title={day.conferenceName}>
+                        {day.conferenceName}
+                      </div>
+                    )}
+                    {day.eventName && (
+                      <div className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 truncate" title={day.eventName}>
+                        {day.eventName}
+                      </div>
                     )}
                   </div>
 
-                  {/* イベント */}
+                  {/* ユーザー登録イベント */}
                   <div className="space-y-1">
                     {day.events.slice(0, 3).map((event) => (
                       <div
