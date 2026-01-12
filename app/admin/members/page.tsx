@@ -49,6 +49,12 @@ const Icons = {
   Edit: () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
   ),
+  GripVertical: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+  ),
+  ListOrdered: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+  ),
 };
 
 export default function MembersPage() {
@@ -68,6 +74,10 @@ export default function MembersPage() {
   const [showStaffIdChangeModal, setShowStaffIdChangeModal] = useState(false);
   const [staffIdChangeTarget, setStaffIdChangeTarget] = useState<User | null>(null);
   const [newStaffId, setNewStaffId] = useState('');
+  // 並び替えモード
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [draggedUserId, setDraggedUserId] = useState<string | null>(null);
+  const [dragOverUserId, setDragOverUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const user = getUser();
@@ -106,6 +116,7 @@ export default function MembersPage() {
       const { data, error } = await supabase
         .from("user")
         .select("*")
+        .order("display_order", { ascending: true, nullsFirst: false })
         .order("staff_id", { ascending: true });
 
       if (error) {
@@ -632,6 +643,93 @@ export default function MembersPage() {
     return sortDirection === 'asc' ? <Icons.ArrowUp /> : <Icons.ArrowDown />;
   };
 
+  // ドラッグ&ドロップハンドラー
+  const handleDragStart = (e: React.DragEvent, staffId: string) => {
+    setDraggedUserId(staffId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, staffId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedUserId !== staffId) {
+      setDragOverUserId(staffId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverUserId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStaffId: string) => {
+    e.preventDefault();
+    if (!draggedUserId || draggedUserId === targetStaffId) {
+      setDraggedUserId(null);
+      setDragOverUserId(null);
+      return;
+    }
+
+    // ユーザーリストを並び替え
+    const newUsers = [...users];
+    const draggedIndex = newUsers.findIndex(u => u.staff_id === draggedUserId);
+    const targetIndex = newUsers.findIndex(u => u.staff_id === targetStaffId);
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const [draggedUser] = newUsers.splice(draggedIndex, 1);
+      newUsers.splice(targetIndex, 0, draggedUser);
+      setUsers(newUsers);
+    }
+
+    setDraggedUserId(null);
+    setDragOverUserId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedUserId(null);
+    setDragOverUserId(null);
+  };
+
+  // 並び順を保存
+  const saveDisplayOrder = async () => {
+    setProcessing(true);
+    try {
+      // 各ユーザーのdisplay_orderを更新
+      const updates = users.map((user, index) => ({
+        staff_id: user.staff_id,
+        display_order: index + 1,
+      }));
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('user')
+          .update({ display_order: update.display_order })
+          .eq('staff_id', update.staff_id);
+
+        if (error) {
+          console.error('Error updating display_order:', error);
+          throw error;
+        }
+      }
+
+      alert('並び順を保存しました');
+      setIsReorderMode(false);
+    } catch (err) {
+      console.error('Error saving display order:', err);
+      alert('並び順の保存に失敗しました');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // 並び替えモードをキャンセル
+  const cancelReorderMode = async () => {
+    setIsReorderMode(false);
+    // 元の順序に戻すためにデータを再取得
+    if (selectedFiscalYear) {
+      await fetchUsersForYear(selectedFiscalYear);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -685,50 +783,97 @@ export default function MembersPage() {
                 全{users.length}名（管理者: {getAdminCount()}名）
               </p>
             </div>
-            {/* 年度切替タブ */}
-            {defaultFiscalYear && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-600">年度:</span>
-                <div className="flex gap-1">
-                  {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
-                    <button
-                      key={year}
-                      onClick={() => handleFiscalYearChange(year)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                        selectedFiscalYear === year
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {year}年度
-                    </button>
-                  ))}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* 年度切替タブ */}
+              {defaultFiscalYear && !isReorderMode && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-600">年度:</span>
+                  <div className="flex gap-1">
+                    {[defaultFiscalYear - 1, defaultFiscalYear, defaultFiscalYear + 1].map(year => (
+                      <button
+                        key={year}
+                        onClick={() => handleFiscalYearChange(year)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          selectedFiscalYear === year
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {year}年度
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* 並び替えボタン */}
+              {isReorderMode ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-orange-600 font-medium">ドラッグ&ドロップで並び替え</span>
+                  <button
+                    onClick={cancelReorderMode}
+                    disabled={processing}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all disabled:opacity-50"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={saveDisplayOrder}
+                    disabled={processing}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-all disabled:opacity-50"
+                  >
+                    {processing ? '保存中...' : '保存'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setSortColumn(null);  // ソートをリセット
+                    setIsReorderMode(true);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-all"
+                >
+                  <Icons.ListOrdered />
+                  並び替え
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  {isReorderMode && (
+                    <th className="px-2 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider w-10">
+                      順序
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('staff_id')}
-                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
-                    >
-                      職員ID
-                      {getSortIcon('staff_id')}
-                    </button>
+                    {isReorderMode ? (
+                      <span>職員ID</span>
+                    ) : (
+                      <button
+                        onClick={() => handleSort('staff_id')}
+                        className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                      >
+                        職員ID
+                        {getSortIcon('staff_id')}
+                      </button>
+                    )}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <button
-                      onClick={() => handleSort('name')}
-                      className="flex items-center gap-2 hover:text-gray-700 transition-colors"
-                    >
-                      氏名
-                      {getSortIcon('name')}
-                    </button>
+                    {isReorderMode ? (
+                      <span>氏名</span>
+                    ) : (
+                      <button
+                        onClick={() => handleSort('name')}
+                        className="flex items-center gap-2 hover:text-gray-700 transition-colors"
+                      >
+                        氏名
+                        {getSortIcon('name')}
+                      </button>
+                    )}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     <button
@@ -766,8 +911,32 @@ export default function MembersPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {getSortedUsers().map((user) => (
-                  <tr key={user.staff_id} className={`hover:bg-gray-50 transition-colors ${isCurrentUser(user) ? "bg-blue-50/50" : ""}`}>
+                {(isReorderMode ? users : getSortedUsers()).map((user, index) => (
+                  <tr
+                    key={user.staff_id}
+                    draggable={isReorderMode}
+                    onDragStart={(e) => isReorderMode && handleDragStart(e, user.staff_id)}
+                    onDragOver={(e) => isReorderMode && handleDragOver(e, user.staff_id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => isReorderMode && handleDrop(e, user.staff_id)}
+                    onDragEnd={handleDragEnd}
+                    className={`transition-colors ${
+                      isReorderMode
+                        ? draggedUserId === user.staff_id
+                          ? 'opacity-50 bg-purple-50'
+                          : dragOverUserId === user.staff_id
+                            ? 'bg-purple-100 border-t-2 border-purple-500'
+                            : 'hover:bg-gray-50 cursor-grab'
+                        : `hover:bg-gray-50 ${isCurrentUser(user) ? "bg-blue-50/50" : ""}`
+                    }`}
+                  >
+                    {isReorderMode && (
+                      <td className="px-2 py-4 text-center">
+                        <div className="flex items-center justify-center text-gray-400 cursor-grab">
+                          <Icons.GripVertical />
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {user.staff_id}
                     </td>

@@ -131,12 +131,14 @@ export default function ScheduleSubmitPage() {
   });
   const [user, setUser] = useState<any>(null);
 
-  // 研究日設定（月単位）
-  const [researchDay, setResearchDay] = useState<number | null>(null);
-
-  // 日付範囲選択モード（出向中・休職中の登録用）
-  const [selectionMode, setSelectionMode] = useState<'none' | 'secondment' | 'leave'>('none');
-  const [selectionStart, setSelectionStart] = useState<string | null>(null);
+  // 一括登録モーダル
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkSchedule, setBulkSchedule] = useState({
+    schedule_type_id: 0,
+    start_date: "",
+    end_date: "",
+    weekdays: [] as number[],
+  });
 
   // ユーザーの当直レベル
   const [userNightShiftLevel, setUserNightShiftLevel] = useState<string | null>(null);
@@ -148,8 +150,6 @@ export default function ScheduleSubmitPage() {
   const [applicationsData, setApplicationsData] = useState<Application[]>([]);
   const [scheduleTypes, setScheduleTypes] = useState<ScheduleType[]>([]);
   const [userSchedulesData, setUserSchedulesData] = useState<(UserSchedule & { schedule_type: ScheduleType })[]>([]);
-  const [leaveOfAbsenceData, setLeaveOfAbsenceData] = useState<{ start_date: string; end_date: string }[]>([]);
-  const [secondmentData, setSecondmentData] = useState<{ start_date: string; end_date: string }[]>([]);
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(DEFAULT_DISPLAY_SETTINGS);
 
   // システム予約タイプ
@@ -256,72 +256,6 @@ export default function ScheduleSubmitPage() {
       });
       setSystemScheduleTypes(systemTypes);
 
-      // user_scheduleから研究日の曜日を推測（今月のデータから）
-      if (systemTypes.research_day && userSchedules) {
-        const researchDaySchedules = userSchedules.filter(
-          s => s.schedule_type_id === systemTypes.research_day!.id
-        );
-        if (researchDaySchedules.length > 0) {
-          // 最初の研究日の曜日を取得
-          const firstResearchDay = new Date(researchDaySchedules[0].schedule_date);
-          setResearchDay(firstResearchDay.getDay());
-        } else {
-          setResearchDay(null);
-        }
-      } else {
-        setResearchDay(null);
-      }
-
-      // 連続した日付をグループ化するヘルパー関数
-      const groupConsecutiveDates = (records: typeof userSchedules): { start_date: string; end_date: string }[] => {
-        if (!records || records.length === 0) return [];
-        const sorted = [...records].sort((a, b) => a.schedule_date.localeCompare(b.schedule_date));
-        const groups: { start_date: string; end_date: string }[] = [];
-        let currentStart: string | null = null;
-        let currentEnd: string | null = null;
-
-        for (const record of sorted) {
-          if (currentStart === null) {
-            currentStart = record.schedule_date;
-            currentEnd = record.schedule_date;
-          } else {
-            const prevDate = new Date(currentEnd!);
-            prevDate.setDate(prevDate.getDate() + 1);
-            if (prevDate.toISOString().split('T')[0] === record.schedule_date) {
-              currentEnd = record.schedule_date;
-            } else {
-              groups.push({ start_date: currentStart, end_date: currentEnd! });
-              currentStart = record.schedule_date;
-              currentEnd = record.schedule_date;
-            }
-          }
-        }
-        if (currentStart !== null) {
-          groups.push({ start_date: currentStart, end_date: currentEnd! });
-        }
-        return groups;
-      };
-
-      // user_scheduleから休職中の期間を特定
-      if (systemTypes.leave_of_absence && userSchedules) {
-        const leaveRecords = userSchedules.filter(
-          s => s.schedule_type_id === systemTypes.leave_of_absence!.id
-        );
-        setLeaveOfAbsenceData(groupConsecutiveDates(leaveRecords));
-      } else {
-        setLeaveOfAbsenceData([]);
-      }
-
-      // user_scheduleから出向中の期間を特定
-      if (systemTypes.secondment && userSchedules) {
-        const secondmentRecords = userSchedules.filter(
-          s => s.schedule_type_id === systemTypes.secondment!.id
-        );
-        setSecondmentData(groupConsecutiveDates(secondmentRecords));
-      } else {
-        setSecondmentData([]);
-      }
-
       // ユーザーの当直レベルを設定
       setUserNightShiftLevel(userData?.night_shift_level || null);
 
@@ -335,202 +269,6 @@ export default function ScheduleSubmitPage() {
     }
   };
 
-  // 指定した曜日のすべての日付を取得（祝日・日曜を除く）
-  const getDatesForWeekday = (weekday: number, startDate: string, endDate: string): string[] => {
-    const dates: string[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const current = new Date(start);
-
-    while (current <= end) {
-      if (current.getDay() === weekday && current.getDay() !== 0) {
-        const dateStr = current.toISOString().split('T')[0];
-        // 祝日でないかチェック
-        const isHoliday = holidaysData.some(h => h.holiday_date === dateStr);
-        if (!isHoliday) {
-          dates.push(dateStr);
-        }
-      }
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
-  };
-
-  // 研究日設定を保存（月単位）
-  const saveResearchDaySetting = async () => {
-    if (!user) return;
-
-    try {
-      // 今月の範囲を取得
-      const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
-      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-      const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
-
-      // user_scheduleから今月の研究日タイプのレコードを削除
-      if (systemScheduleTypes.research_day) {
-        await supabase.from("user_schedule")
-          .delete()
-          .eq("staff_id", user.staff_id)
-          .eq("schedule_type_id", systemScheduleTypes.research_day.id)
-          .gte("schedule_date", monthStart)
-          .lte("schedule_date", monthEnd);
-      }
-
-      // 新しいデータを挿入（今月のみ）
-      if (researchDay !== null && systemScheduleTypes.research_day) {
-        const dates = getDatesForWeekday(researchDay, monthStart, monthEnd);
-
-        if (dates.length > 0) {
-          const records = dates.map(date => ({
-            staff_id: user.staff_id,
-            schedule_date: date,
-            schedule_type_id: systemScheduleTypes.research_day!.id,
-            work_location_id: systemScheduleTypes.research_day!.default_work_location_id || null,
-          }));
-
-          await supabase.from("user_schedule").insert(records);
-        }
-      }
-
-      // データ再取得
-      fetchData(user.staff_id);
-    } catch (err) {
-      console.error("Error saving research day setting:", err);
-    }
-  };
-
-  // 研究日設定が変更されたら保存（初期ロード完了後のみ、月が変わった時は自動保存しない）
-  const [lastSavedResearchDay, setLastSavedResearchDay] = useState<{ year: number; month: number; day: number | null } | null>(null);
-
-  useEffect(() => {
-    if (user && initialLoadComplete) {
-      // 同じ月で曜日が変わった時のみ保存
-      if (lastSavedResearchDay === null ||
-          (lastSavedResearchDay.year === currentYear &&
-           lastSavedResearchDay.month === currentMonth &&
-           lastSavedResearchDay.day !== researchDay)) {
-        // 初回ロード時は保存しない
-        if (lastSavedResearchDay !== null) {
-          saveResearchDaySetting();
-        }
-      }
-      setLastSavedResearchDay({ year: currentYear, month: currentMonth, day: researchDay });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [researchDay, user, initialLoadComplete, currentYear, currentMonth]);
-
-  // 出向中設定を保存（期間指定）
-  const handleSaveSecondment = async (startDate: string, endDate: string) => {
-    if (!user) return;
-
-    try {
-      if (systemScheduleTypes.secondment) {
-        const dates = getAllDatesInRange(startDate, endDate);
-
-        if (dates.length > 0) {
-          const records = dates.map(date => ({
-            staff_id: user.staff_id,
-            schedule_date: date,
-            schedule_type_id: systemScheduleTypes.secondment!.id,
-            work_location_id: systemScheduleTypes.secondment!.default_work_location_id || null,
-          }));
-
-          await supabase.from("user_schedule").insert(records);
-        }
-      }
-
-      fetchData(user.staff_id);
-    } catch (err) {
-      console.error("Error saving secondment setting:", err);
-      alert("出向中設定の保存に失敗しました");
-    }
-  };
-
-  // 出向中を削除
-  const handleDeleteSecondment = async (startDate: string, endDate: string) => {
-    if (!user) return;
-
-    try {
-      if (systemScheduleTypes.secondment) {
-        await supabase.from("user_schedule")
-          .delete()
-          .eq("staff_id", user.staff_id)
-          .eq("schedule_type_id", systemScheduleTypes.secondment.id)
-          .gte("schedule_date", startDate)
-          .lte("schedule_date", endDate);
-      }
-
-      fetchData(user.staff_id);
-    } catch (err) {
-      console.error("Error deleting secondment:", err);
-      alert("出向中設定の削除に失敗しました");
-    }
-  };
-
-  // 期間の全日付を取得
-  const getAllDatesInRange = (startDateStr: string, endDateStr: string): string[] => {
-    const dates: string[] = [];
-    const start = new Date(startDateStr);
-    const end = new Date(endDateStr);
-    const current = new Date(start);
-
-    while (current <= end) {
-      dates.push(current.toISOString().split('T')[0]);
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
-  };
-
-  // 休職期間を追加
-  const handleAddLeaveOfAbsence = async (startDate: string, endDate: string) => {
-    if (!user) return;
-
-    try {
-      if (systemScheduleTypes.leave_of_absence) {
-        const dates = getAllDatesInRange(startDate, endDate);
-
-        if (dates.length > 0) {
-          const records = dates.map(date => ({
-            staff_id: user.staff_id,
-            schedule_date: date,
-            schedule_type_id: systemScheduleTypes.leave_of_absence!.id,
-            work_location_id: systemScheduleTypes.leave_of_absence!.default_work_location_id || null,
-          }));
-
-          await supabase.from("user_schedule").insert(records);
-        }
-      }
-
-      fetchData(user.staff_id);
-    } catch (err) {
-      console.error("Error adding leave of absence:", err);
-      alert("休職期間の追加に失敗しました");
-    }
-  };
-
-  // 休職期間を削除
-  const handleDeleteLeaveOfAbsence = async (startDate: string, endDate: string) => {
-    if (!user) return;
-
-    try {
-      // user_scheduleから削除
-      if (systemScheduleTypes.leave_of_absence) {
-        await supabase.from("user_schedule")
-          .delete()
-          .eq("staff_id", user.staff_id)
-          .eq("schedule_type_id", systemScheduleTypes.leave_of_absence.id)
-          .gte("schedule_date", startDate)
-          .lte("schedule_date", endDate);
-      }
-
-      fetchData(user.staff_id);
-    } catch (err) {
-      console.error("Error deleting leave of absence:", err);
-      alert("休職期間の削除に失敗しました");
-    }
-  };
 
   // 当直可否を判定する関数
   const checkNightShiftAvailability = (
@@ -688,10 +426,158 @@ export default function ScheduleSubmitPage() {
     return days;
   }, [currentYear, currentMonth, holidaysData, conferencesData, eventsData, applicationsData, userSchedulesData, systemScheduleTypes, userNightShiftLevel]);
 
+  // 一括登録対象日の計算
+  const bulkTargetDates = useMemo(() => {
+    if (!bulkSchedule.start_date || !bulkSchedule.end_date || bulkSchedule.weekdays.length === 0) {
+      return [];
+    }
+    const dates: string[] = [];
+    const start = new Date(bulkSchedule.start_date);
+    const end = new Date(bulkSchedule.end_date);
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (bulkSchedule.weekdays.includes(d.getDay())) {
+        dates.push(d.toISOString().split('T')[0]);
+      }
+    }
+    return dates;
+  }, [bulkSchedule]);
+
+  // 一括登録可能な予定タイプのリスト（システム予約 + カスタム）
+  const bulkScheduleTypeOptions = useMemo(() => {
+    const options: { id: number; name: string; color: string; text_color: string }[] = [];
+
+    // システム予約タイプを追加
+    if (systemScheduleTypes.research_day) {
+      options.push({
+        id: systemScheduleTypes.research_day.id,
+        name: displaySettings.research_day?.label || '研究日',
+        color: displaySettings.research_day?.bg_color || '#FFFF99',
+        text_color: displaySettings.research_day?.color || '#000000',
+      });
+    }
+    if (systemScheduleTypes.secondment) {
+      options.push({
+        id: systemScheduleTypes.secondment.id,
+        name: displaySettings.secondment?.label || '出向',
+        color: displaySettings.secondment?.bg_color || '#FFCC99',
+        text_color: displaySettings.secondment?.color || '#000000',
+      });
+    }
+    if (systemScheduleTypes.leave_of_absence) {
+      options.push({
+        id: systemScheduleTypes.leave_of_absence.id,
+        name: displaySettings.leave_of_absence?.label || '休職',
+        color: displaySettings.leave_of_absence?.bg_color || '#C0C0C0',
+        text_color: displaySettings.leave_of_absence?.color || '#000000',
+      });
+    }
+
+    // カスタム予定タイプを追加
+    scheduleTypes.forEach(t => {
+      options.push({
+        id: t.id,
+        name: t.name,
+        color: t.color === 'transparent' ? '#f3f4f6' : t.color,
+        text_color: t.text_color || '#000000',
+      });
+    });
+
+    return options;
+  }, [systemScheduleTypes, scheduleTypes, displaySettings]);
+
   const changeMonth = (offset: number) => {
     const newDate = new Date(currentYear, currentMonth - 1 + offset, 1);
     setCurrentYear(newDate.getFullYear());
     setCurrentMonth(newDate.getMonth() + 1);
+  };
+
+  // 一括登録モーダルを開く
+  const openBulkModal = () => {
+    const monthStart = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    setBulkSchedule({
+      schedule_type_id: 0,
+      start_date: monthStart,
+      end_date: monthEnd,
+      weekdays: [],
+    });
+    setShowBulkModal(true);
+  };
+
+  // 曜日の選択/解除
+  const toggleWeekday = (weekday: number) => {
+    setBulkSchedule(prev => ({
+      ...prev,
+      weekdays: prev.weekdays.includes(weekday)
+        ? prev.weekdays.filter(w => w !== weekday)
+        : [...prev.weekdays, weekday],
+    }));
+  };
+
+  // 一括登録処理
+  const handleBulkAdd = async () => {
+    if (!bulkSchedule.schedule_type_id) {
+      alert("予定タイプを選択してください");
+      return;
+    }
+    if (bulkTargetDates.length === 0) {
+      alert("対象日がありません。期間と曜日を選択してください");
+      return;
+    }
+    if (!user) return;
+
+    try {
+      // DBから既存予定を直接取得（同じ予定タイプのもの）
+      const { data: existingSchedules } = await supabase
+        .from("user_schedule")
+        .select("schedule_date")
+        .eq("staff_id", user.staff_id)
+        .eq("schedule_type_id", bulkSchedule.schedule_type_id)
+        .gte("schedule_date", bulkSchedule.start_date)
+        .lte("schedule_date", bulkSchedule.end_date);
+
+      const existingDates = (existingSchedules || []).map(s => s.schedule_date);
+
+      // 予定タイプの情報を取得
+      const scheduleType = bulkScheduleTypeOptions.find(t => t.id === bulkSchedule.schedule_type_id);
+      const fullScheduleType = [...scheduleTypes, ...Object.values(systemScheduleTypes).filter(Boolean)]
+        .find(t => t?.id === bulkSchedule.schedule_type_id);
+
+      const insertData = bulkTargetDates
+        .filter(date => !existingDates.includes(date))
+        .map(date => ({
+          staff_id: user.staff_id,
+          schedule_date: date,
+          schedule_type_id: bulkSchedule.schedule_type_id,
+          work_location_id: (fullScheduleType as ScheduleType)?.default_work_location_id || null,
+        }));
+
+      const skippedCount = bulkTargetDates.length - insertData.length;
+
+      if (insertData.length === 0) {
+        alert("すべての日付に既に予定が登録されています");
+        return;
+      }
+
+      const { error } = await supabase.from("user_schedule").insert(insertData);
+
+      if (error) {
+        alert("登録に失敗しました: " + error.message);
+      } else {
+        const message = skippedCount > 0
+          ? `${insertData.length}件登録しました（${skippedCount}件は既存予定のためスキップ）`
+          : `${insertData.length}件登録しました`;
+        alert(message);
+        setShowBulkModal(false);
+        fetchData(user.staff_id);
+      }
+    } catch (err) {
+      console.error("Error in bulk add:", err);
+      alert("一括登録に失敗しました");
+    }
   };
 
   const getDateBackgroundColor = (day: DayData): string => {
@@ -775,10 +661,12 @@ export default function ScheduleSubmitPage() {
   const handleAddSchedule = async (typeId: number) => {
     if (!user || !selectedDate || !selectedDayData) return;
 
-    // 回数制限チェック
-    const scheduleType = scheduleTypes.find(t => t.id === typeId);
+    // カスタム予定タイプとシステム予定タイプの両方から検索
+    const scheduleType = scheduleTypes.find(t => t.id === typeId)
+      || Object.values(systemScheduleTypes).find(t => t?.id === typeId);
     if (!scheduleType) return;
 
+    // 回数制限チェック（システム予定タイプには適用しない）
     if (scheduleType.monthly_limit) {
       const currentCount = getMonthlyScheduleCount(typeId);
       if (currentCount >= scheduleType.monthly_limit) {
@@ -794,8 +682,31 @@ export default function ScheduleSubmitPage() {
       night: scheduleType.position_night,
     };
 
-    // 既存の予定の勤務帯を取得（システム予約タイプを除く）
-    const existingSchedules = selectedDayData.userSchedules.filter(s => !s.schedule_type.is_system);
+    // 年休との重複チェック
+    if (selectedDayData.confirmedVacation) {
+      const vacationPeriod = selectedDayData.confirmedVacation.period;
+      const vacationPositions = {
+        am: vacationPeriod === 'full_day' || vacationPeriod === 'am',
+        pm: vacationPeriod === 'full_day' || vacationPeriod === 'pm',
+        night: false,  // 年休は夜勤には影響しない
+      };
+
+      const hasVacationOverlap =
+        (newPositions.am && vacationPositions.am) ||
+        (newPositions.pm && vacationPositions.pm);
+
+      if (hasVacationOverlap) {
+        const overlappingParts: string[] = [];
+        if (newPositions.am && vacationPositions.am) overlappingParts.push('AM');
+        if (newPositions.pm && vacationPositions.pm) overlappingParts.push('PM');
+
+        alert(`「年休」と${overlappingParts.join('/')}が重複しています。\n年休をキャンセルしてから追加してください。`);
+        return;
+      }
+    }
+
+    // 既存の予定の勤務帯を取得（すべての予定を対象）
+    const existingSchedules = selectedDayData.userSchedules;
 
     for (const existing of existingSchedules) {
       const existingPositions = {
@@ -865,45 +776,8 @@ export default function ScheduleSubmitPage() {
     if (isLocked) {
       return;
     }
-
-    // 選択モード中の場合
-    if (selectionMode !== 'none') {
-      if (!selectionStart) {
-        // 開始日を選択
-        setSelectionStart(date);
-      } else {
-        // 終了日を選択して登録
-        const startDate = selectionStart <= date ? selectionStart : date;
-        const endDate = selectionStart <= date ? date : selectionStart;
-
-        if (selectionMode === 'secondment') {
-          handleSaveSecondment(startDate, endDate);
-        } else if (selectionMode === 'leave') {
-          handleAddLeaveOfAbsence(startDate, endDate);
-        }
-
-        // 選択モードをリセット
-        setSelectionMode('none');
-        setSelectionStart(null);
-      }
-      return;
-    }
-
-    // 通常モード：モーダルを表示
     setSelectedDate(date);
     setShowModal(true);
-  };
-
-  // 選択モードをキャンセル
-  const cancelSelection = () => {
-    setSelectionMode('none');
-    setSelectionStart(null);
-  };
-
-  // 日付が選択範囲内かどうかをチェック
-  const isDateInSelectionRange = (date: string): boolean => {
-    if (selectionMode === 'none' || !selectionStart) return false;
-    return date === selectionStart;
   };
 
   // 選択された日のデータ
@@ -957,147 +831,6 @@ export default function ScheduleSubmitPage() {
 
       <main className="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="space-y-4">
-          {/* 研究日・出向中・休職中設定 */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* 研究日 */}
-              <div>
-                <h3 className="text-sm font-bold text-gray-700 mb-2">研究日（曜日選択）</h3>
-                <div className="flex flex-wrap gap-1">
-                  <button
-                    onClick={() => !isLocked && setResearchDay(null)}
-                    disabled={isLocked}
-                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                      researchDay === null
-                        ? 'text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    style={researchDay === null ? { backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' } : undefined}
-                  >
-                    なし
-                  </button>
-                  {WEEKDAYS.filter(w => w.value >= 1 && w.value <= 5).map((w) => (
-                    <button
-                      key={w.value}
-                      onClick={() => !isLocked && setResearchDay(w.value)}
-                      disabled={isLocked}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        researchDay === w.value
-                          ? ''
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      style={researchDay === w.value ? { backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' } : undefined}
-                    >
-                      {w.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 出向中 */}
-              <div>
-                <h3 className="text-sm font-bold text-gray-700 mb-2">出向中</h3>
-                {selectionMode === 'secondment' ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-amber-600 font-medium">
-                      {selectionStart ? `${selectionStart.replace(/-/g, '/')} 〜 終了日を選択` : '開始日を選択'}
-                    </span>
-                    <button
-                      onClick={cancelSelection}
-                      className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded hover:bg-gray-300"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => !isLocked && setSelectionMode('secondment')}
-                      disabled={isLocked}
-                      className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
-                    >
-                      <Icons.Plus />
-                      追加
-                    </button>
-                    {secondmentData.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {secondmentData.map((period, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded"
-                            style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
-                          >
-                            {period.start_date.slice(5).replace(/-/g, '/')}〜{period.end_date.slice(5).replace(/-/g, '/')}
-                            {!isLocked && (
-                              <button
-                                onClick={() => handleDeleteSecondment(period.start_date, period.end_date)}
-                                className="hover:opacity-70"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* 休職中 */}
-              <div>
-                <h3 className="text-sm font-bold text-gray-700 mb-2">休職中</h3>
-                {selectionMode === 'leave' ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600 font-medium">
-                      {selectionStart ? `${selectionStart.replace(/-/g, '/')} 〜 終了日を選択` : '開始日を選択'}
-                    </span>
-                    <button
-                      onClick={cancelSelection}
-                      className="px-2 py-1 text-xs bg-gray-200 text-gray-600 rounded hover:bg-gray-300"
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => !isLocked && setSelectionMode('leave')}
-                      disabled={isLocked}
-                      className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
-                    >
-                      <Icons.Plus />
-                      追加
-                    </button>
-                    {leaveOfAbsenceData.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {leaveOfAbsenceData.map((leave, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded"
-                            style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
-                          >
-                            {leave.start_date.slice(5).replace(/-/g, '/')}〜{leave.end_date.slice(5).replace(/-/g, '/')}
-                            {!isLocked && (
-                              <button
-                                onClick={() => handleDeleteLeaveOfAbsence(leave.start_date, leave.end_date)}
-                                className="hover:opacity-70"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* 月選択 */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
             <div className="flex justify-between items-center mb-4">
@@ -1120,8 +853,8 @@ export default function ScheduleSubmitPage() {
               </button>
             </div>
 
-            {/* 直近5ヶ月タブ */}
-            <div className="flex justify-center gap-1 sm:gap-2 overflow-x-auto pb-2">
+            {/* 直近5ヶ月タブ + 一括登録ボタン */}
+            <div className="flex justify-center items-center gap-1 sm:gap-2 overflow-x-auto pb-2">
               {[0, 1, 2, 3, 4].map(offset => {
                 const now = new Date();
                 const targetMonth = now.getMonth() + offset;
@@ -1145,6 +878,18 @@ export default function ScheduleSubmitPage() {
                   </button>
                 );
               })}
+              <button
+                onClick={openBulkModal}
+                disabled={isLocked}
+                className={`ml-2 px-3 py-1 sm:py-1.5 rounded-lg whitespace-nowrap text-xs sm:text-sm font-medium transition-all flex items-center gap-1
+                  ${isLocked
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-purple-600 text-white hover:bg-purple-700 shadow-md'
+                  }`}
+              >
+                <Icons.Plus />
+                一括登録
+              </button>
             </div>
           </div>
 
@@ -1216,10 +961,6 @@ export default function ScheduleSubmitPage() {
                 // AM/PM部分のみ結合するか
                 const showFullDay = day.isResearchDay || hasFullDayVacation || hasFullDaySchedule;
 
-                // 選択モード中のハイライト
-                const isSelectionStart = selectionStart === day.date;
-                const isInSelectionMode = selectionMode !== 'none';
-
                 return (
                   <div
                     key={day.date}
@@ -1227,11 +968,7 @@ export default function ScheduleSubmitPage() {
                     className={`min-h-[90px] sm:min-h-[110px] rounded-lg flex flex-col overflow-hidden transition-all ${
                       isLocked
                         ? 'cursor-default border border-gray-200'
-                        : isSelectionStart
-                          ? 'cursor-pointer border-2 border-indigo-500 shadow-lg ring-2 ring-indigo-200'
-                          : isInSelectionMode
-                            ? 'cursor-pointer border-2 border-dashed border-indigo-300 hover:border-indigo-500 hover:shadow-md'
-                            : 'cursor-pointer border border-gray-200 hover:border-indigo-400 hover:shadow-md'
+                        : 'cursor-pointer border border-gray-200 hover:border-indigo-400 hover:shadow-md'
                     } ${
                       day.isSecondment ? 'bg-amber-50/80' :
                       day.isLeaveOfAbsence ? 'bg-gray-100' :
@@ -1508,14 +1245,59 @@ export default function ScheduleSubmitPage() {
                 </div>
               )}
 
-              {/* 予定追加 */}
+              {/* 研究日・出向中・休職中を追加 */}
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">予定を追加</h3>
-                {scheduleTypes.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    予定タイプがありません。管理画面の「予定提出設定」から追加してください。
-                  </p>
-                ) : (
+                <h3 className="text-sm font-medium text-gray-700 mb-2">研究日・出向中・休職中</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {systemScheduleTypes.research_day && (
+                    <button
+                      onClick={() => handleAddSchedule(systemScheduleTypes.research_day!.id)}
+                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                    >
+                      <div
+                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        style={{ backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' }}
+                      >
+                        {displaySettings.research_day?.label || '研究日'}
+                      </div>
+                      <span className="text-[10px] text-gray-500">AM/PM</span>
+                    </button>
+                  )}
+                  {systemScheduleTypes.secondment && (
+                    <button
+                      onClick={() => handleAddSchedule(systemScheduleTypes.secondment!.id)}
+                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                    >
+                      <div
+                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
+                      >
+                        {displaySettings.secondment?.label || '出向'}
+                      </div>
+                      <span className="text-[10px] text-gray-500">終日</span>
+                    </button>
+                  )}
+                  {systemScheduleTypes.leave_of_absence && (
+                    <button
+                      onClick={() => handleAddSchedule(systemScheduleTypes.leave_of_absence!.id)}
+                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                    >
+                      <div
+                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
+                      >
+                        {displaySettings.leave_of_absence?.label || '休職'}
+                      </div>
+                      <span className="text-[10px] text-gray-500">終日</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* カスタム予定を追加 */}
+              {scheduleTypes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">その他の予定</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {scheduleTypes.map(type => {
                       const currentCount = getMonthlyScheduleCount(type.id);
@@ -1558,8 +1340,8 @@ export default function ScheduleSubmitPage() {
                       );
                     })}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* 固定予定の表示 */}
               {selectedDayData && (
@@ -1631,6 +1413,120 @@ export default function ScheduleSubmitPage() {
                 className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
               >
                 閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 一括登録モーダル */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">一括予定登録</h2>
+              <button
+                onClick={() => setShowBulkModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <Icons.X />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* 予定タイプ選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  予定タイプ <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={bulkSchedule.schedule_type_id}
+                  onChange={(e) => setBulkSchedule(prev => ({ ...prev, schedule_type_id: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value={0}>選択してください</option>
+                  {bulkScheduleTypeOptions.map(type => (
+                    <option key={type.id} value={type.id}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 期間選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  期間 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={bulkSchedule.start_date}
+                    onChange={(e) => setBulkSchedule(prev => ({ ...prev, start_date: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                  <span className="text-gray-500">〜</span>
+                  <input
+                    type="date"
+                    value={bulkSchedule.end_date}
+                    onChange={(e) => setBulkSchedule(prev => ({ ...prev, end_date: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              {/* 曜日選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  曜日 <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-1">
+                  {WEEKDAYS.map((w) => (
+                    <button
+                      key={w.value}
+                      onClick={() => toggleWeekday(w.value)}
+                      className={`flex-1 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        bulkSchedule.weekdays.includes(w.value)
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 対象日数表示 */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600">
+                  対象日数: <span className="font-bold text-purple-600">{bulkTargetDates.length}日</span>
+                </p>
+                {bulkTargetDates.length > 0 && bulkTargetDates.length <= 10 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {bulkTargetDates.map(d => d.slice(5).replace(/-/g, '/')).join(', ')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={() => setShowBulkModal(false)}
+                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleBulkAdd}
+                disabled={!bulkSchedule.schedule_type_id || bulkTargetDates.length === 0}
+                className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                  !bulkSchedule.schedule_type_id || bulkTargetDates.length === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                }`}
+              >
+                登録
               </button>
             </div>
           </div>
