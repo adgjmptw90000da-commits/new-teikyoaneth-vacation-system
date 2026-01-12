@@ -1272,6 +1272,73 @@ export interface Database {
           created_at?: string
         }
       }
+      shared_calendar_category: {
+        Row: {
+          id: number
+          name: string
+          display_label: string | null
+          color: string
+          text_color: string
+          display_order: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_label?: string | null
+          color?: string
+          text_color?: string
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_label?: string | null
+          color?: string
+          text_color?: string
+          display_order?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      shared_calendar_event: {
+        Row: {
+          id: number
+          staff_id: string
+          category_id: number
+          event_date: string
+          title: string
+          description: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          staff_id: string
+          category_id: number
+          event_date: string
+          title: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          staff_id?: string
+          category_id?: number
+          event_date?: string
+          title?: string
+          description?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
