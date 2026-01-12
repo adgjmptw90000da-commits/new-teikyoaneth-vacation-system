@@ -519,41 +519,47 @@ export default function SharedCalendarPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-sans">
       {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push("/schedule-system")}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Icons.ChevronLeft />
-            </button>
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
-              <Icons.Calendar />
-              <h1 className="text-lg font-bold text-gray-900">予定共有カレンダー</h1>
+              <button
+                onClick={() => router.back()}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="戻る"
+              >
+                <Icons.ChevronLeft />
+              </button>
+              <div className="bg-green-600 p-1.5 rounded-lg text-white">
+                <Icons.Calendar />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                予定共有カレンダー
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              {user.is_admin && (
+                <button
+                  onClick={() => router.push("/admin/shared-calendar-settings")}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="カテゴリ設定"
+                >
+                  <Icons.Settings />
+                </button>
+              )}
+              <button
+                onClick={() => router.push("/admin/home")}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ホーム"
+              >
+                <Icons.Home />
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {user.is_admin && (
-              <button
-                onClick={() => router.push("/admin/shared-calendar-settings")}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
-                title="カテゴリ設定"
-              >
-                <Icons.Settings />
-              </button>
-            )}
-            <button
-              onClick={() => router.push("/admin/home-dev")}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Icons.Home />
-            </button>
-          </div>
         </div>
-      </header>
+      </nav>
 
       <main className="max-w-7xl mx-auto px-4 py-4">
         {/* ビュー切り替えタブ */}
@@ -594,7 +600,7 @@ export default function SharedCalendarPage() {
               <select
                 value={selectedStaffId}
                 onChange={(e) => setSelectedStaffId(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
               >
                 {allUsers.map((u) => (
                   <option key={u.staff_id} value={u.staff_id}>
@@ -879,7 +885,7 @@ export default function SharedCalendarPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold">
+              <h2 className="text-lg font-bold text-gray-900">
                 {editingEvent ? "予定の編集" : "予定の登録"}
               </h2>
               <button
@@ -897,7 +903,7 @@ export default function SharedCalendarPage() {
               {/* 日付表示 */}
               <div className="bg-gray-50 rounded-lg p-3">
                 <span className="text-sm text-gray-600">日付：</span>
-                <span className="font-medium">{formatDate(selectedDate)}</span>
+                <span className="font-medium text-gray-900">{formatDate(selectedDate)}</span>
               </div>
 
               {/* 予定選択（ラジオボタン） */}
@@ -982,7 +988,7 @@ export default function SharedCalendarPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold">一括予定登録</h2>
+              <h2 className="text-lg font-bold text-gray-900">一括予定登録</h2>
               <button
                 onClick={() => setShowBulkModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-lg"
@@ -1000,7 +1006,7 @@ export default function SharedCalendarPage() {
                 <select
                   value={bulkEvent.category_id}
                   onChange={(e) => setBulkEvent({ ...bulkEvent, category_id: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
                 >
                   <option value={0}>選択してください</option>
                   {categories.map((cat) => (
@@ -1021,14 +1027,14 @@ export default function SharedCalendarPage() {
                     type="date"
                     value={bulkEvent.start_date}
                     onChange={(e) => setBulkEvent({ ...bulkEvent, start_date: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
                   />
                   <span className="text-gray-500">〜</span>
                   <input
                     type="date"
                     value={bulkEvent.end_date}
                     onChange={(e) => setBulkEvent({ ...bulkEvent, end_date: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
                   />
                 </div>
               </div>

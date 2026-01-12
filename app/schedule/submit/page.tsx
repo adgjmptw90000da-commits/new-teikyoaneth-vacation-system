@@ -1442,7 +1442,7 @@ export default function ScheduleSubmitPage() {
                 <select
                   value={bulkSchedule.schedule_type_id}
                   onChange={(e) => setBulkSchedule(prev => ({ ...prev, schedule_type_id: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                 >
                   <option value={0}>選択してください</option>
                   {bulkScheduleTypeOptions.map(type => (
@@ -1463,14 +1463,14 @@ export default function ScheduleSubmitPage() {
                     type="date"
                     value={bulkSchedule.start_date}
                     onChange={(e) => setBulkSchedule(prev => ({ ...prev, start_date: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   />
                   <span className="text-gray-500">〜</span>
                   <input
                     type="date"
                     value={bulkSchedule.end_date}
                     onChange={(e) => setBulkSchedule(prev => ({ ...prev, end_date: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   />
                 </div>
               </div>

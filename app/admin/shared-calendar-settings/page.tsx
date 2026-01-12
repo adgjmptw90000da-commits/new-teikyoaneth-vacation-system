@@ -46,7 +46,7 @@ const ColorPicker = ({
           type="text"
           value={color}
           onChange={(e) => onChange(e.target.value)}
-          className="w-28 px-2 py-1 border border-gray-300 rounded text-sm font-mono"
+          className="w-28 px-2 py-1 border border-gray-300 rounded text-sm font-mono text-gray-900"
         />
       </div>
     </div>
@@ -256,30 +256,38 @@ export default function SharedCalendarSettingsPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-sans">
       {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push("/admin/home")}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Icons.ChevronLeft />
-            </button>
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
-              <Icons.Calendar />
-              <h1 className="text-lg font-bold text-gray-900">予定共有カレンダー設定</h1>
+              <button
+                onClick={() => router.back()}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="戻る"
+              >
+                <Icons.ChevronLeft />
+              </button>
+              <div className="bg-green-600 p-1.5 rounded-lg text-white">
+                <Icons.Settings />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+                予定共有カレンダー設定
+              </h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push("/admin/home")}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="ホーム"
+              >
+                <Icons.Home />
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => router.push("/admin/home")}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Icons.Home />
-          </button>
         </div>
-      </header>
+      </nav>
 
       <main className="max-w-4xl mx-auto px-4 py-6">
         {/* 説明 */}
@@ -384,7 +392,7 @@ export default function SharedCalendarSettingsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold">カテゴリ追加</h2>
+              <h2 className="text-lg font-bold text-gray-900">カテゴリ追加</h2>
               <button
                 onClick={() => setShowModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-lg"
@@ -402,7 +410,7 @@ export default function SharedCalendarSettingsPage() {
                   type="text"
                   value={newCategory.name}
                   onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   placeholder="例: 会議"
                 />
               </div>
@@ -416,7 +424,7 @@ export default function SharedCalendarSettingsPage() {
                   type="text"
                   value={newCategory.display_label}
                   onChange={(e) => setNewCategory({ ...newCategory, display_label: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                   placeholder="例: 会"
                 />
               </div>
@@ -470,7 +478,7 @@ export default function SharedCalendarSettingsPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold">カテゴリ編集</h2>
+              <h2 className="text-lg font-bold text-gray-900">カテゴリ編集</h2>
               <button
                 onClick={() => setEditingCategory(null)}
                 className="p-2 hover:bg-gray-100 rounded-lg"
@@ -488,7 +496,7 @@ export default function SharedCalendarSettingsPage() {
                   type="text"
                   value={editingCategory.name}
                   onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 />
               </div>
 
@@ -501,7 +509,7 @@ export default function SharedCalendarSettingsPage() {
                   type="text"
                   value={editingCategory.display_label || ""}
                   onChange={(e) => setEditingCategory({ ...editingCategory, display_label: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 />
               </div>
 
