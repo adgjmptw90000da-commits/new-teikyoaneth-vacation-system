@@ -796,7 +796,7 @@ export default function SharedCalendarPage() {
                     {daysData.map((day) => (
                       <th
                         key={day.date}
-                        className={`border border-gray-300 px-1 py-2 text-xs font-bold min-w-[40px] ${
+                        className={`border border-gray-300 px-1 py-2 text-xs font-bold min-w-[48px] ${
                           day.isHoliday || day.dayOfWeek === 0
                             ? "bg-red-100 text-red-700"
                             : day.dayOfWeek === 6
@@ -864,8 +864,8 @@ export default function SharedCalendarPage() {
                             } : {}}
                           >
                             {event && (
-                              <span className="font-medium" title={event.category?.name || event.title}>
-                                {(event.category?.display_label || event.category?.name || "").slice(0, 2)}
+                              <span className="font-medium text-[9px]" title={event.category?.name || event.title}>
+                                {(event.category?.display_label || event.category?.name || "").slice(0, 3)}
                               </span>
                             )}
                           </td>
