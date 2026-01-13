@@ -1319,18 +1319,20 @@ export default function ScheduleSubmitPage() {
                           >
                             {type.display_label || type.name}
                           </div>
-                          <div className="text-[9px] text-gray-500 text-center">
-                            {type.position_am && 'AM'}
-                            {type.position_am && type.position_pm && '/'}
-                            {type.position_pm && 'PM'}
-                            {(type.position_am || type.position_pm) && type.position_night && '/'}
-                            {type.position_night && '夜勤'}
+                          <div className="text-[9px] text-gray-500 text-center flex items-center gap-1">
+                            <span>
+                              {type.position_am && 'AM'}
+                              {type.position_am && type.position_pm && '/'}
+                              {type.position_pm && 'PM'}
+                              {(type.position_am || type.position_pm) && type.position_night && '/'}
+                              {type.position_night && '夜勤'}
+                            </span>
+                            {type.monthly_limit !== null && (
+                              <span className={isLimitReached ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                                ({currentCount}/{type.monthly_limit})
+                              </span>
+                            )}
                           </div>
-                          {type.monthly_limit !== null && (
-                            <div className={`text-[9px] ${isLimitReached ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                              {currentCount}/{type.monthly_limit}
-                            </div>
-                          )}
                         </button>
                       );
                     })}
