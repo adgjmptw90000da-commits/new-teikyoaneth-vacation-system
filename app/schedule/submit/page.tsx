@@ -1307,12 +1307,13 @@ export default function ScheduleSubmitPage() {
                           key={type.id}
                           onClick={() => handleAddSchedule(type.id)}
                           disabled={isLimitReached}
-                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
+                          className={`flex flex-col items-center gap-0.5 p-2 rounded-lg border transition-all ${
                             isLimitReached
                               ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                               : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                           }`}
                         >
+                          <div className="text-[9px] text-gray-600 truncate max-w-full">{type.name}</div>
                           <div
                             className="px-1.5 py-0.5 rounded text-[10px] font-bold"
                             style={{ backgroundColor: type.color === 'transparent' ? '#f3f4f6' : type.color, color: type.text_color || '#000000' }}
