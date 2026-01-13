@@ -874,7 +874,7 @@ export default function ScheduleSubmitPage() {
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {tabYear}年{tabMonth}月
+                    {tabMonth}月
                   </button>
                 );
               })}
@@ -1248,47 +1248,47 @@ export default function ScheduleSubmitPage() {
               {/* 研究日・出向中・休職中を追加 */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">研究日・出向中・休職中</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   {systemScheduleTypes.research_day && (
                     <button
                       onClick={() => handleAddSchedule(systemScheduleTypes.research_day!.id)}
-                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                     >
                       <div
-                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold"
                         style={{ backgroundColor: displaySettings.research_day?.bg_color || '#FFFF99', color: displaySettings.research_day?.color || '#000000' }}
                       >
                         {displaySettings.research_day?.label || '研究日'}
                       </div>
-                      <span className="text-[10px] text-gray-500">AM/PM</span>
+                      <span className="text-[9px] text-gray-500">AM/PM</span>
                     </button>
                   )}
                   {systemScheduleTypes.secondment && (
                     <button
                       onClick={() => handleAddSchedule(systemScheduleTypes.secondment!.id)}
-                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                     >
                       <div
-                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold"
                         style={{ backgroundColor: displaySettings.secondment?.bg_color || '#FFCC99', color: displaySettings.secondment?.color || '#000000' }}
                       >
                         {displaySettings.secondment?.label || '出向'}
                       </div>
-                      <span className="text-[10px] text-gray-500">終日</span>
+                      <span className="text-[9px] text-gray-500">終日</span>
                     </button>
                   )}
                   {systemScheduleTypes.leave_of_absence && (
                     <button
                       onClick={() => handleAddSchedule(systemScheduleTypes.leave_of_absence!.id)}
-                      className="flex flex-col items-center gap-1 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                      className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                     >
                       <div
-                        className="px-2 py-0.5 rounded text-xs font-bold"
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold"
                         style={{ backgroundColor: displaySettings.leave_of_absence?.bg_color || '#C0C0C0', color: displaySettings.leave_of_absence?.color || '#000000' }}
                       >
                         {displaySettings.leave_of_absence?.label || '休職'}
                       </div>
-                      <span className="text-[10px] text-gray-500">終日</span>
+                      <span className="text-[9px] text-gray-500">終日</span>
                     </button>
                   )}
                 </div>
@@ -1298,7 +1298,7 @@ export default function ScheduleSubmitPage() {
               {scheduleTypes.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-gray-700 mb-2">その他の予定</h3>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {scheduleTypes.map(type => {
                       const currentCount = getMonthlyScheduleCount(type.id);
                       const isLimitReached = type.monthly_limit !== null && currentCount >= type.monthly_limit;
@@ -1307,35 +1307,30 @@ export default function ScheduleSubmitPage() {
                           key={type.id}
                           onClick={() => handleAddSchedule(type.id)}
                           disabled={isLimitReached}
-                          className={`flex items-center gap-2 p-3 rounded-lg border transition-all text-left ${
+                          className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${
                             isLimitReached
                               ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                               : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                           }`}
                         >
                           <div
-                            className="px-2 py-0.5 rounded text-xs font-bold shrink-0"
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold"
                             style={{ backgroundColor: type.color === 'transparent' ? '#f3f4f6' : type.color, color: type.text_color || '#000000' }}
                           >
                             {type.display_label || type.name}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-gray-900 text-sm truncate">{type.name}</div>
-                            <div className="text-[10px] text-gray-500 flex justify-between">
-                              <span>
-                                {type.position_am && 'AM'}
-                                {type.position_am && type.position_pm && '/'}
-                                {type.position_pm && 'PM'}
-                                {(type.position_am || type.position_pm) && type.position_night && '/'}
-                                {type.position_night && '夜勤'}
-                              </span>
-                              {type.monthly_limit !== null && (
-                                <span className={isLimitReached ? 'text-red-500 font-medium' : 'text-gray-400'}>
-                                  {currentCount}/{type.monthly_limit}
-                                </span>
-                              )}
-                            </div>
+                          <div className="text-[9px] text-gray-500 text-center">
+                            {type.position_am && 'AM'}
+                            {type.position_am && type.position_pm && '/'}
+                            {type.position_pm && 'PM'}
+                            {(type.position_am || type.position_pm) && type.position_night && '/'}
+                            {type.position_night && '夜勤'}
                           </div>
+                          {type.monthly_limit !== null && (
+                            <div className={`text-[9px] ${isLimitReached ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                              {currentCount}/{type.monthly_limit}
+                            </div>
+                          )}
                         </button>
                       );
                     })}
