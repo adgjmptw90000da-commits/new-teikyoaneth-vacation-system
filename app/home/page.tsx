@@ -668,8 +668,8 @@ export default function HomePage() {
               <div className="bg-pink-50 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center text-pink-600 mb-4 group-hover:scale-110 transition-transform">
                 <Icons.Calendar />
               </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-pink-600 transition-colors">予定共有カレンダー</h4>
-              <p className="text-sm text-gray-500">予定を共有・閲覧</p>
+              <h4 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-pink-600 transition-colors">非臨床日共有カレンダー</h4>
+              <p className="text-sm text-gray-500">非臨床日を共有・閲覧</p>
             </button>
 
             <button

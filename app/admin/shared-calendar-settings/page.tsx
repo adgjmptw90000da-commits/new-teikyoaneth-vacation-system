@@ -276,7 +276,7 @@ export default function SharedCalendarSettingsPage() {
                 <Icons.Settings />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                予定共有カレンダー設定
+                非臨床日共有カレンダー設定
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -296,7 +296,7 @@ export default function SharedCalendarSettingsPage() {
         {/* 説明 */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-800">
-            予定共有カレンダーのカテゴリを管理します。カテゴリをドラッグして並び替えができます。
+            非臨床日共有カレンダーのカテゴリを管理します。カテゴリをドラッグして並び替えができます。
           </p>
         </div>
 

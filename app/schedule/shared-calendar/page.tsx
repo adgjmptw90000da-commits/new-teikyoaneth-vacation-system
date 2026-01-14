@@ -138,13 +138,15 @@ export default function SharedCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
-  // 一括登録モーダル
+  // 一括登録/削除モーダル
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkMode, setBulkMode] = useState<'add' | 'delete'>('add');
   const [bulkEvent, setBulkEvent] = useState({
     category_id: 0,
     start_date: "",
     end_date: "",
     weekdays: [] as number[],
+    weekNumbers: [] as number[],  // 1-5 (空=毎週)
   });
 
   // フォーム
@@ -154,6 +156,10 @@ export default function SharedCalendarPage() {
 
   // 管理者用: 対象ユーザー選択
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
+
+  // 全体表示用: メンバーフィルター
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [showMemberFilter, setShowMemberFilter] = useState(false);
 
   useEffect(() => {
     const currentUser = getUser();
@@ -276,12 +282,24 @@ export default function SharedCalendarPage() {
     const end = new Date(bulkEvent.end_date);
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      // 週番号チェック（weekNumbersが空なら毎週）
+      if (bulkEvent.weekNumbers.length > 0) {
+        const weekOfMonth = Math.ceil(d.getDate() / 7);
+        if (!bulkEvent.weekNumbers.includes(weekOfMonth)) continue;
+      }
+      // 曜日チェック
       if (bulkEvent.weekdays.includes(d.getDay())) {
         dates.push(d.toISOString().split('T')[0]);
       }
     }
     return dates;
   }, [bulkEvent]);
+
+  // 全体表示用: 表示するメンバーのフィルタリング
+  const displayMembers = useMemo(() => {
+    if (selectedMemberIds.length === 0) return allUsers;
+    return allUsers.filter(u => selectedMemberIds.includes(u.staff_id));
+  }, [selectedMemberIds, allUsers]);
 
   const handlePrevMonth = () => {
     if (currentMonth === 1) {
@@ -410,18 +428,20 @@ export default function SharedCalendarPage() {
     setSaving(false);
   };
 
-  // 一括登録モーダルを開く
+  // 一括登録/削除モーダルを開く
   const openBulkModal = () => {
     const now = new Date();
     const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const endOfMonthStr = `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, "0")}-${String(endOfMonth.getDate()).padStart(2, "0")}`;
 
+    setBulkMode('add');
     setBulkEvent({
       category_id: 0,
       start_date: startOfMonth,
       end_date: endOfMonthStr,
       weekdays: [],
+      weekNumbers: [],
     });
     setShowBulkModal(true);
   };
@@ -484,6 +504,55 @@ export default function SharedCalendarPage() {
     setSaving(false);
   };
 
+  // 一括削除処理
+  const handleBulkDelete = async () => {
+    if (!bulkEvent.start_date || !bulkEvent.end_date) {
+      alert("期間を選択してください");
+      return;
+    }
+    if (!user || !targetStaffId) return;
+
+    // 削除対象件数を確認
+    const { data: targetEvents, error: countError } = await supabase
+      .from("shared_calendar_event")
+      .select("id")
+      .eq("staff_id", targetStaffId)
+      .gte("event_date", bulkEvent.start_date)
+      .lte("event_date", bulkEvent.end_date);
+
+    if (countError) {
+      alert("エラーが発生しました: " + countError.message);
+      return;
+    }
+
+    const targetCount = targetEvents?.length || 0;
+    if (targetCount === 0) {
+      alert("指定期間に削除対象の予定がありません");
+      return;
+    }
+
+    if (!confirm(`${bulkEvent.start_date} 〜 ${bulkEvent.end_date} の予定 ${targetCount}件を削除しますか？`)) {
+      return;
+    }
+
+    setSaving(true);
+    const { error } = await supabase
+      .from("shared_calendar_event")
+      .delete()
+      .eq("staff_id", targetStaffId)
+      .gte("event_date", bulkEvent.start_date)
+      .lte("event_date", bulkEvent.end_date);
+
+    if (error) {
+      alert("削除に失敗しました: " + error.message);
+    } else {
+      alert(`${targetCount}件の予定を削除しました`);
+      setShowBulkModal(false);
+      fetchData();
+    }
+    setSaving(false);
+  };
+
   // 曜日の選択/解除
   const toggleWeekday = (weekday: number) => {
     setBulkEvent(prev => ({
@@ -536,7 +605,7 @@ export default function SharedCalendarPage() {
                 <Icons.Calendar />
               </div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
-                予定共有カレンダー
+                非臨床日共有カレンダー
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -574,7 +643,7 @@ export default function SharedCalendarPage() {
               }`}
             >
               <Icons.Calendar />
-              個人予定登録
+              個人非臨床日予定登録
             </button>
             <button
               onClick={() => setViewMode('overview')}
@@ -585,7 +654,7 @@ export default function SharedCalendarPage() {
               }`}
             >
               <Icons.Users />
-              全体予定確認
+              全体非臨床日確認
             </button>
           </div>
         </div>
@@ -612,6 +681,73 @@ export default function SharedCalendarPage() {
             {selectedStaffId !== user.staff_id && (
               <p className="mt-2 text-sm text-orange-600">
                 {targetUserName}さんの予定を管理しています
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 全体表示用: メンバーフィルター */}
+        {viewMode === 'overview' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-700">表示メンバー</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedMemberIds(allUsers.map(u => u.staff_id))}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  全選択
+                </button>
+                <button
+                  onClick={() => setSelectedMemberIds([])}
+                  className="text-xs text-gray-600 hover:text-gray-800"
+                >
+                  全解除
+                </button>
+                <button
+                  onClick={() => setShowMemberFilter(!showMemberFilter)}
+                  className="text-xs text-gray-500 hover:text-gray-700"
+                >
+                  {showMemberFilter ? '閉じる' : '展開'}
+                </button>
+              </div>
+            </div>
+            {showMemberFilter && (
+              <div className="flex flex-wrap gap-2">
+                {allUsers.map((member) => (
+                  <label
+                    key={member.staff_id}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer text-sm transition-colors ${
+                      selectedMemberIds.includes(member.staff_id)
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedMemberIds.includes(member.staff_id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedMemberIds([...selectedMemberIds, member.staff_id]);
+                        } else {
+                          setSelectedMemberIds(selectedMemberIds.filter(id => id !== member.staff_id));
+                        }
+                      }}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    {member.name}
+                  </label>
+                ))}
+              </div>
+            )}
+            {!showMemberFilter && selectedMemberIds.length > 0 && (
+              <p className="text-xs text-gray-500">
+                {selectedMemberIds.length}名を選択中
+              </p>
+            )}
+            {!showMemberFilter && selectedMemberIds.length === 0 && (
+              <p className="text-xs text-gray-500">
+                全員表示中（{allUsers.length}名）
               </p>
             )}
           </div>
@@ -841,7 +977,7 @@ export default function SharedCalendarPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allUsers.map((member) => (
+                  {displayMembers.map((member) => (
                     <tr key={member.staff_id} className="hover:bg-gray-50">
                       <td className="sticky left-0 z-10 bg-white border border-gray-300 px-3 py-2 text-xs font-medium text-gray-900 whitespace-nowrap">
                         {member.name}
@@ -983,12 +1119,12 @@ export default function SharedCalendarPage() {
         </div>
       )}
 
-      {/* 一括登録モーダル */}
+      {/* 一括登録/削除モーダル */}
       {showBulkModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md">
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-gray-900">一括予定登録</h2>
+              <h2 className="text-lg font-bold text-gray-900">一括操作</h2>
               <button
                 onClick={() => setShowBulkModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-lg"
@@ -997,78 +1133,184 @@ export default function SharedCalendarPage() {
               </button>
             </div>
 
+            {/* モード切り替えタブ */}
+            <div className="flex border-b border-gray-200">
+              <button
+                onClick={() => setBulkMode('add')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  bulkMode === 'add'
+                    ? "text-green-600 border-b-2 border-green-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                一括登録
+              </button>
+              <button
+                onClick={() => setBulkMode('delete')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  bulkMode === 'delete'
+                    ? "text-red-600 border-b-2 border-red-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                一括削除
+              </button>
+            </div>
+
             <div className="p-4 space-y-4">
-              {/* 予定選択（ドロップダウン） */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  予定 <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={bulkEvent.category_id}
-                  onChange={(e) => setBulkEvent({ ...bulkEvent, category_id: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
-                >
-                  <option value={0}>選択してください</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 期間選択 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  期間 <span className="text-red-500">*</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={bulkEvent.start_date}
-                    onChange={(e) => setBulkEvent({ ...bulkEvent, start_date: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
-                  />
-                  <span className="text-gray-500">〜</span>
-                  <input
-                    type="date"
-                    value={bulkEvent.end_date}
-                    onChange={(e) => setBulkEvent({ ...bulkEvent, end_date: e.target.value })}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
-                  />
-                </div>
-              </div>
-
-              {/* 曜日選択 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  曜日 <span className="text-red-500">*</span>
-                </label>
-                <div className="flex gap-1">
-                  {WEEKDAYS.map((day, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => toggleWeekday(i)}
-                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        bulkEvent.weekdays.includes(i)
-                          ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100"
-                      } ${i === 0 ? "text-red-600" : ""} ${i === 6 ? "text-blue-600" : ""}`}
-                      style={bulkEvent.weekdays.includes(i) ? {} : { color: i === 0 ? '#dc2626' : i === 6 ? '#2563eb' : undefined }}
+              {/* 一括登録モード */}
+              {bulkMode === 'add' && (
+                <>
+                  {/* 予定選択（ドロップダウン） */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      予定 <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={bulkEvent.category_id}
+                      onChange={(e) => setBulkEvent({ ...bulkEvent, category_id: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
                     >
-                      {day}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      <option value={0}>選択してください</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* 対象日数表示 */}
-              <div className="bg-gray-50 rounded-lg p-3">
-                <span className="text-sm text-gray-600">対象日数：</span>
-                <span className="font-bold text-lg text-blue-600">{bulkTargetDates.length}</span>
-                <span className="text-sm text-gray-600">日</span>
-              </div>
+                  {/* 期間選択 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      期間 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={bulkEvent.start_date}
+                        onChange={(e) => setBulkEvent({ ...bulkEvent, start_date: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
+                      />
+                      <span className="text-gray-500">〜</span>
+                      <input
+                        type="date"
+                        value={bulkEvent.end_date}
+                        onChange={(e) => setBulkEvent({ ...bulkEvent, end_date: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 週の指定 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      週の指定
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setBulkEvent({ ...bulkEvent, weekNumbers: [] })}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          bulkEvent.weekNumbers.length === 0
+                            ? "bg-green-600 text-white border-green-600"
+                            : "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100"
+                        }`}
+                      >
+                        毎週
+                      </button>
+                      {[1, 2, 3, 4, 5].map((week) => (
+                        <button
+                          key={week}
+                          type="button"
+                          onClick={() => {
+                            const newWeekNumbers = bulkEvent.weekNumbers.includes(week)
+                              ? bulkEvent.weekNumbers.filter(w => w !== week)
+                              : [...bulkEvent.weekNumbers, week];
+                            setBulkEvent({ ...bulkEvent, weekNumbers: newWeekNumbers });
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                            bulkEvent.weekNumbers.includes(week)
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100"
+                          }`}
+                        >
+                          第{week}週
+                        </button>
+                      ))}
+                    </div>
+                    {bulkEvent.weekNumbers.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        第{bulkEvent.weekNumbers.sort().join('、')}週のみ対象
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 曜日選択 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      曜日 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex gap-1">
+                      {WEEKDAYS.map((day, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => toggleWeekday(i)}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                            bulkEvent.weekdays.includes(i)
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100"
+                          } ${i === 0 ? "text-red-600" : ""} ${i === 6 ? "text-blue-600" : ""}`}
+                          style={bulkEvent.weekdays.includes(i) ? {} : { color: i === 0 ? '#dc2626' : i === 6 ? '#2563eb' : undefined }}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 対象日数表示 */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <span className="text-sm text-gray-600">対象日数：</span>
+                    <span className="font-bold text-lg text-blue-600">{bulkTargetDates.length}</span>
+                    <span className="text-sm text-gray-600">日</span>
+                  </div>
+                </>
+              )}
+
+              {/* 一括削除モード */}
+              {bulkMode === 'delete' && (
+                <>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-700">
+                      指定した期間内のすべての予定を削除します。この操作は取り消せません。
+                    </p>
+                  </div>
+
+                  {/* 期間選択 */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      削除対象期間 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={bulkEvent.start_date}
+                        onChange={(e) => setBulkEvent({ ...bulkEvent, start_date: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm text-gray-900"
+                      />
+                      <span className="text-gray-500">〜</span>
+                      <input
+                        type="date"
+                        value={bulkEvent.end_date}
+                        onChange={(e) => setBulkEvent({ ...bulkEvent, end_date: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 p-4 border-t border-gray-200">
@@ -1078,13 +1320,23 @@ export default function SharedCalendarPage() {
               >
                 キャンセル
               </button>
-              <button
-                onClick={handleBulkAdd}
-                disabled={saving || !bulkEvent.category_id || bulkTargetDates.length === 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-              >
-                {saving ? "登録中..." : `${bulkTargetDates.length}件登録`}
-              </button>
+              {bulkMode === 'add' ? (
+                <button
+                  onClick={handleBulkAdd}
+                  disabled={saving || !bulkEvent.category_id || bulkTargetDates.length === 0}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? "登録中..." : `${bulkTargetDates.length}件登録`}
+                </button>
+              ) : (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={saving || !bulkEvent.start_date || !bulkEvent.end_date}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? "削除中..." : "削除する"}
+                </button>
+              )}
             </div>
           </div>
         </div>

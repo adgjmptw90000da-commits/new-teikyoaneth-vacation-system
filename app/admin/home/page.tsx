@@ -835,7 +835,7 @@ export default function AdminHomePage() {
                 <Icons.Calendar />
               </div>
               <div className="text-left">
-                <h4 className="font-semibold text-gray-900">予定共有カレンダー設定</h4>
+                <h4 className="font-semibold text-gray-900">非臨床日共有カレンダー設定</h4>
                 <p className="text-xs text-gray-500">カテゴリの管理</p>
               </div>
             </button>
