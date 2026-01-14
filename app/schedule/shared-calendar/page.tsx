@@ -157,9 +157,26 @@ export default function SharedCalendarPage() {
   // 管理者用: 対象ユーザー選択
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
 
-  // 全体表示用: メンバーフィルター
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  // 全体表示用: メンバーフィルター（localStorageで永続化）
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sharedCalendar_selectedMemberIds');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
   const [showMemberFilter, setShowMemberFilter] = useState(false);
+
+  // selectedMemberIdsが変更されたらlocalStorageに保存
+  useEffect(() => {
+    localStorage.setItem('sharedCalendar_selectedMemberIds', JSON.stringify(selectedMemberIds));
+  }, [selectedMemberIds]);
 
   useEffect(() => {
     const currentUser = getUser();
