@@ -157,34 +157,26 @@ export default function SharedCalendarPage() {
   // 管理者用: 対象ユーザー選択
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
 
-  // 全体表示用: メンバーフィルター（localStorageで永続化、ユーザーごと）
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
-  const [showMemberFilter, setShowMemberFilter] = useState(false);
-  const [memberFilterLoaded, setMemberFilterLoaded] = useState(false);
-
-  // ユーザーが確定したらlocalStorageから読み込み
-  useEffect(() => {
-    if (user && !memberFilterLoaded) {
-      const storageKey = `sharedCalendar_selectedMemberIds_${user.staff_id}`;
-      const saved = localStorage.getItem(storageKey);
+  // 全体表示用: メンバーフィルター（localStorageで永続化）
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sharedCalendar_selectedMemberIds');
       if (saved) {
         try {
-          setSelectedMemberIds(JSON.parse(saved));
+          return JSON.parse(saved);
         } catch {
-          // パースエラー時は空配列のまま
+          return [];
         }
       }
-      setMemberFilterLoaded(true);
     }
-  }, [user, memberFilterLoaded]);
+    return [];
+  });
+  const [showMemberFilter, setShowMemberFilter] = useState(false);
 
   // selectedMemberIdsが変更されたらlocalStorageに保存
   useEffect(() => {
-    if (user && memberFilterLoaded) {
-      const storageKey = `sharedCalendar_selectedMemberIds_${user.staff_id}`;
-      localStorage.setItem(storageKey, JSON.stringify(selectedMemberIds));
-    }
-  }, [selectedMemberIds, user, memberFilterLoaded]);
+    localStorage.setItem('sharedCalendar_selectedMemberIds', JSON.stringify(selectedMemberIds));
+  }, [selectedMemberIds]);
 
   useEffect(() => {
     const currentUser = getUser();
