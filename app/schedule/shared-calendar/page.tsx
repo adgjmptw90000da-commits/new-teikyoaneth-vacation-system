@@ -703,8 +703,8 @@ export default function SharedCalendarPage() {
           </div>
         )}
 
-        {/* 全体表示用: メンバーフィルター */}
-        {viewMode === 'overview' && (
+        {/* 全体表示用: メンバーフィルター（管理者のみ） */}
+        {viewMode === 'overview' && user?.is_admin && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-gray-700">表示メンバー</h3>
