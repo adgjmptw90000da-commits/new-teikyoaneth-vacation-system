@@ -430,10 +430,10 @@ export default function SharedCalendarPage() {
 
   // 一括登録/削除モーダルを開く
   const openBulkModal = () => {
-    const now = new Date();
-    const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const endOfMonthStr = `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, "0")}-${String(endOfMonth.getDate()).padStart(2, "0")}`;
+    // 表示中の月の初日〜末日をデフォルトに設定
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const startOfMonth = `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`;
+    const endOfMonthStr = `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
     setBulkMode('add');
     setBulkEvent({
@@ -799,7 +799,7 @@ export default function SharedCalendarPage() {
                 className="px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
               >
                 <Icons.Plus />
-                一括登録
+                一括操作
               </button>
             )}
           </div>
