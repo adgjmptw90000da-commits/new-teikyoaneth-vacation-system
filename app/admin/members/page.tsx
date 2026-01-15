@@ -364,6 +364,10 @@ export default function MembersPage() {
         { table: 'priority_exchange_request', column: 'admin_staff_id' },
         { table: 'cancellation_request', column: 'reviewed_by_staff_id' },
         { table: 'schedule_publish', column: 'published_by_staff_id' },
+        { table: 'shared_calendar_event', column: 'staff_id' },
+        { table: 'schedule_snapshot', column: 'created_by_staff_id' },
+        { table: 'hidden_schedule_vacations', column: 'staff_id' },
+        { table: 'hidden_schedule_vacations', column: 'hidden_by_staff_id' },
       ];
 
       // Step 1: 旧ユーザー情報を取得
