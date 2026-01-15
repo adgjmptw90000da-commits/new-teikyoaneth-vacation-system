@@ -1252,13 +1252,13 @@ export default function SharedCalendarPage() {
                               : "bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100"
                           }`}
                         >
-                          第{week}週
+                          第{week}
                         </button>
                       ))}
                     </div>
                     {bulkEvent.weekNumbers.length > 0 && (
                       <p className="text-xs text-gray-500 mt-1">
-                        第{bulkEvent.weekNumbers.sort().join('、')}週のみ対象
+                        第{bulkEvent.weekNumbers.sort().join('、')}のみ対象
                       </p>
                     )}
                   </div>
