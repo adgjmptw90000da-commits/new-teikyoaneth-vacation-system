@@ -157,26 +157,33 @@ export default function SharedCalendarPage() {
   // 管理者用: 対象ユーザー選択
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
 
-  // 全体表示用: メンバーフィルター（localStorageで永続化）
-  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('sharedCalendar_selectedMemberIds');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          return [];
-        }
-      }
-    }
-    return [];
-  });
+  // 全体表示用: メンバーフィルター（DBで全デバイス共有）
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [showMemberFilter, setShowMemberFilter] = useState(false);
 
-  // selectedMemberIdsが変更されたらlocalStorageに保存
+  // 初回読み込み時にDBからフィルター設定を取得
   useEffect(() => {
-    localStorage.setItem('sharedCalendar_selectedMemberIds', JSON.stringify(selectedMemberIds));
-  }, [selectedMemberIds]);
+    const loadFilter = async () => {
+      const { data } = await supabase
+        .from('shared_calendar_filter')
+        .select('selected_member_ids')
+        .eq('id', 1)
+        .single();
+      if (data?.selected_member_ids) {
+        setSelectedMemberIds(data.selected_member_ids);
+      }
+    };
+    loadFilter();
+  }, []);
+
+  // フィルター変更時にDBに保存
+  const updateSelectedMemberIds = async (newIds: string[]) => {
+    setSelectedMemberIds(newIds);
+    await supabase
+      .from('shared_calendar_filter')
+      .update({ selected_member_ids: newIds, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+  };
 
   useEffect(() => {
     const currentUser = getUser();
@@ -710,13 +717,13 @@ export default function SharedCalendarPage() {
               <h3 className="text-sm font-medium text-gray-700">表示メンバー</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setSelectedMemberIds(allUsers.map(u => u.staff_id))}
+                  onClick={() => updateSelectedMemberIds(allUsers.map(u => u.staff_id))}
                   className="text-xs text-blue-600 hover:text-blue-800"
                 >
                   全選択
                 </button>
                 <button
-                  onClick={() => setSelectedMemberIds([])}
+                  onClick={() => updateSelectedMemberIds([])}
                   className="text-xs text-gray-600 hover:text-gray-800"
                 >
                   全解除
@@ -745,9 +752,9 @@ export default function SharedCalendarPage() {
                       checked={selectedMemberIds.includes(member.staff_id)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedMemberIds([...selectedMemberIds, member.staff_id]);
+                          updateSelectedMemberIds([...selectedMemberIds, member.staff_id]);
                         } else {
-                          setSelectedMemberIds(selectedMemberIds.filter(id => id !== member.staff_id));
+                          updateSelectedMemberIds(selectedMemberIds.filter(id => id !== member.staff_id));
                         }
                       }}
                       className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
